@@ -9,49 +9,55 @@ class TimelineRulerWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     double totalRulerWidth = dawState.songDuration * dawState.zoomX;
 
-    return GestureDetector(
-      onTapDown: (details) {
-        double clickedSeconds = details.localPosition.dx / dawState.zoomX;
-        dawState.jumpToTimelinePosition(clickedSeconds);
-      },
-      child: Container(
-        height: 45, width: totalRulerWidth,
-        decoration: BoxDecoration(color: Colors.grey[900], border: const Border(bottom: BorderSide(color: Colors.white12))),
+    return SizedBox(
+      width: totalRulerWidth,  // explicit width — no infinite constraint
+      height: 45,
+      child: GestureDetector(
+        onTapDown: (details) {
+          double clickedSeconds = details.localPosition.dx / dawState.zoomX;
+          dawState.jumpToTimelinePosition(clickedSeconds);
+        },
         child: Stack(
           children: [
+            // Loop region highlight
             if (dawState.isLoopModeActive)
               Positioned(
                 left: dawState.loopStartBoundary * dawState.zoomX,
                 width: (dawState.loopEndBoundary - dawState.loopStartBoundary) * dawState.zoomX,
-                top: 0, bottom: 0,
+                top: 0,
+                bottom: 0,
                 child: Container(color: Colors.blueAccent.withOpacity(0.15)),
               ),
+
+            // Ruler tick marks and time labels
             CustomPaint(
               size: Size(totalRulerWidth, 45),
-              painter: RulerGridPainter(zoomX: dawState.zoomX, duration: dawState.songDuration),
+              painter: RulerGridPainter(
+                zoomX: dawState.zoomX,
+                duration: dawState.songDuration,
+              ),
             ),
+
+            // Marker pins (scroll with content)
+            // long press to delete:
             ...dawState.markers.map((marker) {
               return Positioned(
-                left: (marker['time'] as double) * dawState.zoomX - 8, top: 4,
+                left: (marker['time'] as double) * dawState.zoomX - 8,
+                top: 4,
                 child: GestureDetector(
                   onTap: () => dawState.jumpToTimelinePosition(marker['time']),
-                  child: Tooltip(message: marker['label'], child: const Icon(Icons.location_on, color: Colors.amberAccent, size: 18)),
+                  onLongPress: () {
+                    // Long press to delete
+                    dawState.deleteMarker(marker['id']);
+                  },
+                  child: Tooltip(
+                    message: marker['label'],  // just the label, no "long press to delete"
+                    triggerMode: TooltipTriggerMode.tap,  // only show on tap, not long press
+                    child: const Icon(Icons.location_on, color: Colors.amberAccent, size: 18),
+                  ),
                 ),
               );
             }).toList(),
-            Positioned(
-              right: 10, top: 10,
-              child: Row(
-                children: [
-                  const Icon(Icons.repeat, size: 16, color: Colors.blueAccent),
-                  Switch(
-                    value: dawState.isLoopModeActive, 
-                    onChanged: (val) => dawState.setState(() => dawState.isLoopModeActive = val),
-                  ),
-                  IconButton(icon: const Icon(Icons.add_location_alt, size: 18), onPressed: dawState.addMarkerAtCurrentPlayhead),
-                ],
-              )
-            )
           ],
         ),
       ),
@@ -68,17 +74,43 @@ class RulerGridPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = Colors.white30..strokeWidth = 1.0;
     final textStyle = TextStyle(color: Colors.grey[400], fontSize: 10);
-    
-    for (int idx = 0; idx <= duration; idx++) {
-      double xCoord = idx * zoomX;
-      double tickHeight = (idx % 5 == 0) ? 18.0 : 8.0;
-      canvas.drawLine(Offset(xCoord, size.height - tickHeight), Offset(xCoord, size.height), paint);
-      
-      if (idx % 5 == 0) {
-        final textPainter = TextPainter(text: TextSpan(text: "${idx}s", style: textStyle), textDirection: TextDirection.ltr)..layout();
+
+    // Decide tick interval based on zoom level
+    double tickInterval = 1.0; // seconds between ticks
+    if (zoomX < 80) tickInterval = 5.0;
+    if (zoomX < 30) tickInterval = 10.0;
+
+    double t = 0;
+    while (t <= duration) {
+      double xCoord = t * zoomX;
+      bool isMajor = (t % (tickInterval * 5) < 0.001);
+      double tickHeight = isMajor ? 18.0 : 8.0;
+
+      canvas.drawLine(
+        Offset(xCoord, size.height - tickHeight),
+        Offset(xCoord, size.height),
+        paint,
+      );
+
+      if (isMajor || tickInterval >= 5.0) {
+        // Format as mm:ss
+        int totalSeconds = t.round();
+        int minutes = totalSeconds ~/ 60;
+        int seconds = totalSeconds % 60;
+        String label = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
+        final textPainter = TextPainter(
+          text: TextSpan(text: label, style: textStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
         textPainter.paint(canvas, Offset(xCoord + 4, size.height - 35));
       }
+
+      t += tickInterval;
     }
   }
-  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+
+  @override
+  bool shouldRepaint(covariant RulerGridPainter oldDelegate) =>
+      oldDelegate.zoomX != zoomX || oldDelegate.duration != duration;
 }

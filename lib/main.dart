@@ -41,6 +41,7 @@ import 'dart:typed_data';
 
 import 'ui/timeline_canvas.dart';
 import 'pedagogy/live_analyzer.dart';
+import 'ui/timeline_ruler.dart';
 
 void main() => runApp(MaterialApp(
   home: const VoxrayDAW(), 
@@ -59,6 +60,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   // Viewport Scrollers
   final ScrollController horizontalScrollController = ScrollController();
   final ScrollController verticalScrollController = ScrollController();
+  final ScrollController rulerScrollController = ScrollController();
   
   List<dynamic> rawNotes = [];
   List<Map<String, dynamic>> markers = [];
@@ -91,62 +93,81 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   
   bool isLiveModeActive = false;
   bool isLoopModeActive = false;
-  double loopStartBoundary = 2.0;
-  double loopEndBoundary = 8.0;
+  double loopStartBoundary = 0.0;
+  double loopEndBoundary = 20.0;
 
   final String apiBase = 'https://donkelleymusic--voxray-pro-api-api.modal.run';
 
   @override
   void initState() {
     super.initState();
+    horizontalScrollController.addListener(() {
+      if (rulerScrollController.hasClients &&
+          rulerScrollController.position.pixels != horizontalScrollController.position.pixels) {
+        rulerScrollController.jumpTo(horizontalScrollController.position.pixels);
+      }
+    });
+    // In initState, also add the reverse mirror:
+    rulerScrollController.addListener(() {
+      if (horizontalScrollController.hasClients &&
+          horizontalScrollController.position.pixels != rulerScrollController.position.pixels) {
+        horizontalScrollController.jumpTo(rulerScrollController.position.pixels);
+      }
+    });
     masterPlayer.playerStateStream.listen((state) {
       debugPrint("Player state: ${state.processingState} playing:${state.playing} isLoading:$isLoading");
     });
     masterPlayer.positionStream.listen((pos) {
       if (!mounted) return;
       double currentT = pos.inMilliseconds / 1000.0;
-      
-      if (isLoopModeActive && currentT >= loopEndBoundary) {
+
+      if (isLoopModeActive && 
+          loopEndBoundary > loopStartBoundary && 
+          loopEndBoundary > 0.0 &&
+          currentT >= loopEndBoundary) {
         masterPlayer.seek(Duration(milliseconds: (loopStartBoundary * 1000).round()));
         currentT = loopStartBoundary;
       }
-      
+
       setState(() => currentPosition = currentT);
 
-      // --- NEW: Viewport Tracking Engine ---
       if (masterPlayer.playing) {
-        // 1. Horizontal Scroll (Stationary Playhead at ~150px offset)
+        // Horizontal: keep playhead stationary at 150px from left
         double targetX = (currentT * zoomX) - 150.0;
         if (targetX < 0) targetX = 0;
         if (horizontalScrollController.hasClients) {
-          horizontalScrollController.jumpTo(targetX);
+          horizontalScrollController.jumpTo(
+            targetX.clamp(0.0, horizontalScrollController.position.maxScrollExtent)
+          );
         }
 
-        // 2. Vertical Glide (Center active pitch)
-        var activeNotes = rawNotes.where((n) => 
-            n['isDeleted'] != true && 
-            n['start_time'] <= currentT && 
-            n['end_time'] >= currentT
-        ).toList();
+        // Vertical: follow highest active note
+        if (verticalScrollController.hasClients && rawNotes.isNotEmpty) {
+          var activeNotes = rawNotes.where((n) {
+            if (n['isDeleted'] == true) return false;
+            double start = (n['start_time'] ?? 0).toDouble();
+            double end = (n['end_time'] ?? 0).toDouble();
+            return start <= currentT && end >= currentT;
+          }).toList();
 
-        if (activeNotes.isNotEmpty && verticalScrollController.hasClients) {
-          // Track highest pitched active note
-          activeNotes.sort((a, b) => (b['display_midi'] ?? 0).compareTo(a['display_midi'] ?? 0));
-          int targetMidi = activeNotes.first['display_midi'] ?? 60;
-          
-          double viewportCenter = verticalScrollController.position.viewportDimension / 2;
-          double targetY = ((maxMidi - targetMidi) * zoomY) - viewportCenter;
-          
-          if (targetY < 0) targetY = 0;
-          if (targetY > verticalScrollController.position.maxScrollExtent) {
-            targetY = verticalScrollController.position.maxScrollExtent;
+          if (activeNotes.isNotEmpty) {
+            // Find the median pitch of active notes (better than highest for polyphony)
+            List<int> midiValues = activeNotes
+                .map<int>((n) => ((n['display_midi'] ?? n['actual_midi'] ?? 60)).round())
+                .toList()
+              ..sort();
+            int medianMidi = midiValues[midiValues.length ~/ 2];
+
+            double viewportHeight = verticalScrollController.position.viewportDimension;
+            double targetY = ((maxMidi - medianMidi) * zoomY) - (viewportHeight / 2);
+            targetY = targetY.clamp(0.0, verticalScrollController.position.maxScrollExtent);
+
+            verticalScrollController.animateTo(
+              targetY,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
           }
-          
-          verticalScrollController.animateTo(
-            targetY, 
-            duration: const Duration(milliseconds: 200), 
-            curve: Curves.easeOut
-          );
         }
       }
     });
@@ -157,6 +178,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     pollingTimer?.cancel();
     horizontalScrollController.dispose();
     verticalScrollController.dispose();
+    rulerScrollController.dispose();
     super.dispose();
   }
 
@@ -179,6 +201,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         "time": currentPosition,
         "label": "Marker ${markers.length + 1}"
       });
+    });
+    debugPrint("Marker added at $currentPosition, total markers: ${markers.length}");
+  }
+
+  void setLoopFromMarkers(double start, double end) {
+    setState(() {
+      loopStartBoundary = start;
+      loopEndBoundary = end;
+    });
+  }
+
+  void deleteMarker(String id) {
+    setState(() {
+      markers.removeWhere((m) => m['id'] == id);
     });
   }
 
@@ -322,6 +358,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               setState(() {
                 rawNotes = statusData['result']['notes'];
                 songDuration = statusData['result']['duration'].toDouble();
+                loopEndBoundary = songDuration; // keep loop end in sync
                 isLoading = false;
               });
             } else if (statusData['status'] == 'error') {
@@ -427,125 +464,197 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           ],
         ],
       ),
-      body: isLiveModeActive 
-          ? const LivePedagogyView() 
-          : Column(
+      body: isLiveModeActive
+    ? const LivePedagogyView()
+    : Column(
+        children: [
+          // --- TOP TOOLBAR ---
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Wrap(
+              spacing: 16, crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Wrap(
-                    spacing: 16, crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (isLoading)
-                        SizedBox(
-                          width: 200,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(processingMessage, style: const TextStyle(fontSize: 12, color: Colors.tealAccent)),
-                              const SizedBox(height: 4),
-                              LinearProgressIndicator(
-                                value: processingProgress,
-                                backgroundColor: Colors.grey[800],
-                                color: Colors.tealAccent,
-                                minHeight: 8,
-                              ),
-                            ],
-                          ),
-                        )
-                      else
-                        ElevatedButton(
-                          onPressed: _loadFileAndAnalyze, 
-                          child: const Text('Upload Audio')
+                if (isLoading)
+                  SizedBox(
+                    width: 200,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(processingMessage, style: const TextStyle(fontSize: 12, color: Colors.tealAccent)),
+                        const SizedBox(height: 4),
+                        LinearProgressIndicator(
+                          value: processingProgress,
+                          backgroundColor: Colors.grey[800],
+                          color: Colors.tealAccent,
+                          minHeight: 8,
                         ),
-                      Wrap(
-                        spacing: 15.0, 
-                        runSpacing: 10.0, 
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          //const Text("De-Hiss", style: TextStyle(fontSize: 12)),
-                          //Switch(value: applyDenoise, onChanged: (val) => setState(() => applyDenoise = val), activeColor: Colors.amberAccent),
-                          
-                          const Text("Zoom X", style: TextStyle(fontSize: 12)),
-                          SizedBox(
-                            width: 100,
-                            child: Slider(
-                              value: zoomX, min: 50.0, max: 400.0,
-                              onChanged: (v) => setState(() => zoomX = v),
-                            ),
-                          ),
-                          
-                          const Text("Zoom Y", style: TextStyle(fontSize: 12)),
-                          SizedBox(
-                            width: 100,
-                            child: Slider(
-                              value: zoomY, min: 10.0, max: 60.0,
-                              onChanged: (v) => setState(() => zoomY = v),
-                            ),
-                          ),
-
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
-                            icon: const Icon(Icons.analytics, size: 16),
-                            label: const Text("Dossier"),
-                            onPressed: _showDossier,
-                          )
-                        ],
-                      ),
-                      IconButton(
-                        icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow),
-                        onPressed: () => masterPlayer.playing ? masterPlayer.pause() : masterPlayer.play(),
-                      ),
-                      IconButton(icon: const Icon(Icons.tune), onPressed: () => setState(() => isMixerOpen = !isMixerOpen)),
-                    ],
+                      ],
+                    ),
+                  )
+                else
+                  ElevatedButton(
+                    onPressed: _loadFileAndAnalyze,
+                    child: const Text('Upload Audio')
                   ),
+                Wrap(
+                  spacing: 15.0,
+                  runSpacing: 10.0,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Text("Zoom X", style: TextStyle(fontSize: 12)),
+                    SizedBox(
+                      width: 100,
+                      child: Slider(
+                        value: zoomX, min: 50.0, max: 400.0,
+                        onChanged: (v) => setState(() => zoomX = v),
+                      ),
+                    ),
+                    const Text("Zoom Y", style: TextStyle(fontSize: 12)),
+                    SizedBox(
+                      width: 100,
+                      child: Slider(
+                        value: zoomY, min: 10.0, max: 60.0,
+                        onChanged: (v) => setState(() => zoomY = v),
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
+                      icon: const Icon(Icons.analytics, size: 16),
+                      label: const Text("Dossier"),
+                      onPressed: _showDossier,
+                    ),
+                  ],
                 ),
-                // MIXER POPUP
-              if (isMixerOpen && !isLiveModeActive)
-                Container(
-                  color: Colors.grey[900],
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          const SizedBox(width: 80, child: Text("Vocal Vol", style: TextStyle(fontSize: 12, color: Colors.white70))),
-                          Expanded(
-                            child: Slider(
-                              value: targetVolume, min: 0.0, max: 2.0,
-                              activeColor: Colors.tealAccent,
-                              onChanged: (v) => setState(() => targetVolume = v),
-                            ),
-                          ),
-                          SizedBox(width: 36, child: Text("${(targetVolume * 100).round()}%", style: const TextStyle(fontSize: 11, color: Colors.white54))),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          const SizedBox(width: 80, child: Text("Accomp Vol", style: TextStyle(fontSize: 12, color: Colors.white70))),
-                          Expanded(
-                            child: Slider(
-                              value: accompVolume, min: 0.0, max: 2.0,
-                              activeColor: Colors.amberAccent,
-                              onChanged: (v) => setState(() => accompVolume = v),
-                            ),
-                          ),
-                          SizedBox(width: 36, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(fontSize: 11, color: Colors.white54))),
-                        ],
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          const SizedBox(width: 80, child: Text("De-Hiss", style: TextStyle(fontSize: 12, color: Colors.white70))),
-                          Switch(value: applyDenoise, onChanged: (val) => setState(() => applyDenoise = val), activeColor: Colors.amberAccent),
-                        ],
-                      ),
-                    ],
+                IconButton(
+                  icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow),
+                  onPressed: () => masterPlayer.playing ? masterPlayer.pause() : masterPlayer.play(),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.tune),
+                  onPressed: () => setState(() => isMixerOpen = !isMixerOpen)
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add_location_alt, size: 18, color: Colors.amberAccent),
+                  tooltip: "Add Marker",
+                  onPressed: addMarkerAtCurrentPlayhead,
+                ),
+                // Loop controls in toolbar
+                if (markers.length >= 2) ...[
+                  const Icon(Icons.repeat, size: 16, color: Colors.blueAccent),
+                  Switch(
+                    value: isLoopModeActive,
+                    onChanged: (val) => setState(() => isLoopModeActive = val),
+                    activeColor: Colors.blueAccent,
                   ),
-                ),
-                Expanded(child: TimelineCanvasWidget(dawState: this)),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.tune, size: 16, color: Colors.blueAccent),
+                    tooltip: "Set Loop Region",
+                    itemBuilder: (context) {
+                      List<PopupMenuItem<String>> items = [];
+                      for (int i = 0; i < markers.length; i++) {
+                        for (int j = i + 1; j < markers.length; j++) {
+                          double t1 = markers[i]['time'];
+                          double t2 = markers[j]['time'];
+                          String l1 = markers[i]['label'];
+                          String l2 = markers[j]['label'];
+                          items.add(PopupMenuItem(
+                            value: '${t1}_${t2}',
+                            child: Text('$l1 → $l2', style: const TextStyle(fontSize: 12)),
+                          ));
+                        }
+                      }
+                      return items;
+                    },
+                    onSelected: (val) {
+                      final parts = val.split('_');
+                      setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
+                    },
+                  ),
+                ] else ...[
+                  const Icon(Icons.repeat, size: 16, color: Colors.blueAccent),
+                  Switch(
+                    value: isLoopModeActive,
+                    onChanged: (val) => setState(() => isLoopModeActive = val),
+                    activeColor: Colors.blueAccent,
+                  ),
+                ],
+                const Icon(Icons.repeat, size: 16, color: Colors.blueAccent),
               ],
             ),
+          ),
+
+          // --- MIXER PANEL (shown when isMixerOpen) ---
+          if (isMixerOpen)
+            Container(
+              color: Colors.grey[900],
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const SizedBox(width: 80, child: Text("Vocal Vol", style: TextStyle(fontSize: 12, color: Colors.white70))),
+                      Expanded(
+                        child: Slider(
+                          value: targetVolume, min: 0.0, max: 2.0,
+                          activeColor: Colors.tealAccent,
+                          onChanged: (v) => setState(() => targetVolume = v),
+                        ),
+                      ),
+                      SizedBox(width: 36, child: Text("${(targetVolume * 100).round()}%", style: const TextStyle(fontSize: 11, color: Colors.white54))),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      const SizedBox(width: 80, child: Text("Accomp Vol", style: TextStyle(fontSize: 12, color: Colors.white70))),
+                      Expanded(
+                        child: Slider(
+                          value: accompVolume, min: 0.0, max: 2.0,
+                          activeColor: Colors.amberAccent,
+                          onChanged: (v) => setState(() => accompVolume = v),
+                        ),
+                      ),
+                      SizedBox(width: 36, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(fontSize: 11, color: Colors.white54))),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      const SizedBox(width: 80, child: Text("De-Hiss", style: TextStyle(fontSize: 12, color: Colors.white70))),
+                      Switch(value: applyDenoise, onChanged: (val) => setState(() => applyDenoise = val), activeColor: Colors.amberAccent),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+          // --- TIMELINE RULER (scrolls horizontally in sync) ---
+          Row(
+            children: [
+              Container(
+                width: 60,
+                height: 45,
+                color: Colors.grey[900],
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: rulerScrollController,  // OWN controller
+                  scrollDirection: Axis.horizontal,
+                  // NO NeverScrollableScrollPhysics — freely draggable
+                  child: TimelineRulerWidget(dawState: this),
+                ),
+              ),
+            ],
+          ),
+
+          // --- NOTE GRID ---
+          Expanded(
+            child: TimelineCanvasWidget(
+              dawState: this,
+              horizontalScrollController: horizontalScrollController,
+              verticalScrollController: verticalScrollController,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
