@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.voxray_pro_client"
+    namespace = "com.donkelleymusic.voxray_pro_client"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.voxray_pro_client"
+        applicationId = "com.donkelleymusic.voxray_pro_client"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -32,6 +32,23 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            if (variant.buildType == "release") {
+                val version = output.versionName.orNull ?: "1.0.0"
+                (output as? com.android.build.api.variant.impl.VariantOutputImpl)
+                    ?.outputFileName?.set("voxray-pro-client-$version.apk")
+            }
+        }
+    }
 }
 
 kotlin {
@@ -42,4 +59,12 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Force the build system to pull in the manually linked plugin
+    // implementation(project(":file_picker"))
+    
+    // Keep your Kotlin fix from before
+    //implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
 }

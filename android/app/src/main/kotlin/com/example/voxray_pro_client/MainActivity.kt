@@ -1,4 +1,4 @@
-package com.example.voxray_pro_client
+package com.donkelleymusic.voxray_pro_client
 
 import io.flutter.embedding.android.FlutterActivity
 

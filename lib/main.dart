@@ -26,12 +26,16 @@
 // proprietary nature of this software.
 // ==============================================================================
 
+import 'dart:io';
+import 'package:flutter/foundation.dart'; // for kIsWeb
+import 'package:path_provider/path_provider.dart'; // for getTemporaryDirectory
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async'; 
-import 'dart:html' as html;
+//import 'dart:html' as html;
+import 'package:file_saver/file_saver.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:typed_data';
 
@@ -95,6 +99,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   @override
   void initState() {
     super.initState();
+    masterPlayer.playerStateStream.listen((state) {
+      debugPrint("Player state: ${state.processingState} playing:${state.playing} isLoading:$isLoading");
+    });
     masterPlayer.positionStream.listen((pos) {
       if (!mounted) return;
       double currentT = pos.inMilliseconds / 1000.0;
@@ -193,7 +200,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  void _saveVoxrayProject() {
+  Future<void> _saveVoxrayProject() async {
     Map<String, dynamic> projectData = {
       "voxray_version": "1.2.0",
       "project_name": projectName,
@@ -202,19 +209,39 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       "history": {"undo_stack": undoStack, "redo_stack": redoStack}
     };
 
-    final blob = html.Blob([json.encode(projectData)], 'application/json');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    html.AnchorElement(href: url)
-      ..setAttribute("download", "$projectName.vxr")
-      ..click();
-    html.Url.revokeObjectUrl(url);
+    // Convert JSON to bytes for saving
+    String jsonString = json.encode(projectData);
+    Uint8List bytes = Uint8List.fromList(utf8.encode(jsonString));
+
+    await FileSaver.instance.saveFile(
+      name: projectName,
+      bytes: bytes,
+      fileExtension: 'vxr',
+      mimeType: MimeType.json,
+    );
   }
 
   Future<void> _loadVoxrayProject() async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['vxr']);
-    if (result == null || result.files.single.bytes == null) return;
+    //FilePickerResult? result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['vxr']);
+    //if (result == null || result.files.single.bytes == null) return;
 
-    String jsonString = utf8.decode(result.files.single.bytes!);
+    //String jsonString = utf8.decode(result.files.single.bytes!);
+
+    FilePickerResult? result = await FilePicker.pickFiles(
+      type: FileType.custom, 
+      allowedExtensions: ['vxr'],
+      withData: true,
+    );
+    if (result == null) return;
+
+    String jsonString;
+    if (result.files.single.bytes != null) {
+      jsonString = utf8.decode(result.files.single.bytes!);
+    } else if (result.files.single.path != null) {
+      jsonString = await File(result.files.single.path!).readAsString();
+    } else {
+      return;
+    }
     Map<String, dynamic> projectData = json.decode(jsonString);
     
     setState(() {
@@ -228,25 +255,49 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
     });
   }
-
   _loadFileAndAnalyze() async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
-    if (result == null || result.files.single.bytes == null) return;
+    FilePickerResult? result = await FilePicker.pickFiles(
+      type: FileType.audio, withData: true);
+    if (result == null) return;
 
-    setState(() { 
-      isLoading = true; 
+    Uint8List? audioBytes;
+    if (result.files.single.bytes != null) {
+      audioBytes = result.files.single.bytes!;
+    } else if (result.files.single.path != null) {
+      audioBytes = await File(result.files.single.path!).readAsBytes();
+    } else return;
+
+    setState(() {
+      isLoading = true;
       processingProgress = 0.0;
       processingMessage = "Uploading file...";
-      originalAudioBytes = result.files.single.bytes; 
+      originalAudioBytes = audioBytes;
     });
-    
-    await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!));
 
+    // Audio setup in its own try/catch — don't let it abort the upload
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
-      ..fields['stem_target'] = "vocals" 
-      ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: result.files.single.name));
+      if (kIsWeb) {
+        await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!));
+      } else {
+        // On Android/desktop, write to a temp file and load from path
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/preview_audio.wav');
+        await tempFile.writeAsBytes(originalAudioBytes!);
+        await masterPlayer.setFilePath(tempFile.path);
+      }
+    } catch (e) {
+      debugPrint("Audio preview setup failed (non-fatal): $e");
+    }
 
+    // API upload continues regardless
+    try {
+      var request = http.MultipartRequest(
+          'POST', Uri.parse('$apiBase/analyze-advanced'))
+        ..fields['stem_target'] = "vocals"
+        ..files.add(http.MultipartFile.fromBytes(
+            'file', originalAudioBytes!,
+            filename: result.files.single.name));
+  
       var response = await request.send();
       if (response.statusCode != 200) {
         throw Exception("Server rejected file upload");
@@ -307,13 +358,15 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     var res = await request.send();
     if (res.statusCode == 200) {
       var data = json.decode(await res.stream.bytesToString());
-      final bytes = base64.decode(data['master_mix_b64']);
-      final blob = html.Blob([bytes], 'audio/wav');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      html.AnchorElement(href: url)
-        ..setAttribute("download", "voxray_master.wav")
-        ..click();
-      html.Url.revokeObjectUrl(url);
+      final Uint8List bytes = base64.decode(data['master_mix_b64']);
+      
+      await FileSaver.instance.saveFile(
+        name: 'voxray_master',
+        bytes: bytes,
+        fileExtension: 'wav', 
+        mimeType: MimeType.custom,               // <--- Use custom
+        customMimeType: 'audio/wav',             // <--- Specify WAV format here
+      );
     }
     setState(() => isLoading = false);
   }
@@ -330,20 +383,48 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               const SizedBox(width: 8),
               const Text("Live Mode", style: TextStyle(fontWeight: FontWeight.bold)),
               Switch(
-                value: isLiveModeActive, 
+                value: isLiveModeActive,
                 onChanged: (val) => setState(() => isLiveModeActive = val),
                 activeColor: Colors.redAccent,
               ),
             ],
           ),
-          const SizedBox(width: 20),
           if (!isLiveModeActive) ...[
+            // Always visible
             IconButton(icon: const Icon(Icons.undo), onPressed: undoStack.isEmpty ? null : _undo),
             IconButton(icon: const Icon(Icons.redo), onPressed: redoStack.isEmpty ? null : _redo),
-            IconButton(icon: const Icon(Icons.folder_open), tooltip: "Load .vxr", onPressed: _loadVoxrayProject),
-            IconButton(icon: const Icon(Icons.save), tooltip: "Save .vxr", onPressed: _saveVoxrayProject),
-            IconButton(icon: const Icon(Icons.download), tooltip: "Export Master", onPressed: rawNotes.isEmpty ? null : _exportFinalMaster),
-          ]
+            // Landscape: show remaining buttons inline
+            if (MediaQuery.of(context).size.width > 600) ...[
+              IconButton(icon: const Icon(Icons.folder_open), tooltip: "Load .vxr", onPressed: _loadVoxrayProject),
+              IconButton(icon: const Icon(Icons.save), tooltip: "Save .vxr", onPressed: _saveVoxrayProject),
+              IconButton(icon: const Icon(Icons.download), tooltip: "Export Master", onPressed: rawNotes.isEmpty ? null : _exportFinalMaster),
+            ] else
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'load': _loadVoxrayProject(); break;
+                    case 'save': _saveVoxrayProject(); break;
+                    case 'export': _exportFinalMaster(); break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'load',
+                    child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load .vxr')),
+                  ),
+                  const PopupMenuItem(
+                    value: 'save',
+                    child: ListTile(leading: Icon(Icons.save), title: Text('Save .vxr')),
+                  ),
+                  PopupMenuItem(
+                    value: 'export',
+                    enabled: rawNotes.isNotEmpty,
+                    child: const ListTile(leading: Icon(Icons.download), title: Text('Export Master')),
+                  ),
+                ],
+              ),
+          ],
         ],
       ),
       body: isLiveModeActive 
@@ -382,8 +463,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         runSpacing: 10.0, 
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          const Text("De-Hiss", style: TextStyle(fontSize: 12)),
-                          Switch(value: applyDenoise, onChanged: (val) => setState(() => applyDenoise = val), activeColor: Colors.amberAccent),
+                          //const Text("De-Hiss", style: TextStyle(fontSize: 12)),
+                          //Switch(value: applyDenoise, onChanged: (val) => setState(() => applyDenoise = val), activeColor: Colors.amberAccent),
                           
                           const Text("Zoom X", style: TextStyle(fontSize: 12)),
                           SizedBox(
@@ -416,6 +497,49 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         onPressed: () => masterPlayer.playing ? masterPlayer.pause() : masterPlayer.play(),
                       ),
                       IconButton(icon: const Icon(Icons.tune), onPressed: () => setState(() => isMixerOpen = !isMixerOpen)),
+                    ],
+                  ),
+                ),
+                // MIXER POPUP
+              if (isMixerOpen && !isLiveModeActive)
+                Container(
+                  color: Colors.grey[900],
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const SizedBox(width: 80, child: Text("Vocal Vol", style: TextStyle(fontSize: 12, color: Colors.white70))),
+                          Expanded(
+                            child: Slider(
+                              value: targetVolume, min: 0.0, max: 2.0,
+                              activeColor: Colors.tealAccent,
+                              onChanged: (v) => setState(() => targetVolume = v),
+                            ),
+                          ),
+                          SizedBox(width: 36, child: Text("${(targetVolume * 100).round()}%", style: const TextStyle(fontSize: 11, color: Colors.white54))),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          const SizedBox(width: 80, child: Text("Accomp Vol", style: TextStyle(fontSize: 12, color: Colors.white70))),
+                          Expanded(
+                            child: Slider(
+                              value: accompVolume, min: 0.0, max: 2.0,
+                              activeColor: Colors.amberAccent,
+                              onChanged: (v) => setState(() => accompVolume = v),
+                            ),
+                          ),
+                          SizedBox(width: 36, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(fontSize: 11, color: Colors.white54))),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          const SizedBox(width: 80, child: Text("De-Hiss", style: TextStyle(fontSize: 12, color: Colors.white70))),
+                          Switch(value: applyDenoise, onChanged: (val) => setState(() => applyDenoise = val), activeColor: Colors.amberAccent),
+                        ],
+                      ),
                     ],
                   ),
                 ),
