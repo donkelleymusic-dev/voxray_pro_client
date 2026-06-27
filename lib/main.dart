@@ -1,8 +1,36 @@
+// ==============================================================================
+// COPYRIGHT AND OWNERSHIP DECLARATION
+// ==============================================================================
+// Copyright (c) 2026 Donald Bayard Kelley. All Rights Reserved.
+// 
+// voXRAY Enterprise DSP & Roformer Engine
+// 
+// PROPRIETARY AND CONFIDENTIAL
+// This source code, algorithms, binaries, and related documentation are the 
+// exclusive intellectual property of Donald Bayard Kelley. 
+//
+// Unauthorized copying, reproduction, distribution, modification, reverse 
+// engineering, or use of this file, via any medium, is strictly prohibited 
+// without the express written consent of the copyright holder. This software 
+// contains trade secrets and proprietary methodologies protected by Canadian 
+// and International intellectual property laws.
+// 
+// AUTHOR AND CONTACT INFORMATION:
+// Developer / Owner: Donald Bayard Kelley
+// Jurisdiction: British Columbia, Canada
+// Direct Inquiries: donkelleymusic@gmail.com
+// YouTube: @don-music
+// Instagram: @donmusicyt
+//
+// By accessing this codebase, you acknowledge and agree to respect the 
+// proprietary nature of this software.
+// ==============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:async'; // Added for Timer
+import 'dart:async'; 
 import 'dart:html' as html;
 import 'package:just_audio/just_audio.dart';
 import 'dart:typed_data';
@@ -24,21 +52,30 @@ class VoxrayDAW extends StatefulWidget {
 class VoxrayDAWState extends State<VoxrayDAW> {
   final AudioPlayer masterPlayer = AudioPlayer();
   
+  // Viewport Scrollers
+  final ScrollController horizontalScrollController = ScrollController();
+  final ScrollController verticalScrollController = ScrollController();
+  
   List<dynamic> rawNotes = [];
   List<Map<String, dynamic>> markers = [];
   List<String> undoStack = [];
   List<String> redoStack = [];
   
   bool isLoading = false;
-  double processingProgress = 0.0; // Added
-  String processingMessage = "";   // Added
-  Timer? pollingTimer;             // Added
+  double processingProgress = 0.0; 
+  String processingMessage = "";   
+  Timer? pollingTimer;             
 
   bool isMixerOpen = false;
   double songDuration = 30.0;
   double currentPosition = 0.0;
   double zoomX = 150.0;
   double zoomY = 24.0;
+  
+  // Global DAW Bounds
+  final int minMidi = 36;
+  final int maxMidi = 84;
+  
   String projectName = "Voxray_Session";
   Uint8List? originalAudioBytes;
 
@@ -53,19 +90,57 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   double loopStartBoundary = 2.0;
   double loopEndBoundary = 8.0;
 
-  // Base API URL - Update these to match your specific deployment URLs
-  //final String apiBase = 'https://donkelleymusic--voxray-pro-api';
   final String apiBase = 'https://donkelleymusic--voxray-pro-api-api.modal.run';
+
   @override
   void initState() {
     super.initState();
     masterPlayer.positionStream.listen((pos) {
+      if (!mounted) return;
       double currentT = pos.inMilliseconds / 1000.0;
+      
       if (isLoopModeActive && currentT >= loopEndBoundary) {
         masterPlayer.seek(Duration(milliseconds: (loopStartBoundary * 1000).round()));
-        setState(() => currentPosition = loopStartBoundary);
-      } else {
-        setState(() => currentPosition = currentT);
+        currentT = loopStartBoundary;
+      }
+      
+      setState(() => currentPosition = currentT);
+
+      // --- NEW: Viewport Tracking Engine ---
+      if (masterPlayer.playing) {
+        // 1. Horizontal Scroll (Stationary Playhead at ~150px offset)
+        double targetX = (currentT * zoomX) - 150.0;
+        if (targetX < 0) targetX = 0;
+        if (horizontalScrollController.hasClients) {
+          horizontalScrollController.jumpTo(targetX);
+        }
+
+        // 2. Vertical Glide (Center active pitch)
+        var activeNotes = rawNotes.where((n) => 
+            n['isDeleted'] != true && 
+            n['start_time'] <= currentT && 
+            n['end_time'] >= currentT
+        ).toList();
+
+        if (activeNotes.isNotEmpty && verticalScrollController.hasClients) {
+          // Track highest pitched active note
+          activeNotes.sort((a, b) => (b['display_midi'] ?? 0).compareTo(a['display_midi'] ?? 0));
+          int targetMidi = activeNotes.first['display_midi'] ?? 60;
+          
+          double viewportCenter = verticalScrollController.position.viewportDimension / 2;
+          double targetY = ((maxMidi - targetMidi) * zoomY) - viewportCenter;
+          
+          if (targetY < 0) targetY = 0;
+          if (targetY > verticalScrollController.position.maxScrollExtent) {
+            targetY = verticalScrollController.position.maxScrollExtent;
+          }
+          
+          verticalScrollController.animateTo(
+            targetY, 
+            duration: const Duration(milliseconds: 200), 
+            curve: Curves.easeOut
+          );
+        }
       }
     });
   }
@@ -73,6 +148,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   @override
   void dispose() {
     pollingTimer?.cancel();
+    horizontalScrollController.dispose();
+    verticalScrollController.dispose();
     super.dispose();
   }
 
@@ -166,7 +243,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!));
 
     try {
-      // 1. UPLOAD AND GET TASK ID
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
       ..fields['stem_target'] = "vocals" 
       ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: result.files.single.name));
@@ -181,7 +257,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
       pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
         try {
-          // UPDATED URI PARSING
           var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$taskId'));
           if (statusRes.statusCode == 200) {
             var statusData = json.decode(statusRes.body);
@@ -208,7 +283,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             }
           }
         } catch (e) {
-          // Do not cancel timer on network blip, just log it.
           debugPrint("Polling error (retrying): $e");
         }
       });
@@ -281,7 +355,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                   child: Wrap(
                     spacing: 16, crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      // UI PROGRESS OVERHAUL
                       if (isLoading)
                         SizedBox(
                           width: 200,
@@ -305,14 +378,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           child: const Text('Upload Audio')
                         ),
                       Wrap(
-                        spacing: 15.0, // horizontal gap between items
-                        runSpacing: 10.0, // vertical gap if it wraps to a second line
+                        spacing: 15.0, 
+                        runSpacing: 10.0, 
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           const Text("De-Hiss", style: TextStyle(fontSize: 12)),
                           Switch(value: applyDenoise, onChanged: (val) => setState(() => applyDenoise = val), activeColor: Colors.amberAccent),
                           
-                          // Horizontal Zoom
                           const Text("Zoom X", style: TextStyle(fontSize: 12)),
                           SizedBox(
                             width: 100,
@@ -322,7 +394,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             ),
                           ),
                           
-                          // Vertical Zoom
                           const Text("Zoom Y", style: TextStyle(fontSize: 12)),
                           SizedBox(
                             width: 100,
@@ -332,7 +403,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             ),
                           ),
 
-                          // Dossier Button
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[800]),
                             icon: const Icon(Icons.analytics, size: 16),
@@ -357,7 +427,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   void _showDossier() {
     if (rawNotes.isEmpty) return;
-
     int totalNotes = 0;
     double totalError = 0;
     int perfectlyTuned = 0;
