@@ -50,6 +50,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Piano keys column
               Container(
                 width: 60,
                 height: totalHeight,
@@ -64,35 +65,55 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                   ),
                 ),
               ),
+              // NotificationListener wraps the ONE horizontal scroll view
               Expanded(
-                child: SingleChildScrollView(
-                  controller: widget.horizontalScrollController,
-                  scrollDirection: Axis.horizontal,
-                  child: GestureDetector(
-                    onTapDown: (details) {
-                      for (int i = 0; i < processedNotes.length; i++) {
-                        var pNote = processedNotes[i];
-                        if (pNote['isDeleted'] == true) continue;
-                        
-                        double startX = pNote['start_time'] * widget.dawState.zoomX;
-                        double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
-                        double yY = (maxMidi - pNote['display_midi']) * widget.dawState.zoomY;
-                        Rect hitBox = Rect.fromLTRB(startX, yY - (widget.dawState.zoomY / 2), endX, yY + (widget.dawState.zoomY / 2));
-                        
-                        if (hitBox.contains(details.localPosition)) {
-                          NoteInspector.show(context, widget.dawState, i, widget.dawState.rawNotes[i]);
-                          break;
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification is ScrollStartNotification &&
+                        notification.dragDetails != null) {
+                      widget.dawState.isUserScrolling = true;
+                    } else if (notification is ScrollEndNotification) {
+                      widget.dawState.isUserScrolling = false;
+                    } else if (notification is ScrollUpdateNotification &&
+                               notification.dragDetails != null &&
+                               widget.dawState.isScrubMode &&
+                               widget.dawState.isUserScrolling) {
+                      double seekTime = (notification.metrics.pixels + 150) /
+                          widget.dawState.zoomX;
+                      seekTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                      widget.dawState.jumpToTimelinePosition(seekTime);
+                    }
+                    return false;
+                  },
+                  child: SingleChildScrollView(
+                    controller: widget.horizontalScrollController,
+                    scrollDirection: Axis.horizontal,
+                    child: GestureDetector(
+                      onTapDown: (details) {
+                        for (int i = 0; i < processedNotes.length; i++) {
+                          var pNote = processedNotes[i];
+                          if (pNote['isDeleted'] == true) continue;
+                          
+                          double startX = pNote['start_time'] * widget.dawState.zoomX;
+                          double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
+                          double yY = (maxMidi - pNote['display_midi']) * widget.dawState.zoomY;
+                          Rect hitBox = Rect.fromLTRB(startX, yY - (widget.dawState.zoomY / 2), endX, yY + (widget.dawState.zoomY / 2));
+                          
+                          if (hitBox.contains(details.localPosition)) {
+                            NoteInspector.show(context, widget.dawState, i, widget.dawState.rawNotes[i]);
+                            break;
+                          }
                         }
-                      }
-                    },
-                    child: CustomPaint(
-                      size: Size(timelineWidth, totalHeight),
-                      painter: AdvancedPianoRollPainter(
-                        notes: processedNotes,
-                        zoomX: widget.dawState.zoomX,
-                        zoomY: widget.dawState.zoomY,
-                        minMidi: minMidi,
-                        maxMidi: maxMidi,
+                      },
+                      child: CustomPaint(
+                        size: Size(timelineWidth, totalHeight),
+                        painter: AdvancedPianoRollPainter(
+                          notes: processedNotes,
+                          zoomX: widget.dawState.zoomX,
+                          zoomY: widget.dawState.zoomY,
+                          minMidi: minMidi,
+                          maxMidi: maxMidi,
+                        ),
                       ),
                     ),
                   ),
@@ -101,9 +122,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
             ],
           ),
         ),
-        // Stationary playhead line drawn on top
+        // Stationary playhead line
         Positioned(
-          left: 60 + 150, // 60px piano keys + 150px offset
+          left: 60 + 150,
           top: 0,
           bottom: 0,
           child: Container(
@@ -112,9 +133,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
           ),
         ),
       ],
-    );  // <-- closes Stack return
-  }   // <-- closes build()
-}     // <-- closes _TimelineCanvasWidgetState
+    );
+  }
+}
 
 // -------------------------------------------------------------
 // Piano Keys Painter
@@ -146,12 +167,23 @@ class PianoKeysPainter extends CustomPainter {
       canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), keyPaint);
       
       if (!isBlackKey(i)) {
-        canvas.drawLine(Offset(0, topY + zoomY), Offset(size.width, topY + zoomY), Paint()..color = Colors.grey[400]!);
+        canvas.drawLine(
+          Offset(0, topY + zoomY),
+          Offset(size.width, topY + zoomY),
+          Paint()..color = Colors.grey[400]!
+        );
       }
 
       if (i % 12 == 0) {
         TextPainter tp = TextPainter(
-          text: TextSpan(text: getNoteName(i), style: TextStyle(color: isBlackKey(i) ? Colors.white : Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+          text: TextSpan(
+            text: getNoteName(i),
+            style: TextStyle(
+              color: isBlackKey(i) ? Colors.white : Colors.black,
+              fontSize: 10,
+              fontWeight: FontWeight.bold
+            )
+          ),
           textDirection: TextDirection.ltr,
         )..layout();
         tp.paint(canvas, Offset(size.width - tp.width - 5, topY + (zoomY / 2) - (tp.height / 2)));
@@ -171,7 +203,13 @@ class AdvancedPianoRollPainter extends CustomPainter {
   final int minMidi;
   final int maxMidi;
 
-  AdvancedPianoRollPainter({required this.notes, required this.zoomX, required this.zoomY, required this.minMidi, required this.maxMidi});
+  AdvancedPianoRollPainter({
+    required this.notes,
+    required this.zoomX,
+    required this.zoomY,
+    required this.minMidi,
+    required this.maxMidi
+  });
 
   String getNoteName(int midi) {
     const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -188,9 +226,16 @@ class AdvancedPianoRollPainter extends CustomPainter {
     for (int i = maxMidi; i >= minMidi; i--) {
       double topY = (maxMidi - i) * zoomY;
       if (isBlackKey(i)) {
-        canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), Paint()..color = Colors.white.withOpacity(0.02));
+        canvas.drawRect(
+          Rect.fromLTWH(0, topY, size.width, zoomY),
+          Paint()..color = Colors.white.withOpacity(0.02)
+        );
       }
-      canvas.drawLine(Offset(0, topY), Offset(size.width, topY), Paint()..color = Colors.white.withOpacity(0.05));
+      canvas.drawLine(
+        Offset(0, topY),
+        Offset(size.width, topY),
+        Paint()..color = Colors.white.withOpacity(0.05)
+      );
     }
 
     for (var note in notes) {
@@ -214,7 +259,10 @@ class AdvancedPianoRollPainter extends CustomPainter {
 
       double padding = zoomY * 0.15; 
       canvas.drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTRB(startX, topY + padding, endX, topY + zoomY - padding), const Radius.circular(4)), 
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(startX, topY + padding, endX, topY + zoomY - padding),
+          const Radius.circular(4)
+        ), 
         Paint()..color = noteColor
       );
 

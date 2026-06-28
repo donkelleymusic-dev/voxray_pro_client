@@ -10,25 +10,37 @@ class NoteInspector {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom, 
+                  left: 20, right: 20, top: 20),
               child: Column(
                 mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  // FIXED: Changed rigid Row to a responsive Wrap
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8.0,
+                    runSpacing: 12.0,
                     children: [
-                      const Text("Note Properties", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                      Text(
-                        "Variance: ${note['display_cents'] ?? 0} cents",
-                        style: TextStyle(
-                          fontSize: 14, 
-                          color: (note['display_cents']?.abs() ?? 0) > 15 ? Colors.redAccent : Colors.tealAccent
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Note Properties", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                          const SizedBox(height: 4),
+                          Text(
+                            "Variance: ${note['display_cents'] ?? 0} cents",
+                            style: TextStyle(
+                              fontSize: 14, 
+                              color: (note['display_cents']?.abs() ?? 0) > 15 ? Colors.redAccent : Colors.tealAccent
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 10),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.amber[700]),
-                        icon: const Icon(Icons.auto_fix_high, size: 16), label: const Text("Snap to Scale"),
+                        icon: const Icon(Icons.auto_fix_high, size: 16), 
+                        label: const Text("Snap to Scale"),
                         onPressed: () {
                           dawState.registerUndoSnapshot();
                           setModalState(() {
@@ -41,6 +53,7 @@ class NoteInspector {
                       )
                     ],
                   ),
+                  const SizedBox(height: 12),
                   const Divider(color: Colors.white24),
                   
                   const Text("Pitch Shift (Cents)", style: TextStyle(color: Colors.white70)),
@@ -81,8 +94,11 @@ class NoteInspector {
                     onChanged: (val) { setModalState(() => note['time_ratio'] = val); dawState.setState(() {}); },
                   ),
 
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  // FIXED: Changed to Wrap so buttons don't crush on narrow phones
+                  Wrap(
+                    alignment: WrapAlignment.spaceEvenly,
+                    spacing: 8.0,
+                    runSpacing: 8.0,
                     children: [
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: note['isMuted'] == true ? Colors.orange : Colors.grey[800]),
