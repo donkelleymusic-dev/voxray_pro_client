@@ -211,6 +211,25 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   void jumpToTimelinePosition(double seconds) {
     masterPlayer.seek(Duration(milliseconds: (seconds * 1000).round()));
     setState(() => currentPosition = seconds);
+
+    // Scroll grid so the jumped-to position appears at the stationary playhead (150px offset)
+    double targetX = (seconds * zoomX) - 150.0;
+    if (targetX < 0) targetX = 0;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (horizontalScrollController.hasClients &&
+          horizontalScrollController.positions.length == 1) {
+        horizontalScrollController.jumpTo(
+          targetX.clamp(0.0, horizontalScrollController.position.maxScrollExtent)
+        );
+      }
+      if (rulerScrollController.hasClients &&
+          rulerScrollController.positions.length == 1) {
+        rulerScrollController.jumpTo(
+          targetX.clamp(0.0, rulerScrollController.position.maxScrollExtent)
+        );
+      }
+    });
   }
 
   Future<void> _toggleXrayMode() async {
@@ -940,47 +959,228 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   void _showDossier() {
     if (rawNotes.isEmpty) return;
+
+    // Helper
+    String midiToName(num midi) {
+      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      int m = midi.round();
+      return '${noteNames[m % 12]}${(m ~/ 12) - 1}';
+    }
+
     int totalNotes = 0;
     double totalError = 0;
     int perfectlyTuned = 0;
+    int mutedCount = 0;
+    int deletedCount = 0;
+
+    // Per-note-name error accumulation for worst-offender report
+    Map<String, List<double>> noteErrors = {};
+
+    bool hasXray = rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
 
     for (var note in rawNotes) {
-      if (note['isDeleted'] == true) continue;
+      if (note['isDeleted'] == true) { deletedCount++; continue; }
+      if (note['isMuted'] == true) mutedCount++;
       totalNotes++;
-      double baseMidi = note['actual_midi'] ?? 0;
-      int nearest = baseMidi.round();
-      double cents = ((baseMidi - nearest) * 100).abs();
-      totalError += cents;
-      if (cents <= 10) perfectlyTuned++;
+
+      double effectiveCents;
+
+      // If xray contour exists, use actual pitch drift average from contour
+      if (note['contour'] != null && (note['contour'] as List).isNotEmpty) {
+        List<dynamic> contour = note['contour'];
+        double avgDrift = contour.map((c) => (c as num).toDouble().abs()).reduce((a, b) => a + b) / contour.length;
+        effectiveCents = avgDrift;
+      } else {
+        // Fall back to actual_midi fractional cents + any user shift
+        double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
+        double rawCents = (baseMidi - baseMidi.round()) * 100;
+        double shiftCents = (note['cents_shift'] ?? 0).toDouble();
+        effectiveCents = (rawCents + shiftCents).abs();
+      }
+
+      totalError += effectiveCents;
+      if (effectiveCents <= 10) perfectlyTuned++;
+
+      // Use actual midi for note name grouping
+      double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      String name = midiToName(baseMidi.round());
+      noteErrors.putIfAbsent(name, () => []);
+      noteErrors[name]!.add(effectiveCents);
     }
 
     double avgError = totalNotes > 0 ? totalError / totalNotes : 0;
-    double tunedPercentage = totalNotes > 0 ? (perfectlyTuned / totalNotes) * 100 : 0;
+    double tunedPct = totalNotes > 0 ? (perfectlyTuned / totalNotes) * 100 : 0;
+
+    // Find worst 3 offenders by average error per note name
+    var worstNotes = noteErrors.entries.toList()
+      ..sort((a, b) {
+        double aAvg = a.value.reduce((x, y) => x + y) / a.value.length;
+        double bAvg = b.value.reduce((x, y) => x + y) / b.value.length;
+        return bAvg.compareTo(aAvg);
+      });
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: const Text("Performance Dossier", style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            Text("Active Notes Analyzed: $totalNotes", style: const TextStyle(color: Colors.white70)),
-            const SizedBox(height: 10),
-            Text("Global Average Error: ${avgError.toStringAsFixed(1)} cents", style: const TextStyle(color: Colors.white70)),
-            const SizedBox(height: 10),
-            Text("Studio Tolerance (<10c): ${tunedPercentage.toStringAsFixed(1)}%", style: const TextStyle(color: Colors.white70)),
-            const SizedBox(height: 20),
-            Text(
-              avgError < 15 ? "VERDICT: Highly accurate performance. Minor touch-ups needed." 
-              : "VERDICT: Significant tuning variance detected. Pitch correction recommended.",
-              style: TextStyle(color: avgError < 15 ? Colors.tealAccent : Colors.redAccent, fontWeight: FontWeight.bold),
-            )
+            const Text("Performance Dossier", style: TextStyle(color: Colors.white)),
+            const Spacer(),
+            if (hasXray)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.amberAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.fingerprint, color: Colors.amberAccent, size: 14),
+                  SizedBox(width: 4),
+                  Text('X-Ray', style: TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                ]),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
+                child: const Text('X-Ray not enabled', style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ),
           ],
         ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // --- SUMMARY ---
+              const Text("SUMMARY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              _dossierRow("Notes analyzed", "$totalNotes"),
+              _dossierRow("Muted notes", "$mutedCount"),
+              _dossierRow("Deleted notes", "$deletedCount"),
+              const SizedBox(height: 10),
+
+              // --- PITCH ACCURACY ---
+              const Text("PITCH ACCURACY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              if (!hasXray)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(8)),
+                  child: const Row(children: [
+                    Icon(Icons.info_outline, color: Colors.white38, size: 14),
+                    SizedBox(width: 8),
+                    Flexible(child: Text(
+                      'Enable X-Ray mode for detailed pitch contour analysis. '
+                      'Basic MIDI deviation shown below.',
+                      style: TextStyle(color: Colors.white38, fontSize: 11),
+                    )),
+                  ]),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.amberAccent.withOpacity(0.07), borderRadius: BorderRadius.circular(8)),
+                  child: const Row(children: [
+                    Icon(Icons.fingerprint, color: Colors.amberAccent, size: 14),
+                    SizedBox(width: 8),
+                    Flexible(child: Text(
+                      'X-Ray pitch contour data active. Variance reflects real pitch drift within each note.',
+                      style: TextStyle(color: Colors.amberAccent, fontSize: 11),
+                    )),
+                  ]),
+                ),
+              const SizedBox(height: 10),
+              _dossierRow("Avg pitch error", "${avgError.toStringAsFixed(1)} ¢"),
+              _dossierRow("Studio-accurate (≤10¢)", "${tunedPct.toStringAsFixed(1)}%"),
+              const SizedBox(height: 10),
+
+              // Color-coded accuracy bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: tunedPct / 100,
+                  backgroundColor: Colors.redAccent.withOpacity(0.3),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    tunedPct >= 80 ? Colors.tealAccent
+                    : tunedPct >= 50 ? Colors.amberAccent
+                    : Colors.redAccent,
+                  ),
+                  minHeight: 8,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // --- WORST OFFENDERS ---
+              if (worstNotes.isNotEmpty) ...[
+                const Text("MOST VARIANCE BY NOTE", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+                const SizedBox(height: 8),
+                ...worstNotes.take(5).map((entry) {
+                  double avg = entry.value.reduce((a, b) => a + b) / entry.value.length;
+                  Color c = avg <= 10 ? Colors.tealAccent : avg <= 25 ? Colors.amberAccent : Colors.redAccent;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      SizedBox(width: 36, child: Text(entry.key, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                      const SizedBox(width: 8),
+                      Expanded(child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: (avg / 100).clamp(0.0, 1.0),
+                          backgroundColor: Colors.white10,
+                          valueColor: AlwaysStoppedAnimation<Color>(c),
+                          minHeight: 6,
+                        ),
+                      )),
+                      const SizedBox(width: 8),
+                      Text('${avg.toStringAsFixed(1)}¢', style: TextStyle(color: c, fontSize: 11)),
+                      Text(' ×${entry.value.length}', style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                    ]),
+                  );
+                }),
+                const SizedBox(height: 16),
+              ],
+
+              // --- VERDICT ---
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: avgError < 15 ? Colors.teal.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: avgError < 15 ? Colors.tealAccent.withOpacity(0.4) : Colors.redAccent.withOpacity(0.4)),
+                ),
+                child: Text(
+                  avgError < 10
+                    ? "VERDICT: Exceptional intonation. Studio-ready performance."
+                    : avgError < 15
+                      ? "VERDICT: Highly accurate. Minor touch-ups may be desired."
+                      : avgError < 25
+                        ? "VERDICT: Moderate variance detected. Pitch correction recommended on flagged notes."
+                        : "VERDICT: Significant tuning issues. Review red-flagged notes in the piano roll.",
+                  style: TextStyle(
+                    color: avgError < 15 ? Colors.tealAccent : Colors.redAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close"))
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
+        ],
+      ),
+    );
+  }
+
+  // Helper widget for dossier rows
+  Widget _dossierRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
         ],
       ),
     );
