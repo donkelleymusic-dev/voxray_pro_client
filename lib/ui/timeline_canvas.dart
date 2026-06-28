@@ -22,6 +22,12 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
   final int minMidi = 36;
   final int maxMidi = 84;
 
+  // --- DRAG STATE TRACKING ---
+  int? draggingNoteIndex;
+  double dragStartY = 0;
+  double initialActualMidi = 60.0;
+  double initialCentsShift = 0;
+
   @override
   Widget build(BuildContext context) {
     double duration = (widget.dawState.songDuration > 0) ? widget.dawState.songDuration : 30.0;
@@ -46,6 +52,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
       children: [
         SingleChildScrollView(
           controller: widget.verticalScrollController,
+          // Disable vertical canvas scrolling if we are actively dragging a note up/down
+          physics: draggingNoteIndex != null ? const NeverScrollableScrollPhysics() : null,
           scrollDirection: Axis.vertical,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,7 +97,11 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                     controller: widget.horizontalScrollController,
                     scrollDirection: Axis.horizontal,
                     child: GestureDetector(
+                      // --- TAP: NOTE INSPECTOR ---
                       onTapDown: (details) {
+                        // Ignore taps if drag tool is active (requires isDragMode in main.dart)
+                        if (widget.dawState.isDragMode) return; 
+
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
                           if (pNote['isDeleted'] == true) continue;
@@ -97,7 +109,10 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           double startX = pNote['start_time'] * widget.dawState.zoomX;
                           double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
                           double yY = (maxMidi - pNote['display_midi']) * widget.dawState.zoomY;
-                          Rect hitBox = Rect.fromLTRB(startX, yY - (widget.dawState.zoomY / 2), endX, yY + (widget.dawState.zoomY / 2));
+                          
+                          // Account for visual cents shift so hit box matches what they see
+                          double visualY = yY - ((pNote['display_cents'] / 100.0) * widget.dawState.zoomY);
+                          Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2), endX, visualY + (widget.dawState.zoomY / 2));
                           
                           if (hitBox.contains(details.localPosition)) {
                             NoteInspector.show(context, widget.dawState, i, widget.dawState.rawNotes[i]);
@@ -105,6 +120,56 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           }
                         }
                       },
+                      
+                      // --- PAN: DRAG TO TUNE ---
+                      onPanStart: (details) {
+                        if (!widget.dawState.isDragMode) return;
+
+                        for (int i = 0; i < processedNotes.length; i++) {
+                          var pNote = processedNotes[i];
+                          if (pNote['isDeleted'] == true) continue;
+                          
+                          double startX = pNote['start_time'] * widget.dawState.zoomX;
+                          double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
+                          double yY = (maxMidi - pNote['display_midi']) * widget.dawState.zoomY;
+                          double visualY = yY - ((pNote['display_cents'] / 100.0) * widget.dawState.zoomY);
+                          
+                          Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2), endX, visualY + (widget.dawState.zoomY / 2));
+                          
+                          if (hitBox.contains(details.localPosition)) {
+                            widget.dawState.registerUndoSnapshot(); 
+                            setState(() {
+                              draggingNoteIndex = i;
+                              dragStartY = details.localPosition.dy;
+                              // Store the base pitch instead of the micro-cents
+                              initialActualMidi = (widget.dawState.rawNotes[i]['actual_midi'] ?? 60.0).toDouble();
+                            });
+                            break;
+                          }
+                        }
+                      },
+                      onPanUpdate: (details) {
+                        if (!widget.dawState.isDragMode || draggingNoteIndex == null) return;
+
+                        double deltaY = details.localPosition.dy - dragStartY;
+                        
+                        // 1 zoomY height = exactly 1 MIDI semitone.
+                        // Moving UP (negative deltaY) increases pitch.
+                        double midiDelta = -(deltaY / widget.dawState.zoomY);
+
+                        widget.dawState.setState(() {
+                          // Apply macro shift and clamp it so it doesn't drag off the screen
+                          widget.dawState.rawNotes[draggingNoteIndex!]['actual_midi'] = 
+                            (initialActualMidi + midiDelta).clamp(minMidi.toDouble(), maxMidi.toDouble());
+                        });
+                      },
+                      onPanEnd: (details) {
+                        setState(() { draggingNoteIndex = null; });
+                      },
+                      onPanCancel: () {
+                        setState(() { draggingNoteIndex = null; });
+                      },
+
                       child: CustomPaint(
                         size: Size(timelineWidth, totalHeight),
                         painter: AdvancedPianoRollPainter(
@@ -113,6 +178,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           zoomY: widget.dawState.zoomY,
                           minMidi: minMidi,
                           maxMidi: maxMidi,
+                          isXrayMode: widget.dawState.isXrayMode,
                         ),
                       ),
                     ),
@@ -202,13 +268,15 @@ class AdvancedPianoRollPainter extends CustomPainter {
   final double zoomY;
   final int minMidi;
   final int maxMidi;
+  final bool isXrayMode;
 
   AdvancedPianoRollPainter({
     required this.notes,
     required this.zoomX,
     required this.zoomY,
     required this.minMidi,
-    required this.maxMidi
+    required this.maxMidi,
+    this.isXrayMode = false,
   });
 
   String getNoteName(int midi) {
@@ -245,11 +313,14 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double endX = (note['start_time'] + ((note['end_time'] - note['start_time']) * (note['time_ratio'] ?? 1.0))) * zoomX;
       double topY = (maxMidi - note['display_midi']) * zoomY;
       
-      int cents = note['display_cents'];
+      // If we have deep XRAY data, use the true average cents. Otherwise, fall back to basic midi mapping.
+      int baselineCents = note['xray_cents']?.round() ?? note['display_cents'];
+      int totalCents = baselineCents + (note['cents_shift'] ?? 0) as int;
+      
       Color noteColor;
-      if (cents.abs() <= 10) {
+      if (totalCents.abs() <= 10) {
         noteColor = Colors.tealAccent;
-      } else if (cents.abs() <= 25) {
+      } else if (totalCents.abs() <= 25) {
         noteColor = Colors.amberAccent;
       } else {
         noteColor = Colors.redAccent;
@@ -258,19 +329,55 @@ class AdvancedPianoRollPainter extends CustomPainter {
       if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
 
       double padding = zoomY * 0.15; 
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTRB(startX, topY + padding, endX, topY + zoomY - padding),
-          const Radius.circular(4)
-        ), 
-        Paint()..color = noteColor
+      Rect noteRect = Rect.fromLTRB(startX, topY + padding, endX, topY + zoomY - padding);
+      
+      // Draw the block (make it slightly transparent if XRAY is on so lines pop)
+     canvas.drawRRect(
+        RRect.fromRectAndRadius(noteRect, const Radius.circular(4)), 
+        Paint()..color = isXrayMode ? noteColor.withOpacity(0.4) : noteColor
       );
 
+// --- XRAY FORENSIC PITCH RENDERING ---
+      if (isXrayMode && note['contour'] != null) {
+        List<dynamic> contour = note['contour'];
+        if (contour.isNotEmpty) {
+          Path contourPath = Path();
+          double stepX = (endX - startX) / (contour.length > 1 ? contour.length - 1 : 1);
+          
+          double shift = (note['cents_shift'] ?? 0).toDouble();
+          double vibrato = (note['vibrato_scale'] ?? 1.0).toDouble();
+
+          for (int j = 0; j < contour.length; j++) {
+            // APPLY REAL-TIME SCALAR MATH (No backend needed for edits!)
+            double rawCents = contour[j].toDouble();
+            double manipulatedCents = (rawCents * vibrato) + shift;
+            
+            double px = startX + (j * stepX);
+            // Calculate Y. 100 cents = exactly 1 zoomY height (1 semitone)
+            // Center of the block is perfect pitch. 
+            double py = topY + (zoomY / 2) - ((manipulatedCents / 100.0) * zoomY);
+            
+            if (j == 0) contourPath.moveTo(px, py);
+            else contourPath.lineTo(px, py);
+          }
+          
+          // Draw the high-contrast pitch line
+          canvas.drawPath(
+            contourPath, 
+            Paint()
+              ..color = Colors.white
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.0
+              ..strokeCap = StrokeCap.round
+          );
+        }
+      }
+
+      // Draw the text label
       if (zoomY > 15) {
-        String centsText = cents > 0 ? '+$cents' : (cents == 0 ? '0' : '$cents');
-        
+        String centsText = totalCents > 0 ? '+$totalCents' : (totalCents == 0 ? '0' : '$totalCents');
         TextSpan span = TextSpan(
-          style: const TextStyle(color: Colors.black87, fontSize: 10, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
           text: ' ${getNoteName(note['display_midi'])} $centsText',
         );
         

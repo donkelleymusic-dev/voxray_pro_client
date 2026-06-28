@@ -71,7 +71,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   double processingProgress = 0.0; 
   String processingMessage = "";   
   Timer? pollingTimer;     
-  String? currentTaskId;        
+  String? currentTaskId;       
+
+  // xray mode (polyphonic pitch analysis)
+  bool isXrayMode = false;
+  bool isXrayProcessing = false;
+  String originalFileName = "Unknown File"; 
 
   bool isMixerOpen = false;
   double songDuration = 30.0;
@@ -85,6 +90,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   final int maxMidi = 84;
 
   bool isScrubMode = true;
+  bool isDragMode = false;
   
   String projectName = "Voxray_Session";
   Uint8List? originalAudioBytes;
@@ -191,6 +197,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     super.dispose();
   }
 
+  void notifyChanged() {
+    setState(() {});
+  }
+
   void registerUndoSnapshot() {
     setState(() {
       undoStack.add(json.encode(rawNotes));
@@ -201,6 +211,46 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   void jumpToTimelinePosition(double seconds) {
     masterPlayer.seek(Duration(milliseconds: (seconds * 1000).round()));
     setState(() => currentPosition = seconds);
+  }
+
+  Future<void> _toggleXrayMode() async {
+    if (rawNotes.isEmpty || currentTaskId == null) return;
+    
+    // If turning off, or if data already exists, just toggle the UI state
+    if (isXrayMode || rawNotes.any((n) => n.containsKey('contour'))) {
+      setState(() => isXrayMode = !isXrayMode);
+      return;
+    }
+
+    // First time turning it on: Fetch deep data
+    setState(() { isXrayProcessing = true; isXrayMode = true; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
+        ..fields['task_id'] = currentTaskId!
+        ..fields['notes_manifest'] = jsonEncode(rawNotes);
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+      
+      if (responseData.statusCode == 200) {
+        var data = jsonDecode(responseData.body);
+        if (data['status'] == 'success') {
+          setState(() {
+            rawNotes = data['notes'];
+            registerUndoSnapshot(); // Save the new rich data to history
+          });
+        } else {
+          _showSaveConfirmation('XRAY failed: ${data['message']}');
+          setState(() => isXrayMode = false);
+        }
+      }
+    } catch (e) {
+      debugPrint("XRAY error: $e");
+      setState(() => isXrayMode = false);
+    } finally {
+      setState(() => isXrayProcessing = false);
+    }
   }
 
   void addMarkerAtCurrentPlayhead() {
@@ -324,12 +374,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   
   Future<void> _saveVoxrayProject() async {
     Map<String, dynamic> projectData = {
-      "voxray_version": "1.2.0",
-      "project_name": projectName,
-      "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
-      "edits": rawNotes,
-      "history": {"undo_stack": undoStack, "redo_stack": redoStack}
-    };
+        "voxray_version": "1.3.0",
+        "project_name": projectName,
+        "original_file": originalFileName, // SAVE FILENAME
+        "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
+        "edits": rawNotes, // This now automatically includes the 'contour' arrays
+        "history": {"undo_stack": undoStack, "redo_stack": redoStack}
+      };
 
     String jsonString = json.encode(projectData);
     Uint8List bytes = Uint8List.fromList(utf8.encode(jsonString));
@@ -374,6 +425,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     Map<String, dynamic> projectData = json.decode(jsonString);
     
     setState(() {
+      projectName = projectData['project_name'] ?? "Voxray_Session";
+      originalFileName = projectData['original_file'] ?? "Unknown File";
       targetVolume = projectData['track_settings']['target_volume'] ?? 0.85;
       accompVolume = projectData['track_settings']['accomp_volume'] ?? 1.0;
       applyDenoise = projectData['track_settings']['apply_denoise'] ?? false;
@@ -381,6 +434,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (projectData['history'] != null) {
         undoStack = List<String>.from(projectData['history']['undo_stack']);
         redoStack = List<String>.from(projectData['history']['redo_stack']);
+      }
+      if (rawNotes.isNotEmpty && rawNotes.first.containsKey('contour')) {
+        isXrayMode = true;
       }
     });
   }
@@ -402,6 +458,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       processingProgress = 0.0;
       processingMessage = "Uploading file...";
       originalAudioBytes = audioBytes;
+    });
+
+    setState(() {
+      isLoading = true;
+      processingProgress = 0.0;
+      processingMessage = "Uploading file...";
+      originalAudioBytes = audioBytes;
+      originalFileName = result.files.single.name; // SAVE THE FILENAME
     });
 
     // Audio setup in its own try/catch — don't let it abort the upload
@@ -722,6 +786,21 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 20),
                             tooltip: "Scrub Mode", onPressed: () => setState(() => isScrubMode = !isScrubMode),
                           ),
+                          IconButton(
+                            icon: Icon(Icons.pan_tool, color: isDragMode ? Colors.amberAccent : Colors.white38, size: 20),
+                            tooltip: "Drag Pitch Mode", onPressed: () => setState(() => isDragMode = !isDragMode),
+                          ),
+                          // Toggle and launch xray mode (polyphonic pitch analysis) — if already processing, show a spinner instead of the button:
+                          isXrayProcessing 
+                            ? const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 12.0),
+                                child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)),
+                              )
+                            : IconButton(
+                                icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 20),
+                                tooltip: "X-ray Pitch Analysis", 
+                                onPressed: _toggleXrayMode, // <--- Actually calls the function!
+                              ),
                           IconButton(icon: Icon(Icons.tune, color: isMixerOpen ? Colors.tealAccent : Colors.white70, size: 20), onPressed: () => setState(() => isMixerOpen = !isMixerOpen)),
                           IconButton(icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), tooltip: "Add Marker", onPressed: addMarkerAtCurrentPlayhead),
                           

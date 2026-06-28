@@ -48,7 +48,7 @@ class NoteInspector {
                             int nearestInt = rawMidi.round();
                             note['cents_shift'] = -((rawMidi - nearestInt) * 100).round();
                           });
-                          dawState.setState(() {}); 
+                          dawState.notifyChanged(); 
                         },
                       )
                     ],
@@ -57,10 +57,24 @@ class NoteInspector {
                   const Divider(color: Colors.white24),
                   
                   const Text("Pitch Shift (Cents)", style: TextStyle(color: Colors.white70)),
-                  Slider(
-                    value: (note['cents_shift'] ?? 0).toDouble(), min: -100, max: 100, activeColor: Colors.amberAccent,
-                    onChangeStart: (_) => dawState.registerUndoSnapshot(),
-                    onChanged: (val) { setModalState(() => note['cents_shift'] = val.round()); dawState.setState(() {}); },
+                  Builder(
+                    builder: (context) {
+                      double currentCents = (note['cents_shift'] ?? 0).toDouble();
+                      double sMin = currentCents < -100.0 ? currentCents : -100.0;
+                      double sMax = currentCents > 100.0 ? currentCents : 100.0;
+                      
+                      return Slider(
+                        value: currentCents, 
+                        min: sMin, 
+                        max: sMax, 
+                        activeColor: Colors.amberAccent,
+                        onChangeStart: (_) => dawState.registerUndoSnapshot(),
+                        onChanged: (val) { 
+                          setModalState(() => note['cents_shift'] = val.round()); 
+                          dawState.notifyChanged(); 
+                        },
+                      );
+                    }
                   ),
 
                   Row(
@@ -72,7 +86,7 @@ class NoteInspector {
                   Slider(
                     value: note['vibrato_scale'] ?? 1.0, min: 0.0, max: 2.0, activeColor: Colors.purpleAccent,
                     onChangeStart: (_) => dawState.registerUndoSnapshot(),
-                    onChanged: (val) { setModalState(() => note['vibrato_scale'] = val); dawState.setState(() {}); },
+                    onChanged: (val) { setModalState(() => note['vibrato_scale'] = val); dawState.notifyChanged(); },
                   ),
 
                   Row(
@@ -84,14 +98,14 @@ class NoteInspector {
                   Slider(
                     value: note['drift_scale'] ?? 1.0, min: 0.0, max: 2.0, activeColor: Colors.orangeAccent,
                     onChangeStart: (_) => dawState.registerUndoSnapshot(),
-                    onChanged: (val) { setModalState(() => note['drift_scale'] = val); dawState.setState(() {}); },
+                    onChanged: (val) { setModalState(() => note['drift_scale'] = val); dawState.notifyChanged(); },
                   ),
 
                   const Text("Time Stretch / Warp", style: TextStyle(color: Colors.white70)),
                   Slider(
                     value: note['time_ratio'] ?? 1.0, min: 0.5, max: 2.0, activeColor: Colors.lightBlueAccent,
                     onChangeStart: (_) => dawState.registerUndoSnapshot(),
-                    onChanged: (val) { setModalState(() => note['time_ratio'] = val); dawState.setState(() {}); },
+                    onChanged: (val) { setModalState(() => note['time_ratio'] = val); dawState.notifyChanged(); },
                   ),
 
                   // FIXED: Changed to Wrap so buttons don't crush on narrow phones
@@ -103,12 +117,12 @@ class NoteInspector {
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: note['isMuted'] == true ? Colors.orange : Colors.grey[800]),
                         icon: Icon(note['isMuted'] == true ? Icons.volume_off : Icons.volume_up), label: Text(note['isMuted'] == true ? "Muted" : "Mute"),
-                        onPressed: () { dawState.registerUndoSnapshot(); setModalState(() => note['isMuted'] = !(note['isMuted'] ?? false)); dawState.setState(() {}); },
+                        onPressed: () { dawState.registerUndoSnapshot(); setModalState(() => note['isMuted'] = !(note['isMuted'] ?? false)); dawState.notifyChanged(); },
                       ),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: note['isDeleted'] == true ? Colors.redAccent : Colors.grey[800]),
                         icon: Icon(note['isDeleted'] == true ? Icons.restore : Icons.delete), label: Text(note['isDeleted'] == true ? "Restore" : "Delete"),
-                        onPressed: () { dawState.registerUndoSnapshot(); setModalState(() => note['isDeleted'] = !(note['isDeleted'] ?? false)); dawState.setState(() {}); },
+                        onPressed: () { dawState.registerUndoSnapshot(); setModalState(() => note['isDeleted'] = !(note['isDeleted'] ?? false)); dawState.notifyChanged(); },
                       ),
                     ],
                   ),
