@@ -77,6 +77,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   bool isXrayMode = false;
   bool isXrayProcessing = false;
   String originalFileName = "Unknown File"; 
+  String originalFilePath = "";
 
   bool isMixerOpen = false;
   double songDuration = 30.0;
@@ -230,6 +231,186 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         );
       }
     });
+  }
+
+  Future<void> _forceReprocessXray() async {
+    if (rawNotes.isEmpty || currentTaskId == null) return;
+
+    // 1. The Fail-Safe Confirmation Dialog
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Row(children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+          SizedBox(width: 8),
+          Text("Force Reprocess", style: TextStyle(color: Colors.white)),
+        ]),
+        content: const Text(
+          "This will re-run the heavy X-Ray pitch extraction on the server and overwrite your current pitch contours. This might take a moment. Proceed?",
+          style: TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), 
+            child: const Text("Cancel", style: TextStyle(color: Colors.white54))
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent[700]),
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text("Proceed"),
+          ),
+        ],
+      )
+    );
+
+    if (confirm != true) return;
+
+    // 2. The Reprocess Execution
+    setState(() { 
+      isXrayProcessing = true; 
+      isXrayMode = true; // Ensure the UI draws it once done
+    });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
+        ..fields['task_id'] = currentTaskId!
+        ..fields['notes_manifest'] = jsonEncode(rawNotes); // Send current state
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+      
+      if (responseData.statusCode == 200) {
+        var data = jsonDecode(responseData.body);
+        if (data['status'] == 'success') {
+          setState(() {
+            rawNotes = data['notes']; // Overwrite with fresh contours
+            registerUndoSnapshot();
+          });
+          _showSaveConfirmation('X-Ray data successfully reprocessed.');
+        } else {
+          _showSaveConfirmation('Reprocess failed: ${data['message']}');
+        }
+      }
+    } catch (e) {
+      debugPrint("XRAY Reprocess error: $e");
+      _showSaveConfirmation('Reprocess failed: $e');
+    } finally {
+      setState(() => isXrayProcessing = false);
+    }
+  }
+
+  Future<void> _downloadDossier() async {
+    if (rawNotes.isEmpty) return;
+    setState(() { isExporting = true; exportMessage = "Generating dossier PDF..."; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'))
+        ..fields['task_id'] = currentTaskId ?? ''
+        ..fields['notes_manifest'] = jsonEncode(rawNotes)
+        ..fields['session_meta'] = jsonEncode({
+          'filename': originalFileName,
+          'duration': songDuration,
+          'stem_target': 'vocals',
+          'xray_enabled': rawNotes.any((n) => n.containsKey('contour')),
+          'version': '1.3.0',
+        });
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+
+      if (responseData.statusCode != 200) {
+        throw Exception("Server error ${responseData.statusCode}");
+      }
+
+      var result = jsonDecode(responseData.body);
+      if (result['status'] == 'success') {
+        final Uint8List bytes = base64Decode(result['pdf_b64']);
+
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: '${projectName}_dossier', bytes: bytes,
+            fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf',
+          );
+        } else {
+          String? path = await FileSaver.instance.saveAs(
+            name: '${projectName}_dossier',
+            bytes: bytes,
+            fileExtension: 'pdf',
+            mimeType: MimeType.custom,
+            customMimeType: 'application/pdf',
+          );
+          if (path != null && path.isNotEmpty) {
+            _showSaveConfirmation('Dossier saved successfully.');
+          } else {
+            _showSaveConfirmation('Save cancelled.');
+          }
+        }
+      }
+    } catch (e) {
+      _showSaveConfirmation('Dossier generation failed: $e');
+    } finally {
+      setState(() { isExporting = false; exportMessage = ''; });
+    }
+  }
+
+  Future<void> _downloadPitchPrint({required bool fullSong}) async {
+    if (rawNotes.isEmpty) return;
+    setState(() { isExporting = true; exportMessage = "Generating PitchPrint™..."; });
+
+    // Calculate visible region from scroll position
+    double visibleStart = horizontalScrollController.hasClients
+        ? horizontalScrollController.position.pixels / zoomX
+        : 0.0;
+    double visibleEnd = horizontalScrollController.hasClients
+        ? (horizontalScrollController.position.pixels + horizontalScrollController.position.viewportDimension) / zoomX
+        : songDuration;
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-pitchprint'))
+        ..fields['task_id'] = currentTaskId ?? ''
+        ..fields['notes_manifest'] = jsonEncode(rawNotes)
+        ..fields['full_song'] = fullSong.toString()
+        ..fields['visible_start'] = visibleStart.toString()
+        ..fields['visible_end'] = visibleEnd.toString()
+        ..fields['song_duration'] = songDuration.toString();
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+
+      if (responseData.statusCode != 200) {
+        throw Exception("Server error ${responseData.statusCode}");
+      }
+
+      var result = jsonDecode(responseData.body);
+      if (result['status'] == 'success') {
+        final Uint8List bytes = base64Decode(result['svg_b64']);
+
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: '${projectName}_pitchprint', bytes: bytes,
+            fileExtension: 'svg', mimeType: MimeType.custom, customMimeType: 'image/svg+xml',
+          );
+        } else {
+          String? path = await FileSaver.instance.saveAs(
+            name: '${projectName}_pitchprint',
+            bytes: bytes,
+            fileExtension: 'svg',
+            mimeType: MimeType.custom,
+            customMimeType: 'image/svg+xml',
+          );
+          if (path != null && path.isNotEmpty) {
+            _showSaveConfirmation('PitchPrint™ saved successfully.');
+          } else {
+            _showSaveConfirmation('Save cancelled.');
+          }
+        }
+      }
+    } catch (e) {
+      _showSaveConfirmation('PitchPrint™ generation failed: $e');
+    } finally {
+      setState(() { isExporting = false; exportMessage = ''; });
+    }
   }
 
   Future<void> _toggleXrayMode() async {
@@ -396,6 +577,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         "voxray_version": "1.3.0",
         "project_name": projectName,
         "original_file": originalFileName, // SAVE FILENAME
+        "original_file_path": originalFilePath, 
         "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
         "edits": rawNotes, // This now automatically includes the 'contour' arrays
         "history": {"undo_stack": undoStack, "redo_stack": redoStack}
@@ -446,6 +628,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     setState(() {
       projectName = projectData['project_name'] ?? "Voxray_Session";
       originalFileName = projectData['original_file'] ?? "Unknown File";
+      originalFilePath = projectData['original_file_path'] ?? "";
       targetVolume = projectData['track_settings']['target_volume'] ?? 0.85;
       accompVolume = projectData['track_settings']['accomp_volume'] ?? 1.0;
       applyDenoise = projectData['track_settings']['apply_denoise'] ?? false;
@@ -485,6 +668,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       processingMessage = "Uploading file...";
       originalAudioBytes = audioBytes;
       originalFileName = result.files.single.name; // SAVE THE FILENAME
+      originalFilePath = result.files.single.path ?? "";
     });
 
     // Audio setup in its own try/catch — don't let it abort the upload
@@ -636,11 +820,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         if (format == 'mp3') mimeType = 'audio/mpeg';
         if (format == 'flac') mimeType = 'audio/flac';
 
+        // Derive default save folder from original file path
+        String defaultName = originalFileName.contains('.')
+            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+            : originalFileName;
+        defaultName = '${defaultName}_voxray_master';
+
+        // If we know the original folder, default the save name to include it
+        // FileSaver.saveAs doesn't support a starting directory, but the name
+        // gives the user a clear reference
         String? path = await FileSaver.instance.saveAs(
-          name: 'voxray_master', 
+          name: defaultName,
           bytes: bytes,
-          fileExtension: format, 
-          mimeType: MimeType.custom, 
+          fileExtension: format,
+          mimeType: MimeType.custom,
           customMimeType: mimeType,
         );
         
@@ -678,6 +871,104 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 
+  void _showPitchPrintOptions() {
+    bool fullSong = true; // default
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Row(children: [
+            Icon(Icons.fingerprint, color: Colors.amberAccent, size: 20),
+            SizedBox(width: 8),
+            Text('PitchPrint™', style: TextStyle(color: Colors.white)),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Generate a high-resolution pitch analysis graph.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              // Range selector
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    RadioListTile<bool>(
+                      value: true,
+                      groupValue: fullSong,
+                      activeColor: Colors.amberAccent,
+                      title: const Text('Full Song', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Complete performance analysis', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      onChanged: (v) => setDialogState(() => fullSong = v!),
+                    ),
+                    RadioListTile<bool>(
+                      value: false,
+                      groupValue: fullSong,
+                      activeColor: Colors.amberAccent,
+                      title: const Text('Visible Region', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Current timeline view only', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      onChanged: (v) => setDialogState(() => fullSong = v!),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Format selector
+              const Text('Format', style: TextStyle(color: Colors.white54, fontSize: 11)),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _formatChip('SVG', 'Vector', Colors.tealAccent),
+                  _formatChip('PNG', 'High-Res', Colors.amberAccent),
+                  _formatChip('PDF', 'Print', Colors.blueAccent),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amberAccent.withOpacity(0.2)),
+              icon: const Icon(Icons.fingerprint, color: Colors.amberAccent, size: 16),
+              label: const Text('Generate', style: TextStyle(color: Colors.amberAccent)),
+              onPressed: () {
+                Navigator.pop(context);
+                _downloadPitchPrint(fullSong: fullSong);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _formatChip(String format, String label, Color color) {
+    // For now just visual — wire up selection state when you want multiple format options
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withOpacity(0.4)),
+          ),
+          child: Text(format, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -702,6 +993,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             if (MediaQuery.of(context).size.width > 600) ...[
               IconButton(icon: const Icon(Icons.folder_open), tooltip: "Load .vxr", onPressed: _loadVoxrayProject),
               IconButton(icon: const Icon(Icons.save), tooltip: "Save .vxr", onPressed: _saveVoxrayProject),
+              IconButton(icon: const Icon(Icons.sync_problem), tooltip: "Reprocess X-Ray", onPressed: _forceReprocessXray),
             ] else
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
@@ -710,11 +1002,22 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     case 'load': _loadVoxrayProject(); break;
                     case 'save': _saveVoxrayProject(); break;
                     case 'export': _showExportDialog(); break;
+                    case 'reprocess': _forceReprocessXray(); break; // <--- NEW ACTION
                   }
                 },
                 itemBuilder: (context) => [
                   const PopupMenuItem(value: 'load', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load .vxr'))),
                   const PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save), title: Text('Save .vxr'))),
+                  const PopupMenuDivider(),
+                  // --- NEW ADVANCED MENU ITEM ---
+                  const PopupMenuItem(
+                    value: 'reprocess', 
+                    child: ListTile(
+                      leading: Icon(Icons.sync_problem, color: Colors.orangeAccent), 
+                      title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)),
+                      subtitle: Text('Force server recalculation', style: TextStyle(fontSize: 10, color: Colors.white38)),
+                    )
+                  ),
                 ],
               ),
           ],
@@ -799,7 +1102,35 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             : IconButton(icon: const Icon(Icons.download, size: 20), tooltip: "Export Master", onPressed: rawNotes.isEmpty ? null : _showExportDialog),
                             
                           Container(width: 1, height: 24, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 8)),
-                          
+                          // download dossier (with advanced forensics or pitchprint graph) via a popup menu:
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.download, size: 20),
+                            tooltip: "Download Report",
+                            onSelected: (value) {
+                              switch (value) {
+                                case 'dossier': _downloadDossier(); break;
+                                case 'pitchprint': _showPitchPrintOptions(); break;
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'dossier',
+                                child: ListTile(
+                                  leading: Icon(Icons.description, color: Colors.tealAccent),
+                                  title: Text('Pro Dossier'),
+                                  subtitle: Text('Full forensic PDF report', style: TextStyle(fontSize: 11)),
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'pitchprint',
+                                child: ListTile(
+                                  leading: Icon(Icons.fingerprint, color: Colors.amberAccent),
+                                  title: Text('PitchPrint™'),
+                                  subtitle: Text('Visual pitch analysis graph', style: TextStyle(fontSize: 11)),
+                                ),
+                              ),
+                            ],
+                          ),
                           IconButton(icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow, size: 24), onPressed: () => masterPlayer.playing ? masterPlayer.pause() : masterPlayer.play()),
                           IconButton(
                             icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 20),
@@ -931,6 +1262,31 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       ),
                     ),
 
+                  // Filename banner — in Column, not in Row
+                  if (originalFileName != "Unknown File" && !isLiveModeActive)
+                    SizedBox(
+                      height: 18,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.audio_file, size: 11, color: Colors.white24),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              originalFilePath.isNotEmpty ? originalFilePath : originalFileName,
+                              style: const TextStyle(fontSize: 10, color: Colors.white30),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (projectName != "Voxray_Session") ...[
+                            const SizedBox(width: 8),
+                            Text('[$projectName]', style: const TextStyle(fontSize: 10, color: Colors.white24)),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                  // Ruler row — clean, no banner inside it
                   Row(
                     children: [
                       Container(width: 60, height: 35, color: Colors.grey[900]),
