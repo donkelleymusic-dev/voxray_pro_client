@@ -655,12 +655,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       audioBytes = await File(result.files.single.path!).readAsBytes();
     } else return;
 
-    setState(() {
+    /* setState(() {
       isLoading = true;
       processingProgress = 0.0;
       processingMessage = "Uploading file...";
       originalAudioBytes = audioBytes;
-    });
+      originalFileName = result.files.single.name;
+    }); */
 
     setState(() {
       isLoading = true;
@@ -1272,7 +1273,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              originalFilePath.isNotEmpty ? originalFilePath : originalFileName,
+                              originalFileName.isNotEmpty ? originalFileName : "Unknown File",
+                              //originalFilePath.isNotEmpty ? originalFilePath : originalFileName,
                               style: const TextStyle(fontSize: 10, color: Colors.white30),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

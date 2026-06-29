@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
 import 'note_inspector.dart';
+import 'package:flutter/rendering.dart'; // Adds ScrollDirection
 
 class TimelineCanvasWidget extends StatefulWidget {
   final VoxrayDAWState dawState;
@@ -73,19 +74,33 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
               Expanded(
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
-                    if (notification is ScrollStartNotification &&
-                        notification.dragDetails != null) {
-                      widget.dawState.isUserScrolling = true;
-                    } else if (notification is ScrollEndNotification) {
-                      widget.dawState.isUserScrolling = false;
-                    } else if (notification is ScrollUpdateNotification &&
-                               notification.dragDetails != null &&
-                               widget.dawState.isScrubMode &&
-                               widget.dawState.isUserScrolling) {
-                      double seekTime = (notification.metrics.pixels + 150) /
-                          widget.dawState.zoomX;
-                      seekTime = seekTime.clamp(0.0, widget.dawState.songDuration);
-                      widget.dawState.jumpToTimelinePosition(seekTime);
+                    // 1. Detect human scroll start/stop (works for trackpads & touch)
+                    if (notification is UserScrollNotification) {
+                      if (notification.direction != ScrollDirection.idle) {
+                        widget.dawState.isUserScrolling = true;
+                      } else {
+                        widget.dawState.isUserScrolling = false;
+                        
+                        // THE MISSING LINK: Commit the heavy seek when scrolling stops!
+                        if (widget.dawState.isScrubMode) {
+                          double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
+                          seekTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                          
+                          widget.dawState.masterPlayer.seek(Duration(milliseconds: (seekTime * 1000).round()));
+                        }
+                      }
+                    } 
+                    // 2. Update the visual playhead during the scroll
+                    else if (notification is ScrollUpdateNotification) {
+                      if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
+                        double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
+                        seekTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                        
+                        // Update visual UI state only
+                        widget.dawState.setState(() {
+                          widget.dawState.currentPosition = seekTime;
+                        });
+                      }
                     }
                     return false;
                   },
@@ -109,8 +124,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           }
                         }
                       },
-                      onPanStart: (details) {
-                        if (!widget.dawState.isDragMode) return;
+                      onPanStart: widget.dawState.isDragMode ? (details) {
+                        //if (!widget.dawState.isDragMode) return;
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
                           if (pNote['isDeleted'] == true) continue;
@@ -129,18 +144,22 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                             break;
                           }
                         }
-                      },
-                      onPanUpdate: (details) {
-                        if (!widget.dawState.isDragMode || draggingNoteIndex == null) return;
+                      } : null,
+                      onPanUpdate: widget.dawState.isDragMode ? (details) {
+                        if (draggingNoteIndex == null) return;
                         double deltaY = details.localPosition.dy - dragStartY;
                         double midiDelta = -(deltaY / widget.dawState.zoomY);
                         widget.dawState.setState(() {
                           widget.dawState.rawNotes[draggingNoteIndex!]['actual_midi'] = 
                             (initialActualMidi + midiDelta).clamp(minMidi.toDouble(), maxMidi.toDouble());
                         });
-                      },
-                      onPanEnd: (details) { setState(() { draggingNoteIndex = null; }); },
-                      onPanCancel: () { setState(() { draggingNoteIndex = null; }); },
+                      } : null,
+                      onPanEnd: widget.dawState.isDragMode 
+                        ? (details) { setState(() { draggingNoteIndex = null; }); } 
+                        : null,
+                      onPanCancel: widget.dawState.isDragMode 
+                        ? () { setState(() { draggingNoteIndex = null; }); } 
+                        : null,
                       child: CustomPaint(
                         size: Size(timelineWidth, totalHeight),
                         painter: AdvancedPianoRollPainter(
