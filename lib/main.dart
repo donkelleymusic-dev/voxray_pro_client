@@ -42,7 +42,7 @@ import 'dart:typed_data';
 import 'ui/timeline_canvas.dart';
 import 'pedagogy/live_analyzer.dart';
 import 'ui/timeline_ruler.dart';
-import 'synth/vox_synth.dart';
+import 'audio/vox_synth.dart';
 
 void main() => runApp(MaterialApp(
   home: const VoxrayDAW(), 
