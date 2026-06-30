@@ -34,7 +34,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async'; 
-//import 'dart:html' as html;
 import 'package:file_saver/file_saver.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:typed_data';
@@ -61,10 +60,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   final AudioPlayer synthPlayer = AudioPlayer();
 
   // --- Multi-source playback mixer ---
-  // masterPlayer is always the transport "clock" (drives grid scroll, marker
-  // following, loop points) regardless of whether the original mix is
-  // audible — toggling a source just changes its volume, never stops the
-  // clock, so scrubbing/markers/loop keep working in any combination.
   Set<String> activePlaybackSources = {'original'};
   Uint8List? melodyStemBytes;
   bool isFetchingMelodyStem = false;
@@ -91,18 +86,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Timer? pollingTimer;     
   String? currentTaskId;       
 
-  // xray mode (polyphonic pitch analysis)
+  // xray mode
   bool isXrayMode = false;
   bool isXrayProcessing = false;
   String originalFileName = "Unknown File"; 
   String originalFilePath = "";
 
-  bool isMixerOpen = false;
   double songDuration = 30.0;
   double currentPosition = 0.0;
   double zoomX = 150.0;
   double zoomY = 24.0;
-  
   
   // Global DAW Bounds
   final int minMidi = 36;
@@ -141,7 +134,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         rulerScrollController.jumpTo(horizontalScrollController.position.pixels);
       }
     });
-    // In initState, also add the reverse mirror:
     rulerScrollController.addListener(() {
       if (horizontalScrollController.hasClients &&
           horizontalScrollController.position.pixels != rulerScrollController.position.pixels) {
@@ -172,7 +164,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => currentPosition = currentT);
 
       if (masterPlayer.playing) {
-        // Horizontal: keep playhead stationary at 150px from left
         double targetX = (currentT * zoomX) - 150.0;
         if (targetX < 0) targetX = 0;
         if (horizontalScrollController.hasClients) {
@@ -181,7 +172,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           );
         }
 
-        // Vertical: follow highest active note
         if (verticalScrollController.hasClients && rawNotes.isNotEmpty) {
           var activeNotes = rawNotes.where((n) {
             if (n['isDeleted'] == true) return false;
@@ -191,7 +181,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           }).toList();
 
           if (activeNotes.isNotEmpty) {
-            // Find the median pitch of active notes (better than highest for polyphony)
             List<int> midiValues = activeNotes
                 .map<int>((n) => ((n['display_midi'] ?? n['actual_midi'] ?? 60)).round())
                 .toList()
@@ -239,7 +228,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     _seekAllPlayers(Duration(milliseconds: (seconds * 1000).round()));
     setState(() => currentPosition = seconds);
 
-    // Scroll grid so the jumped-to position appears at the stationary playhead (150px offset)
     double targetX = (seconds * zoomX) - 150.0;
     if (targetX < 0) targetX = 0;
 
@@ -262,7 +250,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<void> _forceReprocessXray() async {
     if (rawNotes.isEmpty || currentTaskId == null) return;
 
-    // 1. The Fail-Safe Confirmation Dialog
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -292,16 +279,15 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     if (confirm != true) return;
 
-    // 2. The Reprocess Execution
     setState(() { 
       isXrayProcessing = true; 
-      isXrayMode = true; // Ensure the UI draws it once done
+      isXrayMode = true; 
     });
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
-        ..fields['notes_manifest'] = jsonEncode(rawNotes); // Send current state
+        ..fields['notes_manifest'] = jsonEncode(rawNotes); 
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
@@ -310,7 +296,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         var data = jsonDecode(responseData.body);
         if (data['status'] == 'success') {
           setState(() {
-            rawNotes = data['notes']; // Overwrite with fresh contours
+            rawNotes = data['notes']; 
             registerUndoSnapshot();
           });
           _showSaveConfirmation('X-Ray data successfully reprocessed.');
@@ -384,7 +370,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (rawNotes.isEmpty) return;
     setState(() { isExporting = true; exportMessage = "Generating PitchPrint™..."; });
 
-    // Calculate visible region from scroll position
     double visibleStart = horizontalScrollController.hasClients
         ? horizontalScrollController.position.pixels / zoomX
         : 0.0;
@@ -442,13 +427,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<void> _toggleXrayMode() async {
     if (rawNotes.isEmpty || currentTaskId == null) return;
     
-    // If turning off, or if data already exists, just toggle the UI state
     if (isXrayMode || rawNotes.any((n) => n.containsKey('contour'))) {
       setState(() => isXrayMode = !isXrayMode);
       return;
     }
 
-    // First time turning it on: Fetch deep data
     setState(() { isXrayProcessing = true; isXrayMode = true; });
 
     try {
@@ -464,7 +447,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         if (data['status'] == 'success') {
           setState(() {
             rawNotes = data['notes'];
-            registerUndoSnapshot(); // Save the new rich data to history
+            registerUndoSnapshot(); 
           });
         } else {
           _showSaveConfirmation('XRAY failed: ${data['message']}');
@@ -480,15 +463,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   void addMarkerAtCurrentPlayhead() {
-    // Calculate actual time at the stationary playhead line (150px offset from scroll)
     double visualPlayheadTime = (horizontalScrollController.hasClients
         ? (horizontalScrollController.position.pixels + 150) / zoomX
         : currentPosition);
     
-    // Clamp to song duration
     visualPlayheadTime = visualPlayheadTime.clamp(0.0, songDuration);
 
-    // Check for nearby existing markers (within 0.5 seconds)
     bool tooClose = markers.any((m) => 
         ((m['time'] as double) - visualPlayheadTime).abs() < 0.5);
     if (tooClose) {
@@ -555,7 +535,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         ..fields['task_id'] = currentTaskId ?? ''  
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
-      // YOUR response handling — buffers full response before parsing
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
       
@@ -602,10 +581,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     Map<String, dynamic> projectData = {
         "voxray_version": "1.3.0",
         "project_name": projectName,
-        "original_file": originalFileName, // SAVE FILENAME
+        "original_file": originalFileName,
         "original_file_path": originalFilePath, 
         "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
-        "edits": rawNotes, // This now automatically includes the 'contour' arrays
+        "edits": rawNotes, 
         "history": {"undo_stack": undoStack, "redo_stack": redoStack}
       };
 
@@ -613,7 +592,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     Uint8List bytes = Uint8List.fromList(utf8.encode(jsonString));
 
     try {
-      // Using FileSaver.saveAs forces the native file requester on Android, iOS, and Desktop
       String? path = await FileSaver.instance.saveAs(
         name: projectName,
         bytes: bytes,
@@ -681,34 +659,23 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       audioBytes = await File(result.files.single.path!).readAsBytes();
     } else return;
 
-    /* setState(() {
-      isLoading = true;
-      processingProgress = 0.0;
-      processingMessage = "Uploading file...";
-      originalAudioBytes = audioBytes;
-      originalFileName = result.files.single.name;
-    }); */
-
     setState(() {
       isLoading = true;
       processingProgress = 0.0;
       processingMessage = "Uploading file...";
       originalAudioBytes = audioBytes;
-      originalFileName = result.files.single.name; // SAVE THE FILENAME
+      originalFileName = result.files.single.name; 
       originalFilePath = result.files.single.path ?? "";
-      // New source audio — invalidate any cached stem/synth layers
       melodyStemBytes = null;
       activePlaybackSources = {'original'};
     });
     await melodyPlayer.stop();
     await synthPlayer.stop();
 
-    // Audio setup in its own try/catch — don't let it abort the upload
     try {
       if (kIsWeb) {
         await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!));
       } else {
-        // On Android/desktop, write to a temp file and load from path
         final tempDir = await getTemporaryDirectory();
         final tempFile = File('${tempDir.path}/preview_audio.wav');
         await tempFile.writeAsBytes(originalAudioBytes!);
@@ -718,7 +685,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       debugPrint("Audio preview setup failed (non-fatal): $e");
     }
 
-    // API upload continues regardless
     try {
       var request = http.MultipartRequest(
           'POST', Uri.parse('$apiBase/analyze-advanced'))
@@ -751,7 +717,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               setState(() {
                 rawNotes = statusData['result']['notes'];
                 songDuration = statusData['result']['duration'].toDouble();
-                loopEndBoundary = songDuration; // keep loop end in sync
+                loopEndBoundary = songDuration; 
                 currentTaskId = taskId;
                 isLoading = false;
               });
@@ -775,119 +741,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  void _showExportDialog() {
-    if (rawNotes.isEmpty || originalAudioBytes == null) return;
-    
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text("Export Master Mix", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.audio_file, color: Colors.tealAccent, size: 30),
-                title: const Text("WAV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: const Text("Lossless / Studio Quality", style: TextStyle(color: Colors.white54, fontSize: 12)),
-                onTap: () { Navigator.pop(context); _exportFinalMaster('wav'); },
-              ),
-              const Divider(color: Colors.white24),
-              ListTile(
-                leading: const Icon(Icons.library_music, color: Colors.amberAccent, size: 30),
-                title: const Text("FLAC", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: const Text("Lossless / Compressed Size", style: TextStyle(color: Colors.white54, fontSize: 12)),
-                onTap: () { Navigator.pop(context); _exportFinalMaster('flac'); },
-              ),
-              const Divider(color: Colors.white24),
-              ListTile(
-                leading: const Icon(Icons.music_note, color: Colors.blueAccent, size: 30),
-                title: const Text("MP3", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: const Text("Standard / Web Optimized", style: TextStyle(color: Colors.white54, fontSize: 12)),
-                onTap: () { Navigator.pop(context); _exportFinalMaster('mp3'); },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context), 
-              child: const Text("Cancel", style: TextStyle(color: Colors.white54))
-            )
-          ],
-        );
-      }
-    );
-  }
-
-  Future<void> _exportFinalMaster(String format) async {
-    if (originalAudioBytes == null) return;
-    setState(() { isExporting = true; exportMessage = "Rendering $format..."; });
-
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['edit_manifest'] = json.encode({
-          "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
-          "edits": rawNotes
-        })
-        ..fields['task_id'] = currentTaskId ?? '' 
-        ..fields['export_format'] = format // <--- SEND FORMAT TO API
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
-
-      var response = await request.send();
-      var responseData = await http.Response.fromStream(response);
-      
-      if (responseData.statusCode != 200) {
-        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
-      }
-      
-      var data = jsonDecode(responseData.body);
-
-      if (data['status'] == 'success') {
-        final Uint8List bytes = base64.decode(data['master_mix_b64']);
-
-        // Determine correct mime type for saving
-        String mimeType = 'audio/wav';
-        if (format == 'mp3') mimeType = 'audio/mpeg';
-        if (format == 'flac') mimeType = 'audio/flac';
-
-        // Derive default save folder from original file path
-        String defaultName = originalFileName.contains('.')
-            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-            : originalFileName;
-        defaultName = '${defaultName}_voxray_master';
-
-        // If we know the original folder, default the save name to include it
-        // FileSaver.saveAs doesn't support a starting directory, but the name
-        // gives the user a clear reference
-        String? path = await FileSaver.instance.saveAs(
-          name: defaultName,
-          bytes: bytes,
-          fileExtension: format,
-          mimeType: MimeType.custom,
-          customMimeType: mimeType,
-        );
-        
-        if (path != null && path.isNotEmpty) {
-          _showSaveConfirmation('Master mix saved as ${format.toUpperCase()}.');
-        } else {
-          _showSaveConfirmation('Export cancelled.');
-        }
-      } else {
-        _showSaveConfirmation('Export failed: ${data['message'] ?? 'Unknown error'}');
-      }
-    } catch (e) {
-      debugPrint("Export error: $e");
-      _showSaveConfirmation('Export failed: $e');
-    } finally {
-      setState(() { isExporting = false; exportMessage = ''; });
-    }
-  }
-
   // ============================================================
   // MULTI-SOURCE PLAYBACK MIXER
-  // (Original Mix / Melody Stem Only / Synth — any combination)
   // ============================================================
 
   Future<void> _seekAllPlayers(Duration position) async {
@@ -919,9 +774,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  /// Fetches an isolated melody/vocal-only render from the server by
-  /// reusing the existing batch-render-and-mix pipeline with accompaniment
-  /// forced to silence. Cached after the first fetch.
   Future<Uint8List> _fetchMelodyStemBytes() async {
     var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
       ..fields['edit_manifest'] = jsonEncode({
@@ -1002,9 +854,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  /// Re-renders the synth layer from current notes/settings if it's
-  /// currently part of the active mix (call after editing ADSR/waveform/
-  /// notes while synth is toggled on).
   Future<void> _refreshSynthLayerIfActive() async {
     if (activePlaybackSources.contains('synth')) {
       await _loadSynthSource();
@@ -1043,6 +892,339 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+  // --- DIALOGS AND MENUS ---
+  
+  void _showMixSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text("Mix Settings", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const SizedBox(width: 80, child: Text("Vocal Vol", style: TextStyle(color: Colors.white70, fontSize: 13))),
+                  Expanded(child: Slider(value: targetVolume, min: 0.0, max: 2.0, activeColor: Colors.tealAccent, onChanged: (v) {
+                    setDialogState(() => targetVolume = v);
+                    setState(() => targetVolume = v); 
+                  })),
+                  SizedBox(width: 45, child: Text("${(targetVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
+                ],
+              ),
+              Row(
+                children: [
+                  const SizedBox(width: 80, child: Text("Accomp Vol", style: TextStyle(color: Colors.white70, fontSize: 13))),
+                  Expanded(child: Slider(value: accompVolume, min: 0.0, max: 2.0, activeColor: Colors.amberAccent, onChanged: (v) {
+                    setDialogState(() => accompVolume = v);
+                    setState(() => accompVolume = v);
+                  })),
+                  SizedBox(width: 45, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Apply De-Hiss Filter", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  Switch(value: applyDenoise, activeColor: Colors.amberAccent, onChanged: (v) {
+                    setDialogState(() => applyDenoise = v);
+                    setState(() => applyDenoise = v);
+                  }),
+                ],
+              )
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close", style: TextStyle(color: Colors.white54)))
+          ],
+        )
+      )
+    );
+  }
+
+  void _showSynthSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          void update(SynthSettings Function(SynthSettings) fn) {
+            setDialogState(() => synthSettings = fn(synthSettings));
+            setState(() {});
+          }
+
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Row(children: [
+              Icon(Icons.piano, color: Colors.purpleAccent, size: 20),
+              SizedBox(width: 8),
+              Text('Synth Settings', style: TextStyle(color: Colors.white)),
+            ]),
+            content: SizedBox(
+              width: 340,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Plays back the note grid's pitch data directly — "
+                        "useful for verifying detected pitches independent of the original recording.",
+                        style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    const SizedBox(height: 16),
+                    const Text('Waveform', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.0)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: Waveform.values.map((w) {
+                        bool selected = synthSettings.waveform == w;
+                        return ChoiceChip(
+                          label: Text(w.label, style: TextStyle(fontSize: 12, color: selected ? Colors.black : Colors.white70)),
+                          selected: selected,
+                          selectedColor: Colors.tealAccent,
+                          backgroundColor: Colors.white10,
+                          onSelected: (_) => update((s) => s.copyWith(waveform: w)),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Envelope (ADSR)', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.0)),
+                    const SizedBox(height: 4),
+                    _synthSlider('Attack', synthSettings.adsr.attack, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(attack: v)))),
+                    _synthSlider('Decay', synthSettings.adsr.decay, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(decay: v)))),
+                    _synthSlider('Sustain', synthSettings.adsr.sustain, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(sustain: v)))),
+                    _synthSlider('Release', synthSettings.adsr.release, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(release: v)))),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const SizedBox(width: 56, child: Text("Synth Vol", style: TextStyle(color: Colors.white70, fontSize: 11))),
+                        Expanded(child: Slider(
+                          value: synthMixVolume, min: 0.0, max: 2.0,
+                          activeColor: Colors.amberAccent,
+                          onChanged: (v) {
+                            setDialogState(() => synthMixVolume = v);
+                            setState(() => synthMixVolume = v);
+                            if (activePlaybackSources.contains('synth')) {
+                              synthPlayer.setVolume(v);
+                            }
+                          },
+                        )),
+                        SizedBox(width: 36, child: Text("${(synthMixVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 10))),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Flexible(
+                          child: Text("Full X-Ray pitch tracking\n(off = basic note values)",
+                              style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        ),
+                        Switch(
+                          value: synthSettings.useXrayContour,
+                          activeColor: Colors.amberAccent,
+                          onChanged: (v) => update((s) => s.copyWith(useXrayContour: v)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _refreshSynthLayerIfActive();
+                },
+                child: const Text('Close', style: TextStyle(color: Colors.white54)),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent.withOpacity(0.2)),
+                icon: const Icon(Icons.play_arrow, color: Colors.tealAccent, size: 16),
+                label: const Text('Preview Synth', style: TextStyle(color: Colors.tealAccent)),
+                onPressed: rawNotes.isEmpty ? null : () async {
+                  Navigator.pop(context);
+                  await _togglePlaybackSource('synth', true);
+                  if (!masterPlayer.playing) await _playAllPlayers();
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _synthSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) {
+    return Row(
+      children: [
+        SizedBox(width: 56, child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11))),
+        Expanded(child: Slider(value: value, min: min, max: max, activeColor: Colors.tealAccent, onChanged: onChanged)),
+        SizedBox(width: 36, child: Text(value.toStringAsFixed(2), style: const TextStyle(color: Colors.white54, fontSize: 10))),
+      ],
+    );
+  }
+
+  void _showAdvancedDownloadsDialog() {
+    if (rawNotes.isEmpty || originalAudioBytes == null) {
+      _showSaveConfirmation("No active project to export.");
+      return;
+    }
+    
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text("Advanced Downloads", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.multitrack_audio, color: Colors.amberAccent, size: 28),
+                title: const Text("Export Master Mix", style: TextStyle(color: Colors.white)),
+                subtitle: const Text("WAV / FLAC / MP3", style: TextStyle(color: Colors.white54, fontSize: 11)),
+                onTap: () { Navigator.pop(context); _showExportDialog(); }
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.piano, color: Colors.purpleAccent, size: 28),
+                title: const Text("Export Synth Audio", style: TextStyle(color: Colors.white)),
+                subtitle: const Text("WAV format", style: TextStyle(color: Colors.white54, fontSize: 11)),
+                onTap: () { Navigator.pop(context); _exportSynthAudio(); }
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.analytics, color: Colors.tealAccent, size: 28),
+                title: const Text("Forensic Dossier", style: TextStyle(color: Colors.white)),
+                subtitle: const Text("PDF Report", style: TextStyle(color: Colors.white54, fontSize: 11)),
+                onTap: () { Navigator.pop(context); _downloadDossier(); }
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.fingerprint, color: Colors.blueAccent, size: 28),
+                title: const Text("PitchPrint™ Graph", style: TextStyle(color: Colors.white)),
+                subtitle: const Text("Vector / High-Res", style: TextStyle(color: Colors.white54, fontSize: 11)),
+                onTap: () { Navigator.pop(context); _showPitchPrintOptions(); }
+              ),
+            ]
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context), 
+              child: const Text("Cancel", style: TextStyle(color: Colors.white54))
+            )
+          ],
+        );
+      }
+    );
+  }
+
+  void _showExportDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text("Export Format", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.audio_file, color: Colors.tealAccent, size: 30),
+                title: const Text("WAV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Lossless / Studio Quality", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _exportFinalMaster('wav'); },
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.library_music, color: Colors.amberAccent, size: 30),
+                title: const Text("FLAC", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Lossless / Compressed Size", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _exportFinalMaster('flac'); },
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.music_note, color: Colors.blueAccent, size: 30),
+                title: const Text("MP3", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Standard / Web Optimized", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _exportFinalMaster('mp3'); },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.white54)))
+          ],
+        );
+      }
+    );
+  }
+
+  Future<void> _exportFinalMaster(String format) async {
+    if (originalAudioBytes == null) return;
+    setState(() { isExporting = true; exportMessage = "Rendering $format..."; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+        ..fields['edit_manifest'] = json.encode({
+          "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
+          "edits": rawNotes
+        })
+        ..fields['task_id'] = currentTaskId ?? '' 
+        ..fields['export_format'] = format 
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+      
+      if (responseData.statusCode != 200) {
+        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
+      }
+      
+      var data = jsonDecode(responseData.body);
+
+      if (data['status'] == 'success') {
+        final Uint8List bytes = base64.decode(data['master_mix_b64']);
+
+        String mimeType = 'audio/wav';
+        if (format == 'mp3') mimeType = 'audio/mpeg';
+        if (format == 'flac') mimeType = 'audio/flac';
+
+        String defaultName = originalFileName.contains('.')
+            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+            : originalFileName;
+        defaultName = '${defaultName}_voxray_master';
+
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultName,
+          bytes: bytes,
+          fileExtension: format,
+          mimeType: MimeType.custom,
+          customMimeType: mimeType,
+        );
+        
+        if (path != null && path.isNotEmpty) {
+          _showSaveConfirmation('Master mix saved as ${format.toUpperCase()}.');
+        } else {
+          _showSaveConfirmation('Export cancelled.');
+        }
+      } else {
+        _showSaveConfirmation('Export failed: ${data['message'] ?? 'Unknown error'}');
+      }
+    } catch (e) {
+      _showSaveConfirmation('Export failed: $e');
+    } finally {
+      setState(() { isExporting = false; exportMessage = ''; });
+    }
+  }
 
   Future<void> _exportSynthAudio() async {
     if (rawNotes.isEmpty) return;
@@ -1091,6 +1273,52 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+  // --- THE NEW SINGLE ICON MENU TREE ---
+  List<PopupMenuEntry<String>> _buildMainMenu() {
+    return [
+      const PopupMenuItem(value: 'upload', child: ListTile(leading: Icon(Icons.cloud_upload, color: Colors.tealAccent), title: Text('Upload Audio'))),
+      const PopupMenuItem(value: 'load', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))),
+      const PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save), title: Text('Save Project'))),
+      const PopupMenuDivider(),
+      PopupMenuItem(value: 'undo', enabled: undoStack.isNotEmpty, child: const ListTile(leading: Icon(Icons.undo), title: Text('Undo'))),
+      PopupMenuItem(value: 'redo', enabled: redoStack.isNotEmpty, child: const ListTile(leading: Icon(Icons.redo), title: Text('Redo'))),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'drag_pitch', 
+        child: ListTile(
+          leading: Icon(Icons.pan_tool, color: isDragMode ? Colors.amberAccent : Colors.white), 
+          title: Text(isDragMode ? 'Disable Drag Pitch' : 'Enable Drag Pitch', style: TextStyle(color: isDragMode ? Colors.amberAccent : Colors.white))
+        )
+      ),
+      const PopupMenuItem(value: 'mix_settings', child: ListTile(leading: Icon(Icons.tune), title: Text('Mix Settings'))),
+      const PopupMenuItem(value: 'dossier', child: ListTile(leading: Icon(Icons.analytics), title: Text('View Dossier'))),
+      const PopupMenuDivider(),
+      const PopupMenuItem(value: 'downloads', child: ListTile(leading: Icon(Icons.download, color: Colors.blueAccent), title: Text('Advanced Downloads'))),
+      const PopupMenuItem(
+        value: 'reprocess', 
+        child: ListTile(
+          leading: Icon(Icons.sync_problem, color: Colors.orangeAccent), 
+          title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)),
+        )
+      ),
+    ];
+  }
+
+  void _handleMenuSelection(String value) {
+    switch (value) {
+      case 'upload': _loadFileAndAnalyze(); break;
+      case 'load': _loadVoxrayProject(); break;
+      case 'save': _saveVoxrayProject(); break;
+      case 'undo': _undo(); break;
+      case 'redo': _redo(); break;
+      case 'drag_pitch': setState(() => isDragMode = !isDragMode); break;
+      case 'mix_settings': _showMixSettingsDialog(); break;
+      case 'dossier': _showDossier(); break;
+      case 'downloads': _showAdvancedDownloadsDialog(); break;
+      case 'reprocess': _forceReprocessXray(); break;
+    }
+  }
+
   Widget _playbackSourcesButton() {
     bool anyLoading = isFetchingMelodyStem || isSynthRendering;
     int activeCount = activePlaybackSources.length;
@@ -1102,7 +1330,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           : Stack(
               clipBehavior: Clip.none,
               children: [
-                const Icon(Icons.queue_music, color: Colors.tealAccent, size: 22),
+                const Icon(Icons.library_music, color: Colors.tealAccent, size: 22),
                 if (activeCount > 0)
                   Positioned(
                     right: -4,
@@ -1205,234 +1433,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 
-  void _showSynthSettingsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          void update(SynthSettings Function(SynthSettings) fn) {
-            setDialogState(() => synthSettings = fn(synthSettings));
-            setState(() {});
-          }
-
-          return AlertDialog(
-            backgroundColor: Colors.grey[900],
-            title: const Row(children: [
-              Icon(Icons.graphic_eq, color: Colors.tealAccent, size: 20),
-              SizedBox(width: 8),
-              Text('Synth Settings', style: TextStyle(color: Colors.white)),
-            ]),
-            content: SizedBox(
-              width: 340,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Plays back the note grid's pitch data directly — "
-                        "useful for verifying detected pitches independent of the original recording.",
-                        style: TextStyle(color: Colors.white38, fontSize: 11)),
-                    const SizedBox(height: 16),
-                    const Text('Waveform', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.0)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: Waveform.values.map((w) {
-                        bool selected = synthSettings.waveform == w;
-                        return ChoiceChip(
-                          label: Text(w.label, style: TextStyle(fontSize: 12, color: selected ? Colors.black : Colors.white70)),
-                          selected: selected,
-                          selectedColor: Colors.tealAccent,
-                          backgroundColor: Colors.white10,
-                          onSelected: (_) => update((s) => s.copyWith(waveform: w)),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Envelope (ADSR)', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.0)),
-                    const SizedBox(height: 4),
-                    _synthSlider('Attack', synthSettings.adsr.attack, 0.0, 1.0,
-                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(attack: v)))),
-                    _synthSlider('Decay', synthSettings.adsr.decay, 0.0, 1.0,
-                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(decay: v)))),
-                    _synthSlider('Sustain', synthSettings.adsr.sustain, 0.0, 1.0,
-                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(sustain: v)))),
-                    _synthSlider('Release', synthSettings.adsr.release, 0.0, 1.0,
-                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(release: v)))),
-                    const SizedBox(height: 8),
-                    _synthSlider('Gain', synthSettings.masterGain, 0.0, 1.0,
-                        (v) => update((s) => s.copyWith(masterGain: v))),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Flexible(
-                          child: Text("Full X-Ray pitch tracking\n(off = basic note values)",
-                              style: TextStyle(color: Colors.white70, fontSize: 12)),
-                        ),
-                        Switch(
-                          value: synthSettings.useXrayContour,
-                          activeColor: Colors.amberAccent,
-                          onChanged: (v) => update((s) => s.copyWith(useXrayContour: v)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _refreshSynthLayerIfActive();
-                },
-                child: const Text('Close'),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent.withOpacity(0.2)),
-                icon: const Icon(Icons.play_arrow, color: Colors.tealAccent, size: 16),
-                label: const Text('Preview', style: TextStyle(color: Colors.tealAccent)),
-                onPressed: rawNotes.isEmpty ? null : () async {
-                  Navigator.pop(context);
-                  await _togglePlaybackSource('synth', true);
-                  if (!masterPlayer.playing) await _playAllPlayers();
-                },
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _synthSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) {
-    return Row(
-      children: [
-        SizedBox(width: 56, child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11))),
-        Expanded(child: Slider(value: value, min: min, max: max, activeColor: Colors.tealAccent, onChanged: onChanged)),
-        SizedBox(width: 36, child: Text(value.toStringAsFixed(2), style: const TextStyle(color: Colors.white54, fontSize: 10))),
-      ],
-    );
-  }
-
-  void _showSaveConfirmation(String message, {bool isPreview = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isPreview ? Colors.deepPurple[800] : Colors.grey[800],
-        duration: Duration(seconds: isPreview ? 6 : 4),
-        action: isPreview
-            ? SnackBarAction(
-                label: 'Play',
-                textColor: Colors.deepPurpleAccent,
-                onPressed: () => masterPlayer.play(),
-              )
-            : null,
-      ),
-    );
-  }
-
-  void _showPitchPrintOptions() {
-    bool fullSong = true; // default
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Row(children: [
-            Icon(Icons.fingerprint, color: Colors.amberAccent, size: 20),
-            SizedBox(width: 8),
-            Text('PitchPrint™', style: TextStyle(color: Colors.white)),
-          ]),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Generate a high-resolution pitch analysis graph.',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              // Range selector
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white10,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  children: [
-                    RadioListTile<bool>(
-                      value: true,
-                      groupValue: fullSong,
-                      activeColor: Colors.amberAccent,
-                      title: const Text('Full Song', style: TextStyle(color: Colors.white)),
-                      subtitle: const Text('Complete performance analysis', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                      onChanged: (v) => setDialogState(() => fullSong = v!),
-                    ),
-                    RadioListTile<bool>(
-                      value: false,
-                      groupValue: fullSong,
-                      activeColor: Colors.amberAccent,
-                      title: const Text('Visible Region', style: TextStyle(color: Colors.white)),
-                      subtitle: const Text('Current timeline view only', style: TextStyle(color: Colors.white38, fontSize: 11)),
-                      onChanged: (v) => setDialogState(() => fullSong = v!),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Format selector
-              const Text('Format', style: TextStyle(color: Colors.white54, fontSize: 11)),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _formatChip('SVG', 'Vector', Colors.tealAccent),
-                  _formatChip('PNG', 'High-Res', Colors.amberAccent),
-                  _formatChip('PDF', 'Print', Colors.blueAccent),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.amberAccent.withOpacity(0.2)),
-              icon: const Icon(Icons.fingerprint, color: Colors.amberAccent, size: 16),
-              label: const Text('Generate', style: TextStyle(color: Colors.amberAccent)),
-              onPressed: () {
-                Navigator.pop(context);
-                _downloadPitchPrint(fullSong: fullSong);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _formatChip(String format, String label, Color color) {
-    // For now just visual — wire up selection state when you want multiple format options
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withOpacity(0.4)),
-          ),
-          child: Text(format, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-        ),
-        const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1451,356 +1451,187 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               ),
             ],
           ),
-          if (!isLiveModeActive) ...[
-            IconButton(icon: const Icon(Icons.undo), onPressed: undoStack.isEmpty ? null : _undo),
-            IconButton(icon: const Icon(Icons.redo), onPressed: redoStack.isEmpty ? null : _redo),
-            if (MediaQuery.of(context).size.width > 600) ...[
-              IconButton(icon: const Icon(Icons.folder_open), tooltip: "Load .vxr", onPressed: _loadVoxrayProject),
-              IconButton(icon: const Icon(Icons.save), tooltip: "Save .vxr", onPressed: _saveVoxrayProject),
-              IconButton(icon: const Icon(Icons.sync_problem), tooltip: "Reprocess X-Ray", onPressed: _forceReprocessXray),
-            ] else
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'load': _loadVoxrayProject(); break;
-                    case 'save': _saveVoxrayProject(); break;
-                    case 'export': _showExportDialog(); break;
-                    case 'reprocess': _forceReprocessXray(); break; // <--- NEW ACTION
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'load', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load .vxr'))),
-                  const PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save), title: Text('Save .vxr'))),
-                  const PopupMenuDivider(),
-                  // --- NEW ADVANCED MENU ITEM ---
-                  const PopupMenuItem(
-                    value: 'reprocess', 
-                    child: ListTile(
-                      leading: Icon(Icons.sync_problem, color: Colors.orangeAccent), 
-                      title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)),
-                      subtitle: Text('Force server recalculation', style: TextStyle(fontSize: 10, color: Colors.white38)),
-                    )
-                  ),
-                ],
-              ),
-          ],
+          if (!isLiveModeActive)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: "Main Menu",
+              onSelected: _handleMenuSelection,
+              itemBuilder: (context) => _buildMainMenu(),
+            ),
         ],
       ),
-      // --- ADDED SAFEAREA TO RESPECT ANDROID/IOS SYSTEM UI BOUNDARIES ---
       body: SafeArea(
         child: isLiveModeActive
             ? const LivePedagogyView()
             : Column(
                 children: [
+                  // --- 1. CURRENT FILE & PROGRESS BANNER ---
+                  Container(
+                    width: double.infinity,
+                    color: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.audio_file, size: 14, color: Colors.white54),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                originalFileName != "Unknown File" ? originalFileName : "No File Loaded",
+                                style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            ),
+                            if (projectName != "Voxray_Session")
+                              Text(' [$projectName]', style: const TextStyle(fontSize: 12, color: Colors.white38)),
+                          ]
+                        ),
+                        if (isLoading) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(child: LinearProgressIndicator(value: processingProgress, color: Colors.tealAccent, backgroundColor: Colors.grey[800])),
+                              const SizedBox(width: 8),
+                              Text(processingMessage, style: const TextStyle(fontSize: 10, color: Colors.tealAccent)),
+                            ],
+                          )
+                        ] else if (isPreviewing || isExporting || isSynthRendering) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)),
+                              const SizedBox(width: 8),
+                              Text(exportMessage.isNotEmpty ? exportMessage : synthMessage, style: const TextStyle(fontSize: 10, color: Colors.amberAccent)),
+                            ],
+                          )
+                        ]
+                      ],
+                    )
+                  ),
+
+                  // --- 2. ALWAYS VISIBLE CONTROLS TOOLBAR (RESPONSIVE) ---
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                     color: Colors.black26,
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          if (isLoading)
-                            SizedBox(
-                              width: 150,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(processingMessage, style: const TextStyle(fontSize: 10, color: Colors.tealAccent), overflow: TextOverflow.ellipsis),
-                                  const SizedBox(height: 2),
-                                  LinearProgressIndicator(value: processingProgress, backgroundColor: Colors.grey[800], color: Colors.tealAccent, minHeight: 4),
-                                ],
-                              ),
-                            )
-                          else
-                            ElevatedButton(
-                              onPressed: _loadFileAndAnalyze,
-                              style: ElevatedButton.styleFrom(visualDensity: VisualDensity.compact),
-                              child: const Text('Upload')
-                            ),
-                          
-                          const SizedBox(width: 16),
-                          const Text("Zoom X", style: TextStyle(fontSize: 12)),
-                          SizedBox(width: 80, child: Slider(value: zoomX, min: 50.0, max: 400.0, onChanged: (v) => setState(() => zoomX = v))),
-                          
-                          const Text("Zoom Y", style: TextStyle(fontSize: 12)),
-                          SizedBox(width: 80, child: Slider(value: zoomY, min: 10.0, max: 60.0, onChanged: (v) => setState(() => zoomY = v))),
-                          
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[800], visualDensity: VisualDensity.compact),
-                            icon: const Icon(Icons.analytics, size: 14), label: const Text("Dossier"),
-                            onPressed: _showDossier,
-                          ),
-                          
-                          const SizedBox(width: 8),
-                          if (rawNotes.isNotEmpty && originalAudioBytes != null)
-                            isPreviewing
-                              ? Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurpleAccent)),
-                                    const SizedBox(width: 6),
-                                    Text(exportMessage, style: const TextStyle(fontSize: 11, color: Colors.deepPurpleAccent)),
-                                  ],
-                                )
-                              : ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple[700], visualDensity: VisualDensity.compact),
-                                  icon: const Icon(Icons.play_circle, size: 14), label: const Text("Preview Mix"),
-                                  onPressed: _previewWithEdits,
-                                ),
+                    child: Wrap(
+                      spacing: 8.0,
+                      runSpacing: 4.0,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      alignment: WrapAlignment.start,
+                      children: [
+                        // Transport Block
+                        _playbackSourcesButton(),
+                        IconButton(
+                          icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow, size: 26), 
+                          onPressed: _toggleMasterTransport
+                        ),
+                        
+                        // Preview
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple[700], visualDensity: VisualDensity.compact),
+                          icon: const Icon(Icons.play_circle, size: 16), 
+                          label: const Text("Preview"),
+                          onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing ? _previewWithEdits : null,
+                        ),
 
-                          const SizedBox(width: 8),
-                          isExporting
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.tealAccent)),
-                                  const SizedBox(width: 6),
-                                  Text(exportMessage, style: const TextStyle(fontSize: 11, color: Colors.tealAccent)),
-                                ],
-                              )
-                            : IconButton(icon: const Icon(Icons.download, size: 20), tooltip: "Export Master", onPressed: rawNotes.isEmpty ? null : _showExportDialog),
-                            
-                          Container(width: 1, height: 24, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 8)),
-                          // download dossier (with advanced forensics or pitchprint graph) via a popup menu:
-                          PopupMenuButton<String>(
-                            icon: const Icon(Icons.download, size: 20),
-                            tooltip: "Download Report",
-                            onSelected: (value) {
-                              switch (value) {
-                                case 'dossier': _downloadDossier(); break;
-                                case 'pitchprint': _showPitchPrintOptions(); break;
-                              }
-                            },
-                            itemBuilder: (context) => [
-                              const PopupMenuItem(
-                                value: 'dossier',
-                                child: ListTile(
-                                  leading: Icon(Icons.description, color: Colors.tealAccent),
-                                  title: Text('Pro Dossier'),
-                                  subtitle: Text('Full forensic PDF report', style: TextStyle(fontSize: 11)),
-                                ),
-                              ),
-                              const PopupMenuItem(
-                                value: 'pitchprint',
-                                child: ListTile(
-                                  leading: Icon(Icons.fingerprint, color: Colors.amberAccent),
-                                  title: Text('PitchPrint™'),
-                                  subtitle: Text('Visual pitch analysis graph', style: TextStyle(fontSize: 11)),
-                                ),
-                              ),
+                        // Scrub & Xray
+                        IconButton(
+                          icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 22),
+                          tooltip: "Scrub Mode", onPressed: () => setState(() => isScrubMode = !isScrubMode),
+                        ),
+                        isXrayProcessing 
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12.0),
+                              child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)),
+                            )
+                          : IconButton(
+                              icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 22),
+                              tooltip: "X-ray Pitch Analysis", 
+                              onPressed: _toggleXrayMode,
+                            ),
+
+                        // Zooms
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text("Zx", style: TextStyle(fontSize: 12)),
+                            SizedBox(width: 60, child: Slider(value: zoomX, min: 50.0, max: 400.0, onChanged: (v) => setState(() => zoomX = v))),
+                            const SizedBox(width: 8),
+                            const Text("Zy", style: TextStyle(fontSize: 12)),
+                            SizedBox(width: 60, child: Slider(value: zoomY, min: 10.0, max: 60.0, onChanged: (v) => setState(() => zoomY = v))),
+                          ]
+                        ),
+
+                        // Marker Controls
+                        IconButton(
+                          icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), 
+                          tooltip: "Add Marker", onPressed: addMarkerAtCurrentPlayhead
+                        ),
+                        
+                        if (markers.isNotEmpty)
+                          PopupMenuButton<double>(
+                            icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
+                            tooltip: "Go to Marker",
+                            itemBuilder: (context) => markers.map((marker) {
+                              int totalSeconds = (marker['time'] as double).round();
+                              String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
+                              return PopupMenuItem<double>(
+                                value: marker['time'],
+                                child: Row(children: [
+                                  const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text('${marker['label']}  '),
+                                  Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                ]),
+                              );
+                            }).toList(),
+                            onSelected: (time) => jumpToTimelinePosition(time),
+                          ),
+
+                        if (markers.length >= 2) ...[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.repeat, size: 16, color: Colors.blueAccent),
+                              Switch(value: isLoopModeActive, onChanged: (val) => setState(() => isLoopModeActive = val), activeColor: Colors.blueAccent),
                             ],
                           ),
-                          IconButton(icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow, size: 24), onPressed: _toggleMasterTransport),
-                          IconButton(
-                            icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 20),
-                            tooltip: "Scrub Mode", onPressed: () => setState(() => isScrubMode = !isScrubMode),
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.pan_tool, color: isDragMode ? Colors.amberAccent : Colors.white38, size: 20),
-                            tooltip: "Drag Pitch Mode", onPressed: () => setState(() => isDragMode = !isDragMode),
-                          ),
-                          // Toggle and launch xray mode (polyphonic pitch analysis) — if already processing, show a spinner instead of the button:
-                          isXrayProcessing 
-                            ? const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 12.0),
-                                child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)),
-                              )
-                            : IconButton(
-                                icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 20),
-                                tooltip: "X-ray Pitch Analysis", 
-                                onPressed: _toggleXrayMode, // <--- Actually calls the function!
-                              ),
-                          IconButton(icon: Icon(Icons.tune, color: isMixerOpen ? Colors.tealAccent : Colors.white70, size: 20), onPressed: () => setState(() => isMixerOpen = !isMixerOpen)),
-                          IconButton(icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), tooltip: "Add Marker", onPressed: addMarkerAtCurrentPlayhead),
-
-                          Container(width: 1, height: 24, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 8)),
-                          // --- PLAYBACK SOURCE MIXER (Original / Melody Stem / Synth) ---
-                          _playbackSourcesButton(),
-                          IconButton(
-                            icon: Icon(
-                              synthSettings.useXrayContour ? Icons.fingerprint : Icons.music_note,
-                              color: synthSettings.useXrayContour ? Colors.amberAccent : Colors.white38,
-                              size: 18,
-                            ),
-                            tooltip: synthSettings.useXrayContour
-                                ? "Synth: Full X-Ray Pitch Tracking (tap for Basic Note Values)"
-                                : "Synth: Basic Note Values (tap for Full X-Ray Pitch Tracking)",
-                            onPressed: () {
-                              setState(() {
-                                synthSettings = synthSettings.copyWith(useXrayContour: !synthSettings.useXrayContour);
-                              });
-                              _refreshSynthLayerIfActive();
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
+                            tooltip: "Set Loop Region",
+                            itemBuilder: (context) {
+                              List<PopupMenuItem<String>> items = [];
+                              for (int i = 0; i < markers.length; i++) {
+                                for (int j = i + 1; j < markers.length; j++) {
+                                  items.add(PopupMenuItem(
+                                    value: '${markers[i]['time']}_${markers[j]['time']}',
+                                    child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
+                                  ));
+                                }
+                              }
+                              return items;
+                            },
+                            onSelected: (val) {
+                              final parts = val.split('_');
+                              setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
                             },
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.tune_outlined, size: 18, color: Colors.white70),
-                            tooltip: "Synth Settings",
-                            onPressed: _showSynthSettingsDialog,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.save_alt, size: 18, color: Colors.tealAccent),
-                            tooltip: "Export Synth Audio (.wav)",
-                            onPressed: rawNotes.isEmpty ? null : _exportSynthAudio,
-                          ),
-                          
-                          if (markers.length >= 2) ...[
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.repeat, size: 16, color: Colors.blueAccent),
-                                const SizedBox(width: 8),
-                                Switch(value: isLoopModeActive, onChanged: (val) => setState(() => isLoopModeActive = val), activeColor: Colors.blueAccent),
-                              ],
-                            ),
-                            PopupMenuButton<String>(
-                              icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
-                              tooltip: "Set Loop Region",
-                              itemBuilder: (context) {
-                                List<PopupMenuItem<String>> items = [];
-                                for (int i = 0; i < markers.length; i++) {
-                                  for (int j = i + 1; j < markers.length; j++) {
-                                    items.add(PopupMenuItem(
-                                      value: '${markers[i]['time']}_${markers[j]['time']}',
-                                      child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
-                                    ));
-                                  }
-                                }
-                                return items;
-                              },
-                              onSelected: (val) {
-                                final parts = val.split('_');
-                                setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
-                              },
-                            ),
-                          ] else ...[
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.repeat, size: 16, color: Colors.blueAccent),
-                                const SizedBox(width: 8),
-                                Switch(value: isLoopModeActive, onChanged: (val) => setState(() => isLoopModeActive = val), activeColor: Colors.blueAccent),
-                              ],
-                            ),
-                          ],
-                          
-                          if (markers.isNotEmpty)
-                            PopupMenuButton<double>(
-                              icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
-                              tooltip: "Jump to Marker",
-                              itemBuilder: (context) => markers.map((marker) {
-                                int totalSeconds = (marker['time'] as double).round();
-                                String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
-                                return PopupMenuItem<double>(
-                                  value: marker['time'],
-                                  child: Row(children: [
-                                    const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
-                                    const SizedBox(width: 8),
-                                    Text('${marker['label']}  '),
-                                    Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                                  ]),
-                                );
-                              }).toList(),
-                              onSelected: (time) => jumpToTimelinePosition(time),
-                            ),
                         ],
-                      ),
-                    ),
+                        
+                        // Synth Controls
+                        IconButton(
+                          icon: const Icon(Icons.piano, size: 22, color: Colors.purpleAccent),
+                          tooltip: "Synth Settings",
+                          onPressed: _showSynthSettingsDialog,
+                        ),
+                      ]
+                    )
                   ),
 
-                  if (isMixerOpen)
-                    Container(
-                      width: double.infinity,
-                      color: Colors.grey[900],
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Wrap(
-                        spacing: 16,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 250,
-                            child: Row(
-                              children: [
-                                const SizedBox(width: 65, child: Text("Vocal Vol", style: TextStyle(fontSize: 11, color: Colors.white70))),
-                                Expanded(child: Slider(value: targetVolume, min: 0.0, max: 2.0, activeColor: Colors.tealAccent, onChanged: (v) => setState(() => targetVolume = v))),
-                                SizedBox(width: 32, child: Text("${(targetVolume * 100).round()}%", style: const TextStyle(fontSize: 10, color: Colors.white54))),
-                              ],
-                            ),
-                          ),
-                          SizedBox(
-                            width: 250,
-                            child: Row(
-                              children: [
-                                const SizedBox(width: 65, child: Text("Accomp Vol", style: TextStyle(fontSize: 11, color: Colors.white70))),
-                                Expanded(child: Slider(value: accompVolume, min: 0.0, max: 2.0, activeColor: Colors.amberAccent, onChanged: (v) => setState(() => accompVolume = v))),
-                                SizedBox(width: 32, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(fontSize: 10, color: Colors.white54))),
-                              ],
-                            ),
-                          ),
-                          SizedBox(
-                            width: 250,
-                            child: Row(
-                              children: [
-                                const SizedBox(width: 65, child: Text("Synth Vol", style: TextStyle(fontSize: 11, color: Colors.white70))),
-                                Expanded(child: Slider(
-                                  value: synthMixVolume, min: 0.0, max: 2.0,
-                                  activeColor: Colors.tealAccent,
-                                  onChanged: (v) {
-                                    setState(() => synthMixVolume = v);
-                                    if (activePlaybackSources.contains('synth')) {
-                                      synthPlayer.setVolume(v);
-                                    }
-                                  },
-                                )),
-                                SizedBox(width: 32, child: Text("${(synthMixVolume * 100).round()}%", style: const TextStyle(fontSize: 10, color: Colors.white54))),
-                              ],
-                            ),
-                          ),
-                          SizedBox(
-                            width: 140,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text("De-Hiss", style: TextStyle(fontSize: 11, color: Colors.white70)),
-                                Switch(value: applyDenoise, onChanged: (val) => setState(() => applyDenoise = val), activeColor: Colors.amberAccent),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // Filename banner — in Column, not in Row
-                  if (originalFileName != "Unknown File" && !isLiveModeActive)
-                    SizedBox(
-                      height: 18,
-                      child: Row(
-                        children: [
-                          const Icon(Icons.audio_file, size: 11, color: Colors.white24),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              originalFileName.isNotEmpty ? originalFileName : "Unknown File",
-                              //originalFilePath.isNotEmpty ? originalFilePath : originalFileName,
-                              style: const TextStyle(fontSize: 10, color: Colors.white30),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (projectName != "Voxray_Session") ...[
-                            const SizedBox(width: 8),
-                            Text('[$projectName]', style: const TextStyle(fontSize: 10, color: Colors.white24)),
-                          ],
-                        ],
-                      ),
-                    ),
-
-                  // Ruler row — clean, no banner inside it
+                  // --- 3. TIMELINE & CANVAS ---
                   Row(
                     children: [
                       Container(width: 60, height: 35, color: Colors.grey[900]),
@@ -1826,242 +1657,4 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       ),
     );
   }
-
-  void _showDossier() {
-    if (rawNotes.isEmpty) return;
-
-    // Helper
-    String midiToName(num midi) {
-      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-      int m = midi.round();
-      return '${noteNames[m % 12]}${(m ~/ 12) - 1}';
-    }
-
-    int totalNotes = 0;
-    double totalError = 0;
-    int perfectlyTuned = 0;
-    int mutedCount = 0;
-    int deletedCount = 0;
-
-    // Per-note-name error accumulation for worst-offender report
-    Map<String, List<double>> noteErrors = {};
-
-    bool hasXray = rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
-
-    for (var note in rawNotes) {
-      if (note['isDeleted'] == true) { deletedCount++; continue; }
-      if (note['isMuted'] == true) mutedCount++;
-      totalNotes++;
-
-      double effectiveCents;
-
-      // If xray contour exists, use actual pitch drift average from contour
-      if (note['contour'] != null && (note['contour'] as List).isNotEmpty) {
-        List<dynamic> contour = note['contour'];
-        double avgDrift = contour.map((c) => (c as num).toDouble().abs()).reduce((a, b) => a + b) / contour.length;
-        effectiveCents = avgDrift;
-      } else {
-        // Fall back to actual_midi fractional cents + any user shift
-        double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
-        double rawCents = (baseMidi - baseMidi.round()) * 100;
-        double shiftCents = (note['cents_shift'] ?? 0).toDouble();
-        effectiveCents = (rawCents + shiftCents).abs();
-      }
-
-      totalError += effectiveCents;
-      if (effectiveCents <= 10) perfectlyTuned++;
-
-      // Use actual midi for note name grouping
-      double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
-      String name = midiToName(baseMidi.round());
-      noteErrors.putIfAbsent(name, () => []);
-      noteErrors[name]!.add(effectiveCents);
-    }
-
-    double avgError = totalNotes > 0 ? totalError / totalNotes : 0;
-    double tunedPct = totalNotes > 0 ? (perfectlyTuned / totalNotes) * 100 : 0;
-
-    // Find worst 3 offenders by average error per note name
-    var worstNotes = noteErrors.entries.toList()
-      ..sort((a, b) {
-        double aAvg = a.value.reduce((x, y) => x + y) / a.value.length;
-        double bAvg = b.value.reduce((x, y) => x + y) / b.value.length;
-        return bAvg.compareTo(aAvg);
-      });
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: Row(
-          children: [
-            const Text("Performance Dossier", style: TextStyle(color: Colors.white)),
-            const Spacer(),
-            if (hasXray)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: Colors.amberAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.fingerprint, color: Colors.amberAccent, size: 14),
-                  SizedBox(width: 4),
-                  Text('X-Ray', style: TextStyle(color: Colors.amberAccent, fontSize: 12)),
-                ]),
-              )
-            else
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
-                child: const Text('X-Ray not enabled', style: TextStyle(color: Colors.white38, fontSize: 11)),
-              ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- SUMMARY ---
-              const Text("SUMMARY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
-              const SizedBox(height: 8),
-              _dossierRow("Notes analyzed", "$totalNotes"),
-              _dossierRow("Muted notes", "$mutedCount"),
-              _dossierRow("Deleted notes", "$deletedCount"),
-              const SizedBox(height: 10),
-
-              // --- PITCH ACCURACY ---
-              const Text("PITCH ACCURACY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
-              const SizedBox(height: 8),
-              if (!hasXray)
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(8)),
-                  child: const Row(children: [
-                    Icon(Icons.info_outline, color: Colors.white38, size: 14),
-                    SizedBox(width: 8),
-                    Flexible(child: Text(
-                      'Enable X-Ray mode for detailed pitch contour analysis. '
-                      'Basic MIDI deviation shown below.',
-                      style: TextStyle(color: Colors.white38, fontSize: 11),
-                    )),
-                  ]),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.amberAccent.withOpacity(0.07), borderRadius: BorderRadius.circular(8)),
-                  child: const Row(children: [
-                    Icon(Icons.fingerprint, color: Colors.amberAccent, size: 14),
-                    SizedBox(width: 8),
-                    Flexible(child: Text(
-                      'X-Ray pitch contour data active. Variance reflects real pitch drift within each note.',
-                      style: TextStyle(color: Colors.amberAccent, fontSize: 11),
-                    )),
-                  ]),
-                ),
-              const SizedBox(height: 10),
-              _dossierRow("Avg pitch error", "${avgError.toStringAsFixed(1)} ¢"),
-              _dossierRow("Studio-accurate (≤10¢)", "${tunedPct.toStringAsFixed(1)}%"),
-              const SizedBox(height: 10),
-
-              // Color-coded accuracy bar
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: tunedPct / 100,
-                  backgroundColor: Colors.redAccent.withOpacity(0.3),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    tunedPct >= 80 ? Colors.tealAccent
-                    : tunedPct >= 50 ? Colors.amberAccent
-                    : Colors.redAccent,
-                  ),
-                  minHeight: 8,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // --- WORST OFFENDERS ---
-              if (worstNotes.isNotEmpty) ...[
-                const Text("MOST VARIANCE BY NOTE", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
-                const SizedBox(height: 8),
-                ...worstNotes.take(5).map((entry) {
-                  double avg = entry.value.reduce((a, b) => a + b) / entry.value.length;
-                  Color c = avg <= 10 ? Colors.tealAccent : avg <= 25 ? Colors.amberAccent : Colors.redAccent;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(children: [
-                      SizedBox(width: 36, child: Text(entry.key, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
-                      const SizedBox(width: 8),
-                      Expanded(child: ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: (avg / 100).clamp(0.0, 1.0),
-                          backgroundColor: Colors.white10,
-                          valueColor: AlwaysStoppedAnimation<Color>(c),
-                          minHeight: 6,
-                        ),
-                      )),
-                      const SizedBox(width: 8),
-                      Text('${avg.toStringAsFixed(1)}¢', style: TextStyle(color: c, fontSize: 11)),
-                      Text(' ×${entry.value.length}', style: const TextStyle(color: Colors.white38, fontSize: 10)),
-                    ]),
-                  );
-                }),
-                const SizedBox(height: 16),
-              ],
-
-              // --- VERDICT ---
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: avgError < 15 ? Colors.teal.withOpacity(0.15) : Colors.red.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: avgError < 15 ? Colors.tealAccent.withOpacity(0.4) : Colors.redAccent.withOpacity(0.4)),
-                ),
-                child: Text(
-                  avgError < 10
-                    ? "VERDICT: Exceptional intonation. Studio-ready performance."
-                    : avgError < 15
-                      ? "VERDICT: Highly accurate. Minor touch-ups may be desired."
-                      : avgError < 25
-                        ? "VERDICT: Moderate variance detected. Pitch correction recommended on flagged notes."
-                        : "VERDICT: Significant tuning issues. Review red-flagged notes in the piano roll.",
-                  style: TextStyle(
-                    color: avgError < 15 ? Colors.tealAccent : Colors.redAccent,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
-        ],
-      ),
-    );
-  }
-
-  // Helper widget for dossier rows
-  Widget _dossierRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-}
-
-class MyCustomBytesSource extends StreamAudioSource {
-  final List<int> bytes;
-  MyCustomBytesSource(this.bytes);
-  @override Future<StreamAudioResponse> request([int? start, int? end]) async => StreamAudioResponse(
-    sourceLength: bytes.length, contentLength: (end ?? bytes.length) - (start ?? 0), offset: start ?? 0,
-    stream: Stream.value(bytes.sublist(start ?? 0, end ?? bytes.length)), contentType: 'audio/wav',
-  );
 }
