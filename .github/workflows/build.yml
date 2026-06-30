@@ -53,8 +53,8 @@ jobs:
       - name: Send APK to Telegram
         uses: appleboy/telegram-action@master
         with:
-          to: ${{ 8828121077 }}
-          token: ${{ 8997391510:AAG6Cq1tat_nbPJ_5VBx6VNW-455KuaAVX4 }}
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: "New dev build ready!"
           document: build/app/outputs/flutter-apk/app-debug.apk # Update path to your raw APK
 
