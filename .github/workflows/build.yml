@@ -56,6 +56,6 @@ jobs:
           to: ${{ 8828121077 }}
           token: ${{ 8997391510:AAG6Cq1tat_nbPJ_5VBx6VNW-455KuaAVX4 }}
           message: "New dev build ready!"
-          document: app/build/outputs/apk/debug/app-debug.apk # Update path to your raw APK
+          document: build/app/outputs/flutter-apk/app-debug.apk # Update path to your raw APK
 
 
