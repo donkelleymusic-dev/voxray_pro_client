@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
 import 'note_inspector.dart';
-import 'package:flutter/rendering.dart'; // Adds ScrollDirection
+import 'package:flutter/rendering.dart'; 
 
 class TimelineCanvasWidget extends StatefulWidget {
   final VoxrayDAWState dawState;
   final ScrollController horizontalScrollController;
   final ScrollController verticalScrollController;
-  
+
   const TimelineCanvasWidget({
     Key? key, 
     required this.dawState,
     required this.horizontalScrollController,
     required this.verticalScrollController,
   }) : super(key: key);
-  
+
   @override
   State<TimelineCanvasWidget> createState() => _TimelineCanvasWidgetState();
 }
@@ -36,7 +36,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
 
     double totalHeight = (maxMidi - minMidi + 1) * zoomY;
     double timelineWidth = duration * zoomX;
-    
+
     var processedNotes = widget.dawState.rawNotes.map<Map<String, dynamic>>((note) {
       double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
       int nearest = baseMidi.round();
@@ -52,6 +52,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
       children: [
         SingleChildScrollView(
           controller: widget.verticalScrollController,
+          // Lock vertical scroll during drag-to-tune
           physics: draggingNoteIndex != null ? const NeverScrollableScrollPhysics() : null,
           scrollDirection: Axis.vertical,
           child: Row(
@@ -74,29 +75,25 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
               Expanded(
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
-                    // 1. Detect human scroll start/stop (works for trackpads & touch)
                     if (notification is UserScrollNotification) {
                       if (notification.direction != ScrollDirection.idle) {
                         widget.dawState.isUserScrolling = true;
                       } else {
                         widget.dawState.isUserScrolling = false;
-                        
-                        // THE MISSING LINK: Commit the heavy seek when scrolling stops!
+
                         if (widget.dawState.isScrubMode) {
                           double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
                           seekTime = seekTime.clamp(0.0, widget.dawState.songDuration);
-                          
+
                           widget.dawState.masterPlayer.seek(Duration(milliseconds: (seekTime * 1000).round()));
                         }
                       }
                     } 
-                    // 2. Update the visual playhead during the scroll
                     else if (notification is ScrollUpdateNotification) {
                       if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
                         double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
                         seekTime = seekTime.clamp(0.0, widget.dawState.songDuration);
-                        
-                        // Update visual UI state only
+
                         widget.dawState.setState(() {
                           widget.dawState.currentPosition = seekTime;
                         });
@@ -106,6 +103,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                   },
                   child: SingleChildScrollView(
                     controller: widget.horizontalScrollController,
+                    // Lock horizontal scroll during drag-to-tune to prevent accidental timeline shifting
+                    physics: draggingNoteIndex != null ? const NeverScrollableScrollPhysics() : null,
                     scrollDirection: Axis.horizontal,
                     child: GestureDetector(
                       onTapDown: (details) {
@@ -125,7 +124,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         }
                       },
                       onPanStart: widget.dawState.isDragMode ? (details) {
-                        //if (!widget.dawState.isDragMode) return;
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
                           if (pNote['isDeleted'] == true) continue;
@@ -134,6 +132,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           double yY = (maxMidi - pNote['display_midi']) * widget.dawState.zoomY;
                           double visualY = yY - ((pNote['display_cents'] / 100.0) * widget.dawState.zoomY);
                           Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2), endX, visualY + (widget.dawState.zoomY / 2));
+                          
                           if (hitBox.contains(details.localPosition)) {
                             widget.dawState.registerUndoSnapshot(); 
                             setState(() {
@@ -147,8 +146,10 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                       } : null,
                       onPanUpdate: widget.dawState.isDragMode ? (details) {
                         if (draggingNoteIndex == null) return;
+                        
                         double deltaY = details.localPosition.dy - dragStartY;
                         double midiDelta = -(deltaY / widget.dawState.zoomY);
+                        
                         widget.dawState.setState(() {
                           widget.dawState.rawNotes[draggingNoteIndex!]['actual_midi'] = 
                             (initialActualMidi + midiDelta).clamp(minMidi.toDouble(), maxMidi.toDouble());
@@ -325,7 +326,6 @@ class AdvancedPianoRollPainter extends CustomPainter {
       }
 
       // --- NOTE LABEL ---
-      // Build label text: note name + cents
       String noteName = getNoteName(note['display_midi']);
       String centsText = totalCents > 0 ? '+$totalCents¢' : (totalCents == 0 ? '±0¢' : '$totalCents¢');
       String labelText = '$noteName $centsText';
@@ -339,14 +339,10 @@ class AdvancedPianoRollPainter extends CustomPainter {
       )..layout();
 
       if (noteWidth >= tp.width + 6 && zoomY > 14) {
-        // Note is wide enough AND tall enough — draw inside the note block
         tp.paint(canvas, Offset(startX + 3, topY + (zoomY / 2) - (tp.height / 2)));
       } else if (noteWidth >= 4) {
-        // Note too small to fit label inside — draw above the note
-        // Background pill so it's readable over the grid
         double labelX = startX;
         double labelY = topY - tp.height - 3;
-        // Clamp so label doesn't go above canvas top
         if (labelY < 0) labelY = topY + zoomY + 2;
 
         Rect bgRect = Rect.fromLTWH(labelX - 2, labelY - 1, tp.width + 4, tp.height + 2);
