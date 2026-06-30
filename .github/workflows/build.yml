@@ -35,3 +35,16 @@ jobs:
         with:
           name: flutter-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Upload APK Artifact
+        id: upload-step # <-- Crucial ID tag to extract the output URL
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Display Clickable Link
+        run: |
+          echo "### 📱 Download Your Build Directly" >> $GITHUB_STEP_SUMMARY
+          echo "Click here to download your compiled app: [Download Mobile APK](${{ steps.upload-step.outputs.artifact-url }})" >> $GITHUB_STEP_SUMMARY
+
