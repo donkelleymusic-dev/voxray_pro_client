@@ -42,6 +42,7 @@ import 'dart:typed_data';
 import 'ui/timeline_canvas.dart';
 import 'pedagogy/live_analyzer.dart';
 import 'ui/timeline_ruler.dart';
+import 'synth/vox_synth.dart';
 
 void main() => runApp(MaterialApp(
   home: const VoxrayDAW(), 
@@ -56,6 +57,12 @@ class VoxrayDAW extends StatefulWidget {
 
 class VoxrayDAWState extends State<VoxrayDAW> {
   final AudioPlayer masterPlayer = AudioPlayer();
+  final AudioPlayer synthPlayer = AudioPlayer();
+
+  // --- Note-data synth engine ---
+  SynthSettings synthSettings = const SynthSettings();
+  bool isSynthRendering = false;
+  String synthMessage = '';
   
   // Viewport Scrollers
   final ScrollController horizontalScrollController = ScrollController();
@@ -133,6 +140,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     masterPlayer.playerStateStream.listen((state) {
       debugPrint("Player state: ${state.processingState} playing:${state.playing} isLoading:$isLoading");
     });
+    synthPlayer.playerStateStream.listen((state) {
+      if (mounted) setState(() {});
+    });
     masterPlayer.positionStream.listen((pos) {
       if (!mounted) return;
       double currentT = pos.inMilliseconds / 1000.0;
@@ -195,6 +205,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     horizontalScrollController.dispose();
     verticalScrollController.dispose();
     rulerScrollController.dispose();
+    synthPlayer.dispose();
     super.dispose();
   }
 
@@ -854,6 +865,197 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+  // ============================================================
+  // SYNTH PLAYBACK / EXPORT (note-data sonification, no server)
+  // ============================================================
+
+  Future<void> _playSynthPreview() async {
+    if (rawNotes.isEmpty) return;
+    setState(() { isSynthRendering = true; synthMessage = "Synthesizing note data..."; });
+
+    try {
+      await synthPlayer.stop();
+
+      final Uint8List wavBytes = renderNotesToWavBytes(
+        notes: rawNotes,
+        duration: songDuration,
+        settings: synthSettings,
+      );
+
+      if (kIsWeb) {
+        await synthPlayer.setAudioSource(MyCustomBytesSource(wavBytes));
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/voxray_synth_preview.wav');
+        await tempFile.writeAsBytes(wavBytes);
+        await synthPlayer.setFilePath(tempFile.path);
+      }
+
+      await synthPlayer.seek(Duration(milliseconds: (currentPosition * 1000).round()));
+      await synthPlayer.play();
+    } catch (e) {
+      debugPrint("Synth preview failed: $e");
+      _showSaveConfirmation('Synth preview failed: $e');
+    } finally {
+      setState(() { isSynthRendering = false; synthMessage = ''; });
+    }
+  }
+
+  Future<void> _stopSynthPreview() async {
+    await synthPlayer.stop();
+  }
+
+  Future<void> _exportSynthAudio() async {
+    if (rawNotes.isEmpty) return;
+    setState(() { isSynthRendering = true; synthMessage = "Rendering synth audio..."; });
+
+    try {
+      final Uint8List wavBytes = renderNotesToWavBytes(
+        notes: rawNotes,
+        duration: songDuration,
+        settings: synthSettings,
+      );
+
+      String defaultName = originalFileName.contains('.')
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : (originalFileName.isNotEmpty ? originalFileName : projectName);
+      defaultName = '${defaultName}_synth';
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: defaultName,
+          bytes: wavBytes,
+          fileExtension: 'wav',
+          mimeType: MimeType.custom,
+          customMimeType: 'audio/wav',
+        );
+        _showSaveConfirmation('Synth audio exported as WAV.');
+      } else {
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultName,
+          bytes: wavBytes,
+          fileExtension: 'wav',
+          mimeType: MimeType.custom,
+          customMimeType: 'audio/wav',
+        );
+        if (path != null && path.isNotEmpty) {
+          _showSaveConfirmation('Synth audio exported as WAV.');
+        } else {
+          _showSaveConfirmation('Export cancelled.');
+        }
+      }
+    } catch (e) {
+      debugPrint("Synth export failed: $e");
+      _showSaveConfirmation('Synth export failed: $e');
+    } finally {
+      setState(() { isSynthRendering = false; synthMessage = ''; });
+    }
+  }
+
+  void _showSynthSettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          void update(SynthSettings Function(SynthSettings) fn) {
+            setDialogState(() => synthSettings = fn(synthSettings));
+            setState(() {});
+          }
+
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Row(children: [
+              Icon(Icons.graphic_eq, color: Colors.tealAccent, size: 20),
+              SizedBox(width: 8),
+              Text('Synth Settings', style: TextStyle(color: Colors.white)),
+            ]),
+            content: SizedBox(
+              width: 340,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Plays back the note grid's pitch data directly — "
+                        "useful for verifying detected pitches independent of the original recording.",
+                        style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    const SizedBox(height: 16),
+                    const Text('Waveform', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.0)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: Waveform.values.map((w) {
+                        bool selected = synthSettings.waveform == w;
+                        return ChoiceChip(
+                          label: Text(w.label, style: TextStyle(fontSize: 12, color: selected ? Colors.black : Colors.white70)),
+                          selected: selected,
+                          selectedColor: Colors.tealAccent,
+                          backgroundColor: Colors.white10,
+                          onSelected: (_) => update((s) => s.copyWith(waveform: w)),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Envelope (ADSR)', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.0)),
+                    const SizedBox(height: 4),
+                    _synthSlider('Attack', synthSettings.adsr.attack, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(attack: v)))),
+                    _synthSlider('Decay', synthSettings.adsr.decay, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(decay: v)))),
+                    _synthSlider('Sustain', synthSettings.adsr.sustain, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(sustain: v)))),
+                    _synthSlider('Release', synthSettings.adsr.release, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(release: v)))),
+                    const SizedBox(height: 8),
+                    _synthSlider('Gain', synthSettings.masterGain, 0.0, 1.0,
+                        (v) => update((s) => s.copyWith(masterGain: v))),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Flexible(
+                          child: Text("Follow X-Ray contour", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        ),
+                        Switch(
+                          value: synthSettings.useXrayContour,
+                          activeColor: Colors.amberAccent,
+                          onChanged: (v) => update((s) => s.copyWith(useXrayContour: v)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent.withOpacity(0.2)),
+                icon: const Icon(Icons.play_arrow, color: Colors.tealAccent, size: 16),
+                label: const Text('Preview', style: TextStyle(color: Colors.tealAccent)),
+                onPressed: rawNotes.isEmpty ? null : () {
+                  Navigator.pop(context);
+                  _playSynthPreview();
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _synthSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) {
+    return Row(
+      children: [
+        SizedBox(width: 56, child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11))),
+        Expanded(child: Slider(value: value, min: min, max: max, activeColor: Colors.tealAccent, onChanged: onChanged)),
+        SizedBox(width: 36, child: Text(value.toStringAsFixed(2), style: const TextStyle(color: Colors.white54, fontSize: 10))),
+      ],
+    );
+  }
+
   void _showSaveConfirmation(String message, {bool isPreview = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1154,6 +1356,29 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               ),
                           IconButton(icon: Icon(Icons.tune, color: isMixerOpen ? Colors.tealAccent : Colors.white70, size: 20), onPressed: () => setState(() => isMixerOpen = !isMixerOpen)),
                           IconButton(icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), tooltip: "Add Marker", onPressed: addMarkerAtCurrentPlayhead),
+
+                          Container(width: 1, height: 24, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 8)),
+                          // --- SYNTH PLAYBACK OF NOTE DATA ---
+                          isSynthRendering
+                            ? const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 12.0),
+                                child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.tealAccent)),
+                              )
+                            : IconButton(
+                                icon: Icon(synthPlayer.playing ? Icons.stop_circle : Icons.graphic_eq, color: Colors.tealAccent, size: 20),
+                                tooltip: synthPlayer.playing ? "Stop Synth Playback" : "Play Synth (Note Data)",
+                                onPressed: rawNotes.isEmpty ? null : (synthPlayer.playing ? _stopSynthPreview : _playSynthPreview),
+                              ),
+                          IconButton(
+                            icon: const Icon(Icons.tune_outlined, size: 18, color: Colors.white70),
+                            tooltip: "Synth Settings",
+                            onPressed: _showSynthSettingsDialog,
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.save_alt, size: 18, color: Colors.tealAccent),
+                            tooltip: "Export Synth Audio (.wav)",
+                            onPressed: rawNotes.isEmpty ? null : _exportSynthAudio,
+                          ),
                           
                           if (markers.length >= 2) ...[
                             Row(
