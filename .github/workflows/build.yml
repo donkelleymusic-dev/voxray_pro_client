@@ -36,12 +36,6 @@ jobs:
           name: flutter-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
 
-      - name: Upload APK Artifact
-        id: upload-step # <-- Crucial ID tag to extract the output URL
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload APK Artifact
         id: upload-step
