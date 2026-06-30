@@ -43,6 +43,14 @@ jobs:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
 
+      - name: Upload APK Artifact
+        id: upload-step
+        uses: actions/upload-artifact@v4
+        with:
+          name: voxray_pro-apk
+          path: build/app/outputs/**/*.apk  # <-- Captures the APK regardless of the exact subfolder
+
+
       - name: Display Clickable Link
         run: |
           echo "### 📱 Download Your Build Directly" >> $GITHUB_STEP_SUMMARY
