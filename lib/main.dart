@@ -42,7 +42,7 @@ import 'dart:typed_data';
 import 'ui/timeline_canvas.dart';
 import 'pedagogy/live_analyzer.dart';
 import 'ui/timeline_ruler.dart';
-import 'audio/vox_synth.dart';
+import 'synth/vox_synth.dart';
 
 void main() => runApp(MaterialApp(
   home: const VoxrayDAW(), 
@@ -57,12 +57,23 @@ class VoxrayDAW extends StatefulWidget {
 
 class VoxrayDAWState extends State<VoxrayDAW> {
   final AudioPlayer masterPlayer = AudioPlayer();
+  final AudioPlayer melodyPlayer = AudioPlayer();
   final AudioPlayer synthPlayer = AudioPlayer();
+
+  // --- Multi-source playback mixer ---
+  // masterPlayer is always the transport "clock" (drives grid scroll, marker
+  // following, loop points) regardless of whether the original mix is
+  // audible — toggling a source just changes its volume, never stops the
+  // clock, so scrubbing/markers/loop keep working in any combination.
+  Set<String> activePlaybackSources = {'original'};
+  Uint8List? melodyStemBytes;
+  bool isFetchingMelodyStem = false;
 
   // --- Note-data synth engine ---
   SynthSettings synthSettings = const SynthSettings();
   bool isSynthRendering = false;
   String synthMessage = '';
+  double synthMixVolume = 1.0;
   
   // Viewport Scrollers
   final ScrollController horizontalScrollController = ScrollController();
@@ -143,6 +154,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     synthPlayer.playerStateStream.listen((state) {
       if (mounted) setState(() {});
     });
+    melodyPlayer.playerStateStream.listen((state) {
+      if (mounted) setState(() {});
+    });
     masterPlayer.positionStream.listen((pos) {
       if (!mounted) return;
       double currentT = pos.inMilliseconds / 1000.0;
@@ -151,7 +165,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           loopEndBoundary > loopStartBoundary && 
           loopEndBoundary > 0.0 &&
           currentT >= loopEndBoundary) {
-        masterPlayer.seek(Duration(milliseconds: (loopStartBoundary * 1000).round()));
+        _seekAllPlayers(Duration(milliseconds: (loopStartBoundary * 1000).round()));
         currentT = loopStartBoundary;
       }
 
@@ -206,6 +220,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     verticalScrollController.dispose();
     rulerScrollController.dispose();
     synthPlayer.dispose();
+    melodyPlayer.dispose();
     super.dispose();
   }
 
@@ -221,7 +236,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   void jumpToTimelinePosition(double seconds) {
-    masterPlayer.seek(Duration(milliseconds: (seconds * 1000).round()));
+    _seekAllPlayers(Duration(milliseconds: (seconds * 1000).round()));
     setState(() => currentPosition = seconds);
 
     // Scroll grid so the jumped-to position appears at the stationary playhead (150px offset)
@@ -681,7 +696,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       originalAudioBytes = audioBytes;
       originalFileName = result.files.single.name; // SAVE THE FILENAME
       originalFilePath = result.files.single.path ?? "";
+      // New source audio — invalidate any cached stem/synth layers
+      melodyStemBytes = null;
+      activePlaybackSources = {'original'};
     });
+    await melodyPlayer.stop();
+    await synthPlayer.stop();
 
     // Audio setup in its own try/catch — don't let it abort the upload
     try {
@@ -866,16 +886,96 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   // ============================================================
-  // SYNTH PLAYBACK / EXPORT (note-data sonification, no server)
+  // MULTI-SOURCE PLAYBACK MIXER
+  // (Original Mix / Melody Stem Only / Synth — any combination)
   // ============================================================
 
-  Future<void> _playSynthPreview() async {
+  Future<void> _seekAllPlayers(Duration position) async {
+    final futures = <Future>[masterPlayer.seek(position)];
+    if (melodyPlayer.audioSource != null) futures.add(melodyPlayer.seek(position));
+    if (synthPlayer.audioSource != null) futures.add(synthPlayer.seek(position));
+    await Future.wait(futures);
+  }
+
+  Future<void> _playAllPlayers() async {
+    final futures = <Future>[masterPlayer.play()];
+    if (melodyPlayer.audioSource != null) futures.add(melodyPlayer.play());
+    if (synthPlayer.audioSource != null) futures.add(synthPlayer.play());
+    await Future.wait(futures);
+  }
+
+  Future<void> _pauseAllPlayers() async {
+    final futures = <Future>[masterPlayer.pause()];
+    if (melodyPlayer.audioSource != null) futures.add(melodyPlayer.pause());
+    if (synthPlayer.audioSource != null) futures.add(synthPlayer.pause());
+    await Future.wait(futures);
+  }
+
+  Future<void> _toggleMasterTransport() async {
+    if (masterPlayer.playing) {
+      await _pauseAllPlayers();
+    } else {
+      await _playAllPlayers();
+    }
+  }
+
+  /// Fetches an isolated melody/vocal-only render from the server by
+  /// reusing the existing batch-render-and-mix pipeline with accompaniment
+  /// forced to silence. Cached after the first fetch.
+  Future<Uint8List> _fetchMelodyStemBytes() async {
+    var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+      ..fields['edit_manifest'] = jsonEncode({
+        'track_settings': {'target_volume': 1.0, 'accomp_volume': 0.0, 'apply_denoise': applyDenoise},
+        'edits': rawNotes,
+      })
+      ..fields['task_id'] = currentTaskId ?? ''
+      ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+
+    var response = await request.send();
+    var responseData = await http.Response.fromStream(response);
+    if (responseData.statusCode != 200) {
+      throw Exception("Server error ${responseData.statusCode}");
+    }
+    var result = jsonDecode(responseData.body);
+    if (result['status'] != 'success') {
+      throw Exception(result['message'] ?? 'Unknown error');
+    }
+    return base64Decode(result['master_mix_b64']);
+  }
+
+  Future<void> _loadMelodyStemSource() async {
+    if (originalAudioBytes == null) return;
+    setState(() { isFetchingMelodyStem = true; });
+
+    try {
+      final Uint8List bytes = melodyStemBytes ?? await _fetchMelodyStemBytes();
+      melodyStemBytes = bytes;
+
+      if (kIsWeb) {
+        await melodyPlayer.setAudioSource(MyCustomBytesSource(bytes));
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/voxray_melody_stem.wav');
+        await tempFile.writeAsBytes(bytes);
+        await melodyPlayer.setFilePath(tempFile.path);
+      }
+
+      await melodyPlayer.seek(masterPlayer.position);
+      if (masterPlayer.playing) await melodyPlayer.play();
+    } catch (e) {
+      debugPrint("Melody stem load failed: $e");
+      _showSaveConfirmation('Melody stem unavailable: $e');
+      setState(() => activePlaybackSources.remove('melody'));
+    } finally {
+      setState(() { isFetchingMelodyStem = false; });
+    }
+  }
+
+  Future<void> _loadSynthSource() async {
     if (rawNotes.isEmpty) return;
     setState(() { isSynthRendering = true; synthMessage = "Synthesizing note data..."; });
 
     try {
-      await synthPlayer.stop();
-
       final Uint8List wavBytes = renderNotesToWavBytes(
         notes: rawNotes,
         duration: songDuration,
@@ -886,24 +986,63 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         await synthPlayer.setAudioSource(MyCustomBytesSource(wavBytes));
       } else {
         final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/voxray_synth_preview.wav');
+        final tempFile = File('${tempDir.path}/voxray_synth_layer.wav');
         await tempFile.writeAsBytes(wavBytes);
         await synthPlayer.setFilePath(tempFile.path);
       }
 
-      await synthPlayer.seek(Duration(milliseconds: (currentPosition * 1000).round()));
-      await synthPlayer.play();
+      await synthPlayer.seek(masterPlayer.position);
+      if (masterPlayer.playing) await synthPlayer.play();
     } catch (e) {
-      debugPrint("Synth preview failed: $e");
-      _showSaveConfirmation('Synth preview failed: $e');
+      debugPrint("Synth layer load failed: $e");
+      _showSaveConfirmation('Synth layer failed: $e');
+      setState(() => activePlaybackSources.remove('synth'));
     } finally {
       setState(() { isSynthRendering = false; synthMessage = ''; });
     }
   }
 
-  Future<void> _stopSynthPreview() async {
-    await synthPlayer.stop();
+  /// Re-renders the synth layer from current notes/settings if it's
+  /// currently part of the active mix (call after editing ADSR/waveform/
+  /// notes while synth is toggled on).
+  Future<void> _refreshSynthLayerIfActive() async {
+    if (activePlaybackSources.contains('synth')) {
+      await _loadSynthSource();
+    }
   }
+
+  Future<void> _togglePlaybackSource(String key, bool enabled) async {
+    setState(() {
+      if (enabled) {
+        activePlaybackSources.add(key);
+      } else {
+        activePlaybackSources.remove(key);
+      }
+    });
+
+    switch (key) {
+      case 'original':
+        await masterPlayer.setVolume(enabled ? 1.0 : 0.0);
+        break;
+      case 'melody':
+        if (enabled) {
+          await _loadMelodyStemSource();
+          await melodyPlayer.setVolume(1.0);
+        } else {
+          await melodyPlayer.setVolume(0.0);
+        }
+        break;
+      case 'synth':
+        if (enabled) {
+          await _loadSynthSource();
+          await synthPlayer.setVolume(synthMixVolume);
+        } else {
+          await synthPlayer.setVolume(0.0);
+        }
+        break;
+    }
+  }
+
 
   Future<void> _exportSynthAudio() async {
     if (rawNotes.isEmpty) return;
@@ -950,6 +1089,120 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     } finally {
       setState(() { isSynthRendering = false; synthMessage = ''; });
     }
+  }
+
+  Widget _playbackSourcesButton() {
+    bool anyLoading = isFetchingMelodyStem || isSynthRendering;
+    int activeCount = activePlaybackSources.length;
+
+    return PopupMenuButton<void>(
+      tooltip: "Playback Sources",
+      icon: anyLoading
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.tealAccent))
+          : Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.queue_music, color: Colors.tealAccent, size: 22),
+                if (activeCount > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(color: Colors.tealAccent, shape: BoxShape.circle),
+                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                      child: Text('$activeCount', textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 9, color: Colors.black, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+              ],
+            ),
+      itemBuilder: (context) => [
+        PopupMenuItem<void>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: StatefulBuilder(
+            builder: (context, setMenuState) {
+              Widget sourceRow({
+                required String key,
+                required String label,
+                required IconData icon,
+                required bool enabled,
+                String? subtitle,
+                bool loading = false,
+              }) {
+                return CheckboxListTile(
+                  dense: true,
+                  enabled: enabled,
+                  value: activePlaybackSources.contains(key),
+                  activeColor: Colors.tealAccent,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Row(
+                    children: [
+                      Icon(icon, size: 15, color: enabled ? Colors.white70 : Colors.white24),
+                      const SizedBox(width: 6),
+                      Text(label, style: TextStyle(fontSize: 13, color: enabled ? Colors.white : Colors.white38)),
+                      if (loading) ...[
+                        const SizedBox(width: 6),
+                        const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.tealAccent)),
+                      ],
+                    ],
+                  ),
+                  subtitle: subtitle != null
+                      ? Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.white30))
+                      : null,
+                  onChanged: enabled
+                      ? (checked) {
+                          setMenuState(() {});
+                          _togglePlaybackSource(key, checked == true);
+                        }
+                      : null,
+                );
+              }
+
+              return SizedBox(
+                width: 240,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    sourceRow(
+                      key: 'original',
+                      label: 'Original Mix',
+                      icon: Icons.album,
+                      enabled: originalAudioBytes != null,
+                    ),
+                    sourceRow(
+                      key: 'melody',
+                      label: 'Melody Stem Only',
+                      icon: Icons.graphic_eq,
+                      enabled: originalAudioBytes != null && currentTaskId != null,
+                      subtitle: 'Isolated vocal/melody render',
+                      loading: isFetchingMelodyStem,
+                    ),
+                    sourceRow(
+                      key: 'synth',
+                      label: 'Synth (Note Data)',
+                      icon: Icons.piano,
+                      enabled: rawNotes.isNotEmpty,
+                      subtitle: 'Sonified pitch from note grid',
+                      loading: isSynthRendering,
+                    ),
+                    const Divider(height: 1, color: Colors.white12),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: Text(
+                        'More stems (drums, bass, etc.) coming soon',
+                        style: TextStyle(fontSize: 10, color: Colors.white24, fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 
   void _showSynthSettingsDialog() {
@@ -1015,7 +1268,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Flexible(
-                          child: Text("Follow X-Ray contour", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          child: Text("Full X-Ray pitch tracking\n(off = basic note values)",
+                              style: TextStyle(color: Colors.white70, fontSize: 12)),
                         ),
                         Switch(
                           value: synthSettings.useXrayContour,
@@ -1029,14 +1283,21 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _refreshSynthLayerIfActive();
+                },
+                child: const Text('Close'),
+              ),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent.withOpacity(0.2)),
                 icon: const Icon(Icons.play_arrow, color: Colors.tealAccent, size: 16),
                 label: const Text('Preview', style: TextStyle(color: Colors.tealAccent)),
-                onPressed: rawNotes.isEmpty ? null : () {
+                onPressed: rawNotes.isEmpty ? null : () async {
                   Navigator.pop(context);
-                  _playSynthPreview();
+                  await _togglePlaybackSource('synth', true);
+                  if (!masterPlayer.playing) await _playAllPlayers();
                 },
               ),
             ],
@@ -1334,7 +1595,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               ),
                             ],
                           ),
-                          IconButton(icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow, size: 24), onPressed: () => masterPlayer.playing ? masterPlayer.pause() : masterPlayer.play()),
+                          IconButton(icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow, size: 24), onPressed: _toggleMasterTransport),
                           IconButton(
                             icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 20),
                             tooltip: "Scrub Mode", onPressed: () => setState(() => isScrubMode = !isScrubMode),
@@ -1358,17 +1619,24 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           IconButton(icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), tooltip: "Add Marker", onPressed: addMarkerAtCurrentPlayhead),
 
                           Container(width: 1, height: 24, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 8)),
-                          // --- SYNTH PLAYBACK OF NOTE DATA ---
-                          isSynthRendering
-                            ? const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 12.0),
-                                child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.tealAccent)),
-                              )
-                            : IconButton(
-                                icon: Icon(synthPlayer.playing ? Icons.stop_circle : Icons.graphic_eq, color: Colors.tealAccent, size: 20),
-                                tooltip: synthPlayer.playing ? "Stop Synth Playback" : "Play Synth (Note Data)",
-                                onPressed: rawNotes.isEmpty ? null : (synthPlayer.playing ? _stopSynthPreview : _playSynthPreview),
-                              ),
+                          // --- PLAYBACK SOURCE MIXER (Original / Melody Stem / Synth) ---
+                          _playbackSourcesButton(),
+                          IconButton(
+                            icon: Icon(
+                              synthSettings.useXrayContour ? Icons.fingerprint : Icons.music_note,
+                              color: synthSettings.useXrayContour ? Colors.amberAccent : Colors.white38,
+                              size: 18,
+                            ),
+                            tooltip: synthSettings.useXrayContour
+                                ? "Synth: Full X-Ray Pitch Tracking (tap for Basic Note Values)"
+                                : "Synth: Basic Note Values (tap for Full X-Ray Pitch Tracking)",
+                            onPressed: () {
+                              setState(() {
+                                synthSettings = synthSettings.copyWith(useXrayContour: !synthSettings.useXrayContour);
+                              });
+                              _refreshSynthLayerIfActive();
+                            },
+                          ),
                           IconButton(
                             icon: const Icon(Icons.tune_outlined, size: 18, color: Colors.white70),
                             tooltip: "Synth Settings",
@@ -1471,6 +1739,25 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 const SizedBox(width: 65, child: Text("Accomp Vol", style: TextStyle(fontSize: 11, color: Colors.white70))),
                                 Expanded(child: Slider(value: accompVolume, min: 0.0, max: 2.0, activeColor: Colors.amberAccent, onChanged: (v) => setState(() => accompVolume = v))),
                                 SizedBox(width: 32, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(fontSize: 10, color: Colors.white54))),
+                              ],
+                            ),
+                          ),
+                          SizedBox(
+                            width: 250,
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 65, child: Text("Synth Vol", style: TextStyle(fontSize: 11, color: Colors.white70))),
+                                Expanded(child: Slider(
+                                  value: synthMixVolume, min: 0.0, max: 2.0,
+                                  activeColor: Colors.tealAccent,
+                                  onChanged: (v) {
+                                    setState(() => synthMixVolume = v);
+                                    if (activePlaybackSources.contains('synth')) {
+                                      synthPlayer.setVolume(v);
+                                    }
+                                  },
+                                )),
+                                SizedBox(width: 32, child: Text("${(synthMixVolume * 100).round()}%", style: const TextStyle(fontSize: 10, color: Colors.white54))),
                               ],
                             ),
                           ),
