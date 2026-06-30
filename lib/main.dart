@@ -34,6 +34,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async'; 
+//import 'dart:html' as html;
 import 'package:file_saver/file_saver.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:typed_data';
@@ -60,6 +61,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   final AudioPlayer synthPlayer = AudioPlayer();
 
   // --- Multi-source playback mixer ---
+  // masterPlayer is always the transport "clock" (drives grid scroll, marker
+  // following, loop points) regardless of whether the original mix is
+  // audible — toggling a source just changes its volume, never stops the
+  // clock, so scrubbing/markers/loop keep working in any combination.
   Set<String> activePlaybackSources = {'original'};
   Uint8List? melodyStemBytes;
   bool isFetchingMelodyStem = false;
@@ -86,7 +91,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Timer? pollingTimer;     
   String? currentTaskId;       
 
-  // xray mode
+  // xray mode (polyphonic pitch analysis)
   bool isXrayMode = false;
   bool isXrayProcessing = false;
   String originalFileName = "Unknown File"; 
@@ -134,6 +139,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         rulerScrollController.jumpTo(horizontalScrollController.position.pixels);
       }
     });
+    // In initState, also add the reverse mirror:
     rulerScrollController.addListener(() {
       if (horizontalScrollController.hasClients &&
           horizontalScrollController.position.pixels != rulerScrollController.position.pixels) {
@@ -164,6 +170,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => currentPosition = currentT);
 
       if (masterPlayer.playing) {
+        // Horizontal: keep playhead stationary at 150px from left
         double targetX = (currentT * zoomX) - 150.0;
         if (targetX < 0) targetX = 0;
         if (horizontalScrollController.hasClients) {
@@ -172,6 +179,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           );
         }
 
+        // Vertical: follow highest active note
         if (verticalScrollController.hasClients && rawNotes.isNotEmpty) {
           var activeNotes = rawNotes.where((n) {
             if (n['isDeleted'] == true) return false;
@@ -181,6 +189,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           }).toList();
 
           if (activeNotes.isNotEmpty) {
+            // Find the median pitch of active notes (better than highest for polyphony)
             List<int> midiValues = activeNotes
                 .map<int>((n) => ((n['display_midi'] ?? n['actual_midi'] ?? 60)).round())
                 .toList()
@@ -228,6 +237,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     _seekAllPlayers(Duration(milliseconds: (seconds * 1000).round()));
     setState(() => currentPosition = seconds);
 
+    // Scroll grid so the jumped-to position appears at the stationary playhead (150px offset)
     double targetX = (seconds * zoomX) - 150.0;
     if (targetX < 0) targetX = 0;
 
@@ -250,6 +260,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<void> _forceReprocessXray() async {
     if (rawNotes.isEmpty || currentTaskId == null) return;
 
+    // 1. The Fail-Safe Confirmation Dialog
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -279,15 +290,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     if (confirm != true) return;
 
+    // 2. The Reprocess Execution
     setState(() { 
       isXrayProcessing = true; 
-      isXrayMode = true; 
+      isXrayMode = true; // Ensure the UI draws it once done
     });
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
-        ..fields['notes_manifest'] = jsonEncode(rawNotes); 
+        ..fields['notes_manifest'] = jsonEncode(rawNotes); // Send current state
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
@@ -296,7 +308,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         var data = jsonDecode(responseData.body);
         if (data['status'] == 'success') {
           setState(() {
-            rawNotes = data['notes']; 
+            rawNotes = data['notes']; // Overwrite with fresh contours
             registerUndoSnapshot();
           });
           _showSaveConfirmation('X-Ray data successfully reprocessed.');
@@ -370,6 +382,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (rawNotes.isEmpty) return;
     setState(() { isExporting = true; exportMessage = "Generating PitchPrint™..."; });
 
+    // Calculate visible region from scroll position
     double visibleStart = horizontalScrollController.hasClients
         ? horizontalScrollController.position.pixels / zoomX
         : 0.0;
@@ -427,11 +440,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<void> _toggleXrayMode() async {
     if (rawNotes.isEmpty || currentTaskId == null) return;
     
+    // If turning off, or if data already exists, just toggle the UI state
     if (isXrayMode || rawNotes.any((n) => n.containsKey('contour'))) {
       setState(() => isXrayMode = !isXrayMode);
       return;
     }
 
+    // First time turning it on: Fetch deep data
     setState(() { isXrayProcessing = true; isXrayMode = true; });
 
     try {
@@ -447,7 +462,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         if (data['status'] == 'success') {
           setState(() {
             rawNotes = data['notes'];
-            registerUndoSnapshot(); 
+            registerUndoSnapshot(); // Save the new rich data to history
           });
         } else {
           _showSaveConfirmation('XRAY failed: ${data['message']}');
@@ -463,12 +478,15 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   void addMarkerAtCurrentPlayhead() {
+    // Calculate actual time at the stationary playhead line (150px offset from scroll)
     double visualPlayheadTime = (horizontalScrollController.hasClients
         ? (horizontalScrollController.position.pixels + 150) / zoomX
         : currentPosition);
     
+    // Clamp to song duration
     visualPlayheadTime = visualPlayheadTime.clamp(0.0, songDuration);
 
+    // Check for nearby existing markers (within 0.5 seconds)
     bool tooClose = markers.any((m) => 
         ((m['time'] as double) - visualPlayheadTime).abs() < 0.5);
     if (tooClose) {
@@ -535,6 +553,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         ..fields['task_id'] = currentTaskId ?? ''  
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
+      // YOUR response handling — buffers full response before parsing
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
       
@@ -581,10 +600,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     Map<String, dynamic> projectData = {
         "voxray_version": "1.3.0",
         "project_name": projectName,
-        "original_file": originalFileName,
+        "original_file": originalFileName, // SAVE FILENAME
         "original_file_path": originalFilePath, 
         "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
-        "edits": rawNotes, 
+        "edits": rawNotes, // This now automatically includes the 'contour' arrays
         "history": {"undo_stack": undoStack, "redo_stack": redoStack}
       };
 
@@ -592,6 +611,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     Uint8List bytes = Uint8List.fromList(utf8.encode(jsonString));
 
     try {
+      // Using FileSaver.saveAs forces the native file requester on Android, iOS, and Desktop
       String? path = await FileSaver.instance.saveAs(
         name: projectName,
         bytes: bytes,
@@ -664,18 +684,21 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       processingProgress = 0.0;
       processingMessage = "Uploading file...";
       originalAudioBytes = audioBytes;
-      originalFileName = result.files.single.name; 
+      originalFileName = result.files.single.name; // SAVE THE FILENAME
       originalFilePath = result.files.single.path ?? "";
+      // New source audio — invalidate any cached stem/synth layers
       melodyStemBytes = null;
       activePlaybackSources = {'original'};
     });
     await melodyPlayer.stop();
     await synthPlayer.stop();
 
+    // Audio setup in its own try/catch — don't let it abort the upload
     try {
       if (kIsWeb) {
         await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!));
       } else {
+        // On Android/desktop, write to a temp file and load from path
         final tempDir = await getTemporaryDirectory();
         final tempFile = File('${tempDir.path}/preview_audio.wav');
         await tempFile.writeAsBytes(originalAudioBytes!);
@@ -685,6 +708,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       debugPrint("Audio preview setup failed (non-fatal): $e");
     }
 
+    // API upload continues regardless
     try {
       var request = http.MultipartRequest(
           'POST', Uri.parse('$apiBase/analyze-advanced'))
@@ -717,7 +741,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               setState(() {
                 rawNotes = statusData['result']['notes'];
                 songDuration = statusData['result']['duration'].toDouble();
-                loopEndBoundary = songDuration; 
+                loopEndBoundary = songDuration; // keep loop end in sync
                 currentTaskId = taskId;
                 isLoading = false;
               });
@@ -743,6 +767,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   // ============================================================
   // MULTI-SOURCE PLAYBACK MIXER
+  // (Original Mix / Melody Stem Only / Synth — any combination)
   // ============================================================
 
   Future<void> _seekAllPlayers(Duration position) async {
@@ -774,6 +799,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+  /// Fetches an isolated melody/vocal-only render from the server by
+  /// reusing the existing batch-render-and-mix pipeline with accompaniment
+  /// forced to silence. Cached after the first fetch.
   Future<Uint8List> _fetchMelodyStemBytes() async {
     var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
       ..fields['edit_manifest'] = jsonEncode({
@@ -854,6 +882,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+  /// Re-renders the synth layer from current notes/settings if it's
+  /// currently part of the active mix (call after editing ADSR/waveform/
+  /// notes while synth is toggled on).
   Future<void> _refreshSynthLayerIfActive() async {
     if (activePlaybackSources.contains('synth')) {
       await _loadSynthSource();
@@ -892,8 +923,116 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  // --- DIALOGS AND MENUS ---
-  
+  Future<void> _exportSynthAudio() async {
+    if (rawNotes.isEmpty) return;
+    setState(() { isSynthRendering = true; synthMessage = "Rendering synth audio..."; });
+
+    try {
+      final Uint8List wavBytes = renderNotesToWavBytes(
+        notes: rawNotes,
+        duration: songDuration,
+        settings: synthSettings,
+      );
+
+      String defaultName = originalFileName.contains('.')
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : (originalFileName.isNotEmpty ? originalFileName : projectName);
+      defaultName = '${defaultName}_synth';
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: defaultName,
+          bytes: wavBytes,
+          fileExtension: 'wav',
+          mimeType: MimeType.custom,
+          customMimeType: 'audio/wav',
+        );
+        _showSaveConfirmation('Synth audio exported as WAV.');
+      } else {
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultName,
+          bytes: wavBytes,
+          fileExtension: 'wav',
+          mimeType: MimeType.custom,
+          customMimeType: 'audio/wav',
+        );
+        if (path != null && path.isNotEmpty) {
+          _showSaveConfirmation('Synth audio exported as WAV.');
+        } else {
+          _showSaveConfirmation('Export cancelled.');
+        }
+      }
+    } catch (e) {
+      debugPrint("Synth export failed: $e");
+      _showSaveConfirmation('Synth export failed: $e');
+    } finally {
+      setState(() { isSynthRendering = false; synthMessage = ''; });
+    }
+  }
+
+  Future<void> _exportFinalMaster(String format) async {
+    if (originalAudioBytes == null) return;
+    setState(() { isExporting = true; exportMessage = "Rendering $format..."; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+        ..fields['edit_manifest'] = json.encode({
+          "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
+          "edits": rawNotes
+        })
+        ..fields['task_id'] = currentTaskId ?? '' 
+        ..fields['export_format'] = format // <--- SEND FORMAT TO API
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+      
+      if (responseData.statusCode != 200) {
+        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
+      }
+      
+      var data = jsonDecode(responseData.body);
+
+      if (data['status'] == 'success') {
+        final Uint8List bytes = base64.decode(data['master_mix_b64']);
+
+        // Determine correct mime type for saving
+        String mimeType = 'audio/wav';
+        if (format == 'mp3') mimeType = 'audio/mpeg';
+        if (format == 'flac') mimeType = 'audio/flac';
+
+        // Derive default save folder from original file path
+        String defaultName = originalFileName.contains('.')
+            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+            : originalFileName;
+        defaultName = '${defaultName}_voxray_master';
+
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultName,
+          bytes: bytes,
+          fileExtension: format,
+          mimeType: MimeType.custom,
+          customMimeType: mimeType,
+        );
+        
+        if (path != null && path.isNotEmpty) {
+          _showSaveConfirmation('Master mix saved as ${format.toUpperCase()}.');
+        } else {
+          _showSaveConfirmation('Export cancelled.');
+        }
+      } else {
+        _showSaveConfirmation('Export failed: ${data['message'] ?? 'Unknown error'}');
+      }
+    } catch (e) {
+      debugPrint("Export error: $e");
+      _showSaveConfirmation('Export failed: $e');
+    } finally {
+      setState(() { isExporting = false; exportMessage = ''; });
+    }
+  }
+
+  // --- DIALOGS AND UI BUILDERS ---
+
   void _showMixSettingsDialog() {
     showDialog(
       context: context,
@@ -922,6 +1061,23 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     setState(() => accompVolume = v);
                   })),
                   SizedBox(width: 45, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
+                ],
+              ),
+              Row(
+                children: [
+                  const SizedBox(width: 80, child: Text("Synth Vol", style: TextStyle(color: Colors.white70, fontSize: 13))),
+                  Expanded(child: Slider(
+                    value: synthMixVolume, min: 0.0, max: 2.0,
+                    activeColor: Colors.purpleAccent,
+                    onChanged: (v) {
+                      setDialogState(() => synthMixVolume = v);
+                      setState(() => synthMixVolume = v);
+                      if (activePlaybackSources.contains('synth')) {
+                        synthPlayer.setVolume(v);
+                      }
+                    },
+                  )),
+                  SizedBox(width: 45, child: Text("${(synthMixVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
                 ],
               ),
               const SizedBox(height: 12),
@@ -1168,109 +1324,347 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 
-  Future<void> _exportFinalMaster(String format) async {
-    if (originalAudioBytes == null) return;
-    setState(() { isExporting = true; exportMessage = "Rendering $format..."; });
+  void _showPitchPrintOptions() {
+    bool fullSong = true; // default
 
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['edit_manifest'] = json.encode({
-          "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
-          "edits": rawNotes
-        })
-        ..fields['task_id'] = currentTaskId ?? '' 
-        ..fields['export_format'] = format 
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
-
-      var response = await request.send();
-      var responseData = await http.Response.fromStream(response);
-      
-      if (responseData.statusCode != 200) {
-        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
-      }
-      
-      var data = jsonDecode(responseData.body);
-
-      if (data['status'] == 'success') {
-        final Uint8List bytes = base64.decode(data['master_mix_b64']);
-
-        String mimeType = 'audio/wav';
-        if (format == 'mp3') mimeType = 'audio/mpeg';
-        if (format == 'flac') mimeType = 'audio/flac';
-
-        String defaultName = originalFileName.contains('.')
-            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-            : originalFileName;
-        defaultName = '${defaultName}_voxray_master';
-
-        String? path = await FileSaver.instance.saveAs(
-          name: defaultName,
-          bytes: bytes,
-          fileExtension: format,
-          mimeType: MimeType.custom,
-          customMimeType: mimeType,
-        );
-        
-        if (path != null && path.isNotEmpty) {
-          _showSaveConfirmation('Master mix saved as ${format.toUpperCase()}.');
-        } else {
-          _showSaveConfirmation('Export cancelled.');
-        }
-      } else {
-        _showSaveConfirmation('Export failed: ${data['message'] ?? 'Unknown error'}');
-      }
-    } catch (e) {
-      _showSaveConfirmation('Export failed: $e');
-    } finally {
-      setState(() { isExporting = false; exportMessage = ''; });
-    }
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Row(children: [
+            Icon(Icons.fingerprint, color: Colors.amberAccent, size: 20),
+            SizedBox(width: 8),
+            Text('PitchPrint™', style: TextStyle(color: Colors.white)),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Generate a high-resolution pitch analysis graph.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              // Range selector
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    RadioListTile<bool>(
+                      value: true,
+                      groupValue: fullSong,
+                      activeColor: Colors.amberAccent,
+                      title: const Text('Full Song', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Complete performance analysis', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      onChanged: (v) => setDialogState(() => fullSong = v!),
+                    ),
+                    RadioListTile<bool>(
+                      value: false,
+                      groupValue: fullSong,
+                      activeColor: Colors.amberAccent,
+                      title: const Text('Visible Region', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Current timeline view only', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      onChanged: (v) => setDialogState(() => fullSong = v!),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Format selector
+              const Text('Format', style: TextStyle(color: Colors.white54, fontSize: 11)),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _formatChip('SVG', 'Vector', Colors.tealAccent),
+                  _formatChip('PNG', 'High-Res', Colors.amberAccent),
+                  _formatChip('PDF', 'Print', Colors.blueAccent),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amberAccent.withOpacity(0.2)),
+              icon: const Icon(Icons.fingerprint, color: Colors.amberAccent, size: 16),
+              label: const Text('Generate', style: TextStyle(color: Colors.amberAccent)),
+              onPressed: () {
+                Navigator.pop(context);
+                _downloadPitchPrint(fullSong: fullSong);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Future<void> _exportSynthAudio() async {
+  Widget _formatChip(String format, String label, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withOpacity(0.4)),
+          ),
+          child: Text(format, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+      ],
+    );
+  }
+
+  void _showDossier() {
     if (rawNotes.isEmpty) return;
-    setState(() { isSynthRendering = true; synthMessage = "Rendering synth audio..."; });
 
-    try {
-      final Uint8List wavBytes = renderNotesToWavBytes(
-        notes: rawNotes,
-        duration: songDuration,
-        settings: synthSettings,
-      );
-
-      String defaultName = originalFileName.contains('.')
-          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-          : (originalFileName.isNotEmpty ? originalFileName : projectName);
-      defaultName = '${defaultName}_synth';
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: defaultName,
-          bytes: wavBytes,
-          fileExtension: 'wav',
-          mimeType: MimeType.custom,
-          customMimeType: 'audio/wav',
-        );
-        _showSaveConfirmation('Synth audio exported as WAV.');
-      } else {
-        String? path = await FileSaver.instance.saveAs(
-          name: defaultName,
-          bytes: wavBytes,
-          fileExtension: 'wav',
-          mimeType: MimeType.custom,
-          customMimeType: 'audio/wav',
-        );
-        if (path != null && path.isNotEmpty) {
-          _showSaveConfirmation('Synth audio exported as WAV.');
-        } else {
-          _showSaveConfirmation('Export cancelled.');
-        }
-      }
-    } catch (e) {
-      debugPrint("Synth export failed: $e");
-      _showSaveConfirmation('Synth export failed: $e');
-    } finally {
-      setState(() { isSynthRendering = false; synthMessage = ''; });
+    // Helper
+    String midiToName(num midi) {
+      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      int m = midi.round();
+      return '${noteNames[m % 12]}${(m ~/ 12) - 1}';
     }
+
+    int totalNotes = 0;
+    double totalError = 0;
+    int perfectlyTuned = 0;
+    int mutedCount = 0;
+    int deletedCount = 0;
+
+    // Per-note-name error accumulation for worst-offender report
+    Map<String, List<double>> noteErrors = {};
+
+    bool hasXray = rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
+
+    for (var note in rawNotes) {
+      if (note['isDeleted'] == true) { deletedCount++; continue; }
+      if (note['isMuted'] == true) mutedCount++;
+      totalNotes++;
+
+      double effectiveCents;
+
+      // If xray contour exists, use actual pitch drift average from contour
+      if (note['contour'] != null && (note['contour'] as List).isNotEmpty) {
+        List<dynamic> contour = note['contour'];
+        double avgDrift = contour.map((c) => (c as num).toDouble().abs()).reduce((a, b) => a + b) / contour.length;
+        effectiveCents = avgDrift;
+      } else {
+        // Fall back to actual_midi fractional cents + any user shift
+        double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
+        double rawCents = (baseMidi - baseMidi.round()) * 100;
+        double shiftCents = (note['cents_shift'] ?? 0).toDouble();
+        effectiveCents = (rawCents + shiftCents).abs();
+      }
+
+      totalError += effectiveCents;
+      if (effectiveCents <= 10) perfectlyTuned++;
+
+      // Use actual midi for note name grouping
+      double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      String name = midiToName(baseMidi.round());
+      noteErrors.putIfAbsent(name, () => []);
+      noteErrors[name]!.add(effectiveCents);
+    }
+
+    double avgError = totalNotes > 0 ? totalError / totalNotes : 0;
+    double tunedPct = totalNotes > 0 ? (perfectlyTuned / totalNotes) * 100 : 0;
+
+    // Find worst 3 offenders by average error per note name
+    var worstNotes = noteErrors.entries.toList()
+      ..sort((a, b) {
+        double aAvg = a.value.reduce((x, y) => x + y) / a.value.length;
+        double bAvg = b.value.reduce((x, y) => x + y) / b.value.length;
+        return bAvg.compareTo(aAvg);
+      });
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Row(
+          children: [
+            const Text("Performance Dossier", style: TextStyle(color: Colors.white)),
+            const Spacer(),
+            if (hasXray)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.amberAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.fingerprint, color: Colors.amberAccent, size: 14),
+                  SizedBox(width: 4),
+                  Text('X-Ray', style: TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                ]),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
+                child: const Text('X-Ray not enabled', style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // --- SUMMARY ---
+              const Text("SUMMARY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              _dossierRow("Notes analyzed", "$totalNotes"),
+              _dossierRow("Muted notes", "$mutedCount"),
+              _dossierRow("Deleted notes", "$deletedCount"),
+              const SizedBox(height: 10),
+
+              // --- PITCH ACCURACY ---
+              const Text("PITCH ACCURACY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              if (!hasXray)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(8)),
+                  child: const Row(children: [
+                    Icon(Icons.info_outline, color: Colors.white38, size: 14),
+                    SizedBox(width: 8),
+                    Flexible(child: Text(
+                      'Enable X-Ray mode for detailed pitch contour analysis. '
+                      'Basic MIDI deviation shown below.',
+                      style: TextStyle(color: Colors.white38, fontSize: 11),
+                    )),
+                  ]),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.amberAccent.withOpacity(0.07), borderRadius: BorderRadius.circular(8)),
+                  child: const Row(children: [
+                    Icon(Icons.fingerprint, color: Colors.amberAccent, size: 14),
+                    SizedBox(width: 8),
+                    Flexible(child: Text(
+                      'X-Ray pitch contour data active. Variance reflects real pitch drift within each note.',
+                      style: TextStyle(color: Colors.amberAccent, fontSize: 11),
+                    )),
+                  ]),
+                ),
+              const SizedBox(height: 10),
+              _dossierRow("Avg pitch error", "${avgError.toStringAsFixed(1)} ¢"),
+              _dossierRow("Studio-accurate (≤10¢)", "${tunedPct.toStringAsFixed(1)}%"),
+              const SizedBox(height: 10),
+
+              // Color-coded accuracy bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: tunedPct / 100,
+                  backgroundColor: Colors.redAccent.withOpacity(0.3),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    tunedPct >= 80 ? Colors.tealAccent
+                    : tunedPct >= 50 ? Colors.amberAccent
+                    : Colors.redAccent,
+                  ),
+                  minHeight: 8,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // --- WORST OFFENDERS ---
+              if (worstNotes.isNotEmpty) ...[
+                const Text("MOST VARIANCE BY NOTE", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+                const SizedBox(height: 8),
+                ...worstNotes.take(5).map((entry) {
+                  double avg = entry.value.reduce((a, b) => a + b) / entry.value.length;
+                  Color c = avg <= 10 ? Colors.tealAccent : avg <= 25 ? Colors.amberAccent : Colors.redAccent;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      SizedBox(width: 36, child: Text(entry.key, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                      const SizedBox(width: 8),
+                      Expanded(child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: (avg / 100).clamp(0.0, 1.0),
+                          backgroundColor: Colors.white10,
+                          valueColor: AlwaysStoppedAnimation<Color>(c),
+                          minHeight: 6,
+                        ),
+                      )),
+                      const SizedBox(width: 8),
+                      Text('${avg.toStringAsFixed(1)}¢', style: TextStyle(color: c, fontSize: 11)),
+                      Text(' ×${entry.value.length}', style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                    ]),
+                  );
+                }),
+                const SizedBox(height: 16),
+              ],
+
+              // --- VERDICT ---
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: avgError < 15 ? Colors.teal.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: avgError < 15 ? Colors.tealAccent.withOpacity(0.4) : Colors.redAccent.withOpacity(0.4)),
+                ),
+                child: Text(
+                  avgError < 10
+                    ? "VERDICT: Exceptional intonation. Studio-ready performance."
+                    : avgError < 15
+                      ? "VERDICT: Highly accurate. Minor touch-ups may be desired."
+                      : avgError < 25
+                        ? "VERDICT: Moderate variance detected. Pitch correction recommended on flagged notes."
+                        : "VERDICT: Significant tuning issues. Review red-flagged notes in the piano roll.",
+                  style: TextStyle(
+                    color: avgError < 15 ? Colors.tealAccent : Colors.redAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
+        ],
+      ),
+    );
+  }
+
+  Widget _dossierRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  void _showSaveConfirmation(String message, {bool isPreview = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isPreview ? Colors.deepPurple[800] : Colors.grey[800],
+        duration: Duration(seconds: isPreview ? 6 : 4),
+        action: isPreview
+            ? SnackBarAction(
+                label: 'Play',
+                textColor: Colors.deepPurpleAccent,
+                onPressed: () => masterPlayer.play(),
+              )
+            : null,
+      ),
+    );
   }
 
   // --- THE NEW SINGLE ICON MENU TREE ---
@@ -1291,7 +1685,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         )
       ),
       const PopupMenuItem(value: 'mix_settings', child: ListTile(leading: Icon(Icons.tune), title: Text('Mix Settings'))),
-      const PopupMenuItem(value: 'dossier', child: ListTile(leading: Icon(Icons.analytics), title: Text('View Dossier'))),
       const PopupMenuDivider(),
       const PopupMenuItem(value: 'downloads', child: ListTile(leading: Icon(Icons.download, color: Colors.blueAccent), title: Text('Advanced Downloads'))),
       const PopupMenuItem(
@@ -1313,7 +1706,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       case 'redo': _redo(); break;
       case 'drag_pitch': setState(() => isDragMode = !isDragMode); break;
       case 'mix_settings': _showMixSettingsDialog(); break;
-      case 'dossier': _showDossier(); break;
       case 'downloads': _showAdvancedDownloadsDialog(); break;
       case 'reprocess': _forceReprocessXray(); break;
     }
@@ -1620,7 +2012,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             },
                           ),
                         ],
-                        
+
                         // Synth Controls
                         IconButton(
                           icon: const Icon(Icons.piano, size: 22, color: Colors.purpleAccent),
@@ -1657,4 +2049,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       ),
     );
   }
+}
+
+class MyCustomBytesSource extends StreamAudioSource {
+  final List<int> bytes;
+  MyCustomBytesSource(this.bytes);
+  @override Future<StreamAudioResponse> request([int? start, int? end]) async => StreamAudioResponse(
+    sourceLength: bytes.length, contentLength: (end ?? bytes.length) - (start ?? 0), offset: start ?? 0,
+    stream: Stream.value(bytes.sublist(start ?? 0, end ?? bytes.length)), contentType: 'audio/wav',
+  );
 }
