@@ -52,7 +52,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
       children: [
         SingleChildScrollView(
           controller: widget.verticalScrollController,
-          // Lock vertical scroll during drag-to-tune
           physics: draggingNoteIndex != null ? const NeverScrollableScrollPhysics() : null,
           scrollDirection: Axis.vertical,
           child: Row(
@@ -84,7 +83,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         if (widget.dawState.isScrubMode) {
                           double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
                           seekTime = seekTime.clamp(0.0, widget.dawState.songDuration);
-
                           widget.dawState.masterPlayer.seek(Duration(milliseconds: (seekTime * 1000).round()));
                         }
                       }
@@ -93,7 +91,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                       if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
                         double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
                         seekTime = seekTime.clamp(0.0, widget.dawState.songDuration);
-
                         widget.dawState.setState(() {
                           widget.dawState.currentPosition = seekTime;
                         });
@@ -103,20 +100,23 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                   },
                   child: SingleChildScrollView(
                     controller: widget.horizontalScrollController,
-                    // Lock horizontal scroll during drag-to-tune to prevent accidental timeline shifting
                     physics: draggingNoteIndex != null ? const NeverScrollableScrollPhysics() : null,
                     scrollDirection: Axis.horizontal,
                     child: GestureDetector(
                       onTapDown: (details) {
                         if (widget.dawState.isDragMode) return; 
+                        const double touchSlop = 24.0; // Expanded hit area
+                        
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
                           if (pNote['isDeleted'] == true) continue;
+                          
                           double startX = pNote['start_time'] * widget.dawState.zoomX;
                           double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
                           double yY = (maxMidi - pNote['display_midi']) * widget.dawState.zoomY;
                           double visualY = yY - ((pNote['display_cents'] / 100.0) * widget.dawState.zoomY);
-                          Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2), endX, visualY + (widget.dawState.zoomY / 2));
+                          
+                          Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2) - touchSlop, endX, visualY + (widget.dawState.zoomY / 2) + touchSlop);
                           if (hitBox.contains(details.localPosition)) {
                             NoteInspector.show(context, widget.dawState, i, widget.dawState.rawNotes[i]);
                             break;
@@ -124,14 +124,18 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         }
                       },
                       onPanStart: widget.dawState.isDragMode ? (details) {
+                        const double touchSlop = 24.0; // Expanded hit area
+                        
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
                           if (pNote['isDeleted'] == true) continue;
+                          
                           double startX = pNote['start_time'] * widget.dawState.zoomX;
                           double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
                           double yY = (maxMidi - pNote['display_midi']) * widget.dawState.zoomY;
                           double visualY = yY - ((pNote['display_cents'] / 100.0) * widget.dawState.zoomY);
-                          Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2), endX, visualY + (widget.dawState.zoomY / 2));
+                          
+                          Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2) - touchSlop, endX, visualY + (widget.dawState.zoomY / 2) + touchSlop);
                           
                           if (hitBox.contains(details.localPosition)) {
                             widget.dawState.registerUndoSnapshot(); 
@@ -170,6 +174,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           minMidi: minMidi,
                           maxMidi: maxMidi,
                           isXrayMode: widget.dawState.isXrayMode,
+                          draggingNoteIndex: draggingNoteIndex,
+                          initialActualMidi: initialActualMidi,
                         ),
                       ),
                     ),
@@ -242,6 +248,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
   final int minMidi;
   final int maxMidi;
   final bool isXrayMode;
+  final int? draggingNoteIndex;
+  final double? initialActualMidi;
 
   AdvancedPianoRollPainter({
     required this.notes,
@@ -250,6 +258,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
     required this.minMidi,
     required this.maxMidi,
     this.isXrayMode = false,
+    this.draggingNoteIndex,
+    this.initialActualMidi,
   });
 
   String getNoteName(int midi) {
@@ -273,13 +283,41 @@ class AdvancedPianoRollPainter extends CustomPainter {
       canvas.drawLine(Offset(0, topY), Offset(size.width, topY), Paint()..color = Colors.white.withOpacity(0.05));
     }
 
-    for (var note in notes) {
+    for (int i = 0; i < notes.length; i++) {
+      var note = notes[i];
       if (note['isDeleted'] == true) continue;
 
       double startX = note['start_time'] * zoomX;
       double endX = (note['start_time'] + ((note['end_time'] - note['start_time']) * (note['time_ratio'] ?? 1.0))) * zoomX;
       double topY = (maxMidi - note['display_midi']) * zoomY;
       double noteWidth = endX - startX;
+      double padding = zoomY * 0.15; 
+
+      // --- PAINT GHOST NOTE IF DRAGGING ---
+      if (i == draggingNoteIndex && initialActualMidi != null) {
+        int initialNearest = initialActualMidi!.round();
+        double initialCents = (initialActualMidi! - initialNearest) * 100 + (note['cents_shift'] ?? 0);
+        
+        double ghostTopY = (maxMidi - initialNearest) * zoomY;
+        double ghostVisualY = ghostTopY - ((initialCents / 100.0) * zoomY);
+        
+        Rect ghostRect = Rect.fromLTRB(startX, ghostVisualY + padding, endX, ghostVisualY + zoomY - padding);
+        
+        // Draw the translucent outline of where the note started
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(ghostRect, const Radius.circular(4)), 
+          Paint()
+            ..color = Colors.white.withOpacity(0.15)
+            ..style = PaintingStyle.fill
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(ghostRect, const Radius.circular(4)), 
+          Paint()
+            ..color = Colors.white.withOpacity(0.4)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.0
+        );
+      }
 
       int baselineCents = note['xray_cents']?.round() ?? note['display_cents'];
       int totalCents = (baselineCents + (note['cents_shift'] ?? 0)) as int;
@@ -293,12 +331,16 @@ class AdvancedPianoRollPainter extends CustomPainter {
         noteColor = Colors.redAccent;
       }
       if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
+      
+      // Make the active dragging note slightly transparent so you can see the grid behind it
+      if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
 
-      double padding = zoomY * 0.15; 
-      Rect noteRect = Rect.fromLTRB(startX, topY + padding, endX, topY + zoomY - padding);
+      double visualY = topY - ((note['display_cents'] / 100.0) * zoomY);
+      Rect noteRect = Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding);
+      
       canvas.drawRRect(
         RRect.fromRectAndRadius(noteRect, const Radius.circular(4)), 
-        Paint()..color = isXrayMode ? noteColor.withOpacity(0.4) : noteColor
+        Paint()..color = isXrayMode && i != draggingNoteIndex ? noteColor.withOpacity(0.4) : noteColor
       );
 
       // Xray contour line
@@ -313,7 +355,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
             double rawCents = contour[j].toDouble();
             double manipulatedCents = (rawCents * vibrato) + shift;
             double px = startX + (j * stepX);
-            double py = topY + (zoomY / 2) - ((manipulatedCents / 100.0) * zoomY);
+            double py = visualY + (zoomY / 2) - ((manipulatedCents / 100.0) * zoomY);
             if (j == 0) contourPath.moveTo(px, py);
             else contourPath.lineTo(px, py);
           }
@@ -339,11 +381,11 @@ class AdvancedPianoRollPainter extends CustomPainter {
       )..layout();
 
       if (noteWidth >= tp.width + 6 && zoomY > 14) {
-        tp.paint(canvas, Offset(startX + 3, topY + (zoomY / 2) - (tp.height / 2)));
+        tp.paint(canvas, Offset(startX + 3, visualY + (zoomY / 2) - (tp.height / 2)));
       } else if (noteWidth >= 4) {
         double labelX = startX;
-        double labelY = topY - tp.height - 3;
-        if (labelY < 0) labelY = topY + zoomY + 2;
+        double labelY = visualY - tp.height - 3;
+        if (labelY < 0) labelY = visualY + zoomY + 2;
 
         Rect bgRect = Rect.fromLTWH(labelX - 2, labelY - 1, tp.width + 4, tp.height + 2);
         canvas.drawRRect(
