@@ -1993,7 +1993,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       ),
       body: SafeArea(
         child: isLiveModeActive
-            ? const LivePedagogyView()
+            ? LivePedagogyView(
+                onExit: () => setState(() => isLiveModeActive = false) // Flip the state back to false
+              )
             : Column(
                 children: [
                   // --- 1. CURRENT FILE & PROGRESS BANNER ---
