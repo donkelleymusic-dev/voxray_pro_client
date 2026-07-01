@@ -40,7 +40,6 @@ class _LivePedagogyViewState extends State<LivePedagogyView> {
           
       debugPrint("❌ $errorMsg");
       
-      // Actually show the user the error in the UI
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -52,6 +51,91 @@ class _LivePedagogyViewState extends State<LivePedagogyView> {
       }
       return;
     }
+
+    final stream = await _audioRecorder.startStream(
+      const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 44100, numChannels: 1)
+    );
+    
+    stream.listen((Uint8List data) async { 
+      ByteData byteData = ByteData.sublistView(data);
+      List<double> normalizedData = List<double>.generate(
+        byteData.lengthInBytes ~/ 2, 
+        (i) => byteData.getInt16(i * 2, Endian.little) / 32768.0
+      );
+      
+      _audioBuffer.addAll(normalizedData);
+
+      while (_audioBuffer.length >= _targetBufferSize) {
+        List<double> processBuffer = _audioBuffer.sublist(0, _targetBufferSize);
+        _audioBuffer.removeRange(0, _targetBufferSize);
+
+        // --- FILTER 1: RMS NOISE GATE ---
+        // Calculate the root mean square (volume) of the buffer.
+        // Kills background rustling, distant talking, and quiet handling noise.
+        double sumSquares = 0.0;
+        for (double s in processBuffer) {
+          sumSquares += s * s;
+        }
+        double rms = sqrt(sumSquares / processBuffer.length);
+        
+        // 0.01 is a solid baseline threshold for a -1.0 to 1.0 normalized buffer.
+        if (rms < 0.01) { 
+          if (mounted) {
+            setState(() {
+              _pitchHistory.add(null);
+              if (_pitchHistory.length > _maxFrames) _pitchHistory.removeAt(0);
+            });
+          }
+          continue;
+        }
+
+        final result = await _pitchDetector?.getPitchFromFloatBuffer(processBuffer); 
+        
+        if (!mounted) return;
+        
+        setState(() {
+          bool validPitch = false;
+
+          // Require a relatively confident pitch (0.65)
+          if (result != null && result.pitched && result.probability > 0.65) {
+            double hz = result.pitch;
+            
+            // --- FILTER 2: FREQUENCY BOUNDS ---
+            // Your canvas draws MIDI 36 (65.4 Hz) to MIDI 84 (1046.5 Hz).
+            // Foot taps register as < 40Hz. Bow squeaks register > 2000Hz.
+            // Bounding the detection to 60Hz - 1100Hz kills the extremes cleanly.
+            if (hz > 60.0 && hz < 1100.0) {
+              double midiValue = 69 + 12 * (log(hz / 440.0) / ln2);
+              
+              // --- FILTER 3: TRANSIENT SPIKE REJECTION ---
+              // If the pitch jumps by more than an octave+ (14 semitones) in a single 
+              // 46ms frame, it is almost certainly a mechanical transient (click/bang).
+              bool isSpike = false;
+              for (int i = _pitchHistory.length - 1; i >= 0 && i >= _pitchHistory.length - 3; i--) {
+                 if (_pitchHistory[i] != null) {
+                    if ((midiValue - _pitchHistory[i]!).abs() > 14.0) {
+                       isSpike = true;
+                    }
+                    break;
+                 }
+              }
+
+              if (!isSpike) {
+                _pitchHistory.add(midiValue);
+                validPitch = true;
+              }
+            }
+          }
+          
+          if (!validPitch) {
+            _pitchHistory.add(null); 
+          }
+          
+          if (_pitchHistory.length > _maxFrames) _pitchHistory.removeAt(0);
+        });
+      }
+    });
+  }
 
     final stream = await _audioRecorder.startStream(
       const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 44100, numChannels: 1)
