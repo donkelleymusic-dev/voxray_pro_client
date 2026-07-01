@@ -1783,8 +1783,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         )
       ),
       const PopupMenuItem(value: 'mix_settings', child: ListTile(leading: Icon(Icons.tune), title: Text('Mix Settings'))),
+      const PopupMenuItem(value: 'show_dossier', child: ListTile(leading: Icon(Icons.assessment, color: Colors.greenAccent), title: Text('View GUI Dossier'))),
       const PopupMenuDivider(),
       const PopupMenuItem(value: 'downloads', child: ListTile(leading: Icon(Icons.download, color: Colors.blueAccent), title: Text('Advanced Downloads'))),
+      PopupMenuItem(
+        value: 'live_mode', 
+        child: ListTile(
+          leading: Icon(Icons.mic_external_on, color: isLiveModeActive ? Colors.redAccent : Colors.white), 
+          title: Text(isLiveModeActive ? 'Disable Live Pedagogy' : 'Enable Live Pedagogy', style: TextStyle(color: isLiveModeActive ? Colors.redAccent : Colors.white))
+        )
+      ),
       const PopupMenuItem(
         value: 'reprocess', 
         child: ListTile(
@@ -1805,7 +1813,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       case 'redo': _redo(); break;
       case 'drag_pitch': setState(() => isDragMode = !isDragMode); break;
       case 'mix_settings': _showMixSettingsDialog(); break;
+      case 'show_dossier': _showDossier(); break;
       case 'downloads': _showAdvancedDownloadsDialog(); break;
+      case 'live_mode': setState(() => isLiveModeActive = !isLiveModeActive); break; // Added Live Mode routing
       case 'reprocess': _forceReprocessXray(); break;
     }
   }
@@ -1939,6 +1949,24 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             ],
           ),
           if (!isLiveModeActive) ...[
+            // Undo Button
+            IconButton(
+              icon: const Icon(Icons.undo),
+              tooltip: 'Undo',
+              onPressed: undoStack.isNotEmpty ? _undo : null,
+            ),
+            // Redo Button
+            IconButton(
+              icon: const Icon(Icons.redo),
+              tooltip: 'Redo',
+              onPressed: redoStack.isNotEmpty ? _redo : null,
+            ),
+            // Drag Pitch Toggle
+            IconButton(
+              icon: Icon(Icons.pan_tool, color: isDragMode ? Colors.amberAccent : Colors.white),
+              tooltip: isDragMode ? 'Disable Drag Pitch' : 'Enable Drag Pitch',
+              onPressed: () => setState(() => isDragMode = !isDragMode),
+            ),
             // Dropdown selection matrix for active editable focus stem track targeting
             if (allStemsNotes.isNotEmpty)
               Padding(
