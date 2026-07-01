@@ -440,14 +440,17 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               loopEndBoundary = songDuration; 
               isLoading = false;
             });
-              } else if (statusData['status'] == 'error') {
-                timer.cancel();
-                setState(() { 
-                  isLoading = false; 
-                  processingMessage = "Error: ${statusData['message']}"; 
-                });
-                _showSaveConfirmation('Processing Error: ${statusData['message']}');
-              }
+            if (activePlaybackSources.contains('stem_$targetStem')) {
+              _loadStemPlayerSource(targetStem);
+            }
+          } else if (statusData['status'] == 'error') {
+            timer.cancel();
+            setState(() { 
+              isLoading = false; 
+              processingMessage = "Error: ${statusData['message']}"; 
+            });
+            _showSaveConfirmation('Processing Error: ${statusData['message']}');
+          }
         }
       } catch (e) {
         debugPrint("Polling error: $e");
@@ -466,11 +469,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
 
     try {
-      var res = await http.post(
-        Uri.parse('$apiBase/generate-stem-on-demand'), 
-        body: {'task_id': currentTaskId!, 'target_stem': targetToGenerate}
-      );
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-stem-on-demand'))
+        ..fields['task_id'] = currentTaskId!
+        ..fields['target_stem'] = targetToGenerate;
+      if (originalAudioBytes != null) {
+        request.files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: originalFileName));
+      }
 
+      var res = await request.send();
       if (res.statusCode == 200) {
          _pollForStemData(currentTaskId!, targetToGenerate);
       } else {
@@ -740,9 +746,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     } else if (key.startsWith('stem_')) {
       String stemKey = key.substring(5);
       if (enabled) {
-        await _loadStemPlayerSource(stemKey);
-        if (stemPlayers.containsKey(stemKey)) {
-          await stemPlayers[stemKey]!.setVolume(1.0);
+        if (!generatedStems.contains(stemKey)) {
+          setState(() => activeEditableStem = stemKey);
+          await _generateStemOnDemand();
+        } else {
+          await _loadStemPlayerSource(stemKey);
+          if (stemPlayers.containsKey(stemKey)) {
+            await stemPlayers[stemKey]!.setVolume(1.0);
+          }
         }
       } else {
         if (stemPlayers.containsKey(stemKey)) {
@@ -2084,10 +2095,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       );
                     }).toList(),
                     onChanged: (String? newSelection) {
-                      if (newSelection != null) {
+                      if (newSelection != null && newSelection != activeEditableStem) {
                         setState(() {
                           activeEditableStem = newSelection;
                         });
+                        if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null) {
+                          _generateStemOnDemand();
+                        }
                       }
                     },
                   ),
