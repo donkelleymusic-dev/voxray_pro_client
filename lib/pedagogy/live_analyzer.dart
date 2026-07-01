@@ -137,54 +137,6 @@ class _LivePedagogyViewState extends State<LivePedagogyView> {
     });
   }
 
-    final stream = await _audioRecorder.startStream(
-      const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 44100, numChannels: 1)
-    );
-    
-    stream.listen((Uint8List data) async { 
-      // Safely read only the exact valid bytes as Little-Endian PCM
-      ByteData byteData = ByteData.sublistView(data);
-      List<double> normalizedData = List<double>.generate(
-        byteData.lengthInBytes ~/ 2, 
-        (i) => byteData.getInt16(i * 2, Endian.little) / 32768.0
-      );
-      
-      // Accumulate the data
-      _audioBuffer.addAll(normalizedData);
-
-      //Int16List intData = data.buffer.asInt16List();
-      
-      // Normalize 16-bit PCM to -1.0 to 1.0 floats
-      //List<double> normalizedData = intData.map((e) => e / 32768.0).toList();
-      
-      // Accumulate the data
-      //_audioBuffer.addAll(normalizedData);
-
-      // Only process when we have enough data for the algorithm
-      while (_audioBuffer.length >= _targetBufferSize) {
-        List<double> processBuffer = _audioBuffer.sublist(0, _targetBufferSize);
-        _audioBuffer.removeRange(0, _targetBufferSize);
-
-        final result = await _pitchDetector?.getPitchFromFloatBuffer(processBuffer); 
-        
-        if (!mounted) return;
-        
-        setState(() {
-          // The human voice (especially humming) contains a lot of breathiness and unpitched overtones. 
-          // A threshold of 0.8 is quite strict for a live phone microphone.  try 0.6 or 0.7:
-          if (result != null && result.pitched && result.probability > 0.6) {
-            double midiValue = 69 + 12 * (log(result.pitch / 440.0) / ln2);
-            _pitchHistory.add(midiValue);
-          } else {
-            _pitchHistory.add(null); 
-          }
-          
-          if (_pitchHistory.length > _maxFrames) _pitchHistory.removeAt(0);
-        });
-      }
-    });
-  }
-
   @override 
   void dispose() { 
     _audioRecorder.dispose(); 
