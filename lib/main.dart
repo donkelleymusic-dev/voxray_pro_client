@@ -27,14 +27,13 @@
 // ==============================================================================
 
 import 'dart:io';
-import 'package:flutter/foundation.dart'; // for kIsWeb
-import 'package:path_provider/path_provider.dart'; // for getTemporaryDirectory
+import 'package:flutter/foundation.dart'; 
+import 'package:path_provider/path_provider.dart'; 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async'; 
-//import 'dart:html' as html;
 import 'package:file_saver/file_saver.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:typed_data';
@@ -59,46 +58,39 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   final AudioPlayer masterPlayer = AudioPlayer();
   final AudioPlayer synthPlayer = AudioPlayer();
   
-  // Dynamic Map of AudioPlayers corresponding to each generated stem layer
   final Map<String, AudioPlayer> stemPlayers = {};
 
-  // --- Multi-source playback mixer ---
-  // masterPlayer remains the main transport clock.
-  Set<String> activePlaybackSources = {'original'};
-  final Map<String, Uint8List> cachedStemBytes = {}; // Caches light Opus bytes per stem
+  Set<String> activePlaybackSources = {};
+  final Map<String, Uint8List> cachedStemBytes = {}; 
   bool isFetchingStems = false;
 
-  // --- Note-data synth engine ---
   SynthSettings synthSettings = const SynthSettings();
   bool isSynthRendering = false;
   String synthMessage = '';
   double synthMixVolume = 1.0;
   
-  // Viewport Scrollers
   final ScrollController horizontalScrollController = ScrollController();
   final ScrollController verticalScrollController = ScrollController();
   final ScrollController rulerScrollController = ScrollController();
   
-  // --- Multi-Stem Multi-Instrument Orchestration Map ---
   Map<String, List<dynamic>> allStemsNotes = {
     'vocals': []
   };
-  String activeEditableStem = 'vocals'; // Tracks which stem is currently display-focused / editable
+  String activeEditableStem = 'vocals'; 
 
-  // Transparent gateway helper to link existing canvas layers seamlessly
+  Set<String> targetStemsSelection = {'vocals', 'instrumental'};
+  Set<String> generatedStems = {}; 
+  bool isOriginalMixAvailable = false; 
+
   List<dynamic> get rawNotes => allStemsNotes[activeEditableStem] ?? [];
   set rawNotes(List<dynamic> updatedNotes) {
     allStemsNotes[activeEditableStem] = updatedNotes;
   }
 
-  // Available backend targeting taxonomies grouped by classification
   final List<String> popStems = ['vocals', 'instrumental', 'drums', 'bass', 'guitar', 'piano', 'other'];
   final List<String> orchStems = ['strings', 'brass', 'woodwinds', 'percussion'];
   final List<String> forensicStems = ['forensic_id'];
 
-  // Current project checklist matrix configuration stored to project files
-  Set<String> targetStemsSelection = {'vocals', 'instrumental'};
-  
   List<Map<String, dynamic>> markers = [];
   List<String> undoStack = [];
   List<String> redoStack = [];
@@ -109,7 +101,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Timer? pollingTimer;     
   String? currentTaskId;       
 
-  // xray mode (polyphonic pitch analysis)
   bool isXrayMode = false;
   bool isXrayProcessing = false;
   String originalFileName = "Unknown File"; 
@@ -120,7 +111,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   double zoomX = 150.0;
   double zoomY = 24.0;
   
-  // Global DAW Bounds
   final int minMidi = 36;
   final int maxMidi = 84;
 
@@ -184,7 +174,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => currentPosition = currentT);
 
       if (masterPlayer.playing) {
-        // Horizontal: keep playhead stationary at 150px from left
         double targetX = (currentT * zoomX) - 150.0;
         if (targetX < 0) targetX = 0;
         if (horizontalScrollController.hasClients) {
@@ -193,7 +182,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           );
         }
 
-        // Vertical: follow highest active note
         if (verticalScrollController.hasClients && rawNotes.isNotEmpty) {
           var activeNotes = rawNotes.where((n) {
             if (n['isDeleted'] == true) return false;
@@ -203,7 +191,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           }).toList();
 
           if (activeNotes.isNotEmpty) {
-            // Find the median pitch of active notes (better than highest for polyphony)
             List<int> midiValues = activeNotes
                 .map<int>((n) => ((n['display_midi'] ?? n['actual_midi'] ?? 60)).round())
                 .toList()
@@ -254,7 +241,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     _seekAllPlayers(Duration(milliseconds: (seconds * 1000).round()));
     setState(() => currentPosition = seconds);
 
-    // Scroll grid so the jumped-to position appears at the stationary playhead (150px offset)
     double targetX = (seconds * zoomX) - 150.0;
     if (targetX < 0) targetX = 0;
 
@@ -272,6 +258,222 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         );
       }
     });
+  }
+
+  // ============================================================
+  // CORE API WORKFLOWS
+  // ============================================================
+
+  Future<Map<String, String>?> _showUploadTypeDialog() async {
+    return showDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        String selectedType = 'mix';
+        String selectedStem = 'vocals';
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.grey[900],
+              title: const Text("Audio Upload Type", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  RadioListTile<String>(
+                    title: const Text("Full Mix", style: TextStyle(color: Colors.white)),
+                    subtitle: const Text("Contains multiple instruments.", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    value: 'mix',
+                    groupValue: selectedType,
+                    activeColor: Colors.tealAccent,
+                    onChanged: (val) => setDialogState(() => selectedType = val!),
+                  ),
+                  RadioListTile<String>(
+                    title: const Text("Single Stem", style: TextStyle(color: Colors.white)),
+                    subtitle: const Text("Already isolated instrument.", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    value: 'stem',
+                    groupValue: selectedType,
+                    activeColor: Colors.tealAccent,
+                    onChanged: (val) => setDialogState(() => selectedType = val!),
+                  ),
+                  if (selectedType == 'stem') ...[
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16.0, bottom: 8.0, left: 16.0),
+                      child: Text("Identify this stem:", style: TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        dropdownColor: Colors.grey[850],
+                        value: selectedStem,
+                        items: [...popStems, ...orchStems, ...forensicStems].map((s) {
+                          return DropdownMenuItem(value: s, child: Text(s.toUpperCase(), style: const TextStyle(color: Colors.white)));
+                        }).toList(),
+                        onChanged: (val) => setDialogState(() => selectedStem = val!),
+                      ),
+                    ),
+                  ]
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context, null), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                  onPressed: () => Navigator.pop(context, {'type': selectedType, 'stem': selectedStem}), 
+                  child: const Text("Proceed")
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
+  _loadFileAndAnalyze() async {
+    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
+    if (result == null) return;
+
+    var uploadOptions = await _showUploadTypeDialog();
+    if (uploadOptions == null) return;
+
+    Uint8List? audioBytes;
+    if (result.files.single.bytes != null) {
+      audioBytes = result.files.single.bytes!;
+    } else if (result.files.single.path != null) {
+      audioBytes = await File(result.files.single.path!).readAsBytes();
+    } else return;
+
+    setState(() {
+      isLoading = true;
+      processingProgress = 0.0;
+      originalAudioBytes = audioBytes;
+      originalFileName = result.files.single.name; 
+      originalFilePath = result.files.single.path ?? "";
+      
+      cachedStemBytes.clear();
+      for (var player in stemPlayers.values) player.stop();
+      stemPlayers.clear();
+      activePlaybackSources.clear();
+      allStemsNotes.clear();
+      generatedStems.clear();
+
+      if (uploadOptions['type'] == 'mix') {
+        isOriginalMixAvailable = true;
+        activePlaybackSources.add('original');
+        processingMessage = "Caching Full Mix...";
+      } else {
+        isOriginalMixAvailable = false;
+        activeEditableStem = uploadOptions['stem']!;
+        activePlaybackSources.add('stem_$activeEditableStem');
+        targetStemsSelection.add(activeEditableStem); // Ensure it's in the dropdown
+        processingMessage = "Analyzing ${activeEditableStem.toUpperCase()} stem notes...";
+      }
+    });
+
+    await synthPlayer.stop();
+
+    try {
+      if (kIsWeb) {
+        await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!, contentType: 'audio/wav'));
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/preview_audio.wav');
+        await tempFile.writeAsBytes(originalAudioBytes!);
+        await masterPlayer.setFilePath(tempFile.path);
+      }
+    } catch (e) {
+      debugPrint("Audio preview setup failed (non-fatal): $e");
+    }
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+        ..fields['upload_type'] = uploadOptions['type']! 
+        ..fields['stem_target'] = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'none'
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: result.files.single.name));
+  
+      var response = await request.send();
+      if (response.statusCode != 200) throw Exception("Server rejected file upload");
+      
+      var data = json.decode(await response.stream.bytesToString());
+      String taskId = data['task_id'];
+      currentTaskId = taskId;
+
+      if (uploadOptions['type'] == 'mix') {
+        setState(() {
+          isLoading = false;
+          songDuration = (data['duration'] ?? 30.0).toDouble(); 
+          loopEndBoundary = songDuration;
+        });
+        return;
+      }
+
+      _pollForStemData(taskId, uploadOptions['stem']!);
+
+    } catch (e) {
+      debugPrint("Initialization Failed: $e");
+      setState(() { isLoading = false; processingMessage = "Failed to start."; });
+    }
+  }
+
+  void _pollForStemData(String taskId, String targetStem) {
+    pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      try {
+        var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$taskId'));
+        if (statusRes.statusCode == 200) {
+          var statusData = json.decode(statusRes.body);
+          
+          setState(() {
+            processingProgress = (statusData['progress'] ?? 0).toDouble() / 100.0;
+            processingMessage = statusData['message'] ?? "Processing...";
+          });
+
+          if (statusData['status'] == 'complete') {
+            timer.cancel();
+            setState(() {
+              allStemsNotes[targetStem] = json.decode(json.encode(statusData['result']['notes']));
+              generatedStems.add(targetStem);
+              songDuration = statusData['result']['duration'].toDouble();
+              loopEndBoundary = songDuration; 
+              isLoading = false;
+            });
+          } else if (statusData['status'] == 'error') {
+            timer.cancel();
+            setState(() { isLoading = false; processingMessage = "Error: ${statusData['message']}"; });
+          }
+        }
+      } catch (e) {
+        debugPrint("Polling error: $e");
+      }
+    });
+  }
+
+  Future<void> _generateStemOnDemand() async {
+    if (currentTaskId == null) return;
+    String targetToGenerate = activeEditableStem;
+
+    setState(() {
+      isLoading = true;
+      processingProgress = 0.0;
+      processingMessage = "Isolating $targetToGenerate & extracting notes...";
+    });
+
+    try {
+      var res = await http.post(
+        Uri.parse('$apiBase/generate-stem-on-demand'), 
+        body: {'task_id': currentTaskId!, 'target_stem': targetToGenerate}
+      );
+
+      if (res.statusCode == 200) {
+         _pollForStemData(currentTaskId!, targetToGenerate);
+      } else {
+        throw Exception("Server failed to initiate generation.");
+      }
+    } catch (e) {
+      setState(() { isLoading = false; processingMessage = "Generation failed: $e"; });
+    }
   }
 
   Future<void> _forceReprocessXray() async {
@@ -336,6 +538,400 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       _showSaveConfirmation('Reprocess failed: $e');
     } finally {
       setState(() => isXrayProcessing = false);
+    }
+  }
+
+  Future<void> _toggleXrayMode() async {
+    if (rawNotes.isEmpty || currentTaskId == null) return;
+    
+    if (isXrayMode || rawNotes.any((n) => n.containsKey('contour'))) {
+      setState(() => isXrayMode = !isXrayMode);
+      return;
+    }
+
+    setState(() { isXrayProcessing = true; isXrayMode = true; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
+        ..fields['task_id'] = currentTaskId!
+        ..fields['notes_manifest'] = jsonEncode(rawNotes);
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+      
+      if (responseData.statusCode == 200) {
+        var data = jsonDecode(responseData.body);
+        if (data['status'] == 'success') {
+          setState(() {
+            rawNotes = data['notes'];
+            registerUndoSnapshot(); 
+          });
+        } else {
+          _showSaveConfirmation('XRAY failed: ${data['message']}');
+          setState(() => isXrayMode = false);
+        }
+      }
+    } catch (e) {
+      debugPrint("XRAY error: $e");
+      setState(() => isXrayMode = false);
+    } finally {
+      setState(() => isXrayProcessing = false);
+    }
+  }
+
+  // ============================================================
+  // MULTI-SOURCE PLAYBACK MIXER
+  // ============================================================
+
+  Future<void> _seekAllPlayers(Duration position) async {
+    final futures = <Future>[masterPlayer.seek(position)];
+    for (var player in stemPlayers.values) {
+      if (player.audioSource != null) futures.add(player.seek(position));
+    }
+    if (synthPlayer.audioSource != null) futures.add(synthPlayer.seek(position));
+    await Future.wait(futures);
+  }
+
+  Future<void> _playAllPlayers() async {
+    final futures = <Future>[masterPlayer.play()];
+    for (var player in stemPlayers.values) {
+      if (player.audioSource != null) futures.add(player.play());
+    }
+    if (synthPlayer.audioSource != null) futures.add(synthPlayer.play());
+    await Future.wait(futures);
+  }
+
+  Future<void> _pauseAllPlayers() async {
+    final futures = <Future>[masterPlayer.pause()];
+    for (var player in stemPlayers.values) {
+      if (player.audioSource != null) futures.add(player.pause());
+    }
+    if (synthPlayer.audioSource != null) futures.add(synthPlayer.seek(masterPlayer.position));
+    await Future.wait(futures);
+  }
+
+  Future<void> _toggleMasterTransport() async {
+    if (masterPlayer.playing) {
+      await _pauseAllPlayers();
+    } else {
+      await _playAllPlayers();
+    }
+  }
+
+  Future<Uint8List> _fetchStemBytes(String stemName) async {
+    var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+      ..fields['edit_manifest'] = jsonEncode({
+        'track_settings': {'target_volume': 1.0, 'accomp_volume': 0.0, 'apply_denoise': applyDenoise},
+        'edits': allStemsNotes[stemName] ?? [],
+      })
+      ..fields['task_id'] = currentTaskId ?? ''
+      ..fields['export_format'] = 'opus' 
+      ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+
+    var response = await request.send();
+    var responseData = await http.Response.fromStream(response);
+    if (responseData.statusCode != 200) {
+      throw Exception("Server error ${responseData.statusCode}");
+    }
+    var result = jsonDecode(responseData.body);
+    if (result['status'] != 'success') {
+      throw Exception(result['message'] ?? 'Unknown error');
+    }
+    return base64Decode(result['master_mix_b64']);
+  }
+
+  Future<void> _loadStemPlayerSource(String stemName) async {
+    if (originalAudioBytes == null) return;
+    setState(() { isFetchingStems = true; });
+
+    try {
+      final Uint8List bytes = cachedStemBytes[stemName] ?? await _fetchStemBytes(stemName);
+      cachedStemBytes[stemName] = bytes;
+
+      if (!stemPlayers.containsKey(stemName)) {
+        stemPlayers[stemName] = AudioPlayer();
+        stemPlayers[stemName]!.playerStateStream.listen((state) {
+          if (mounted) setState(() {});
+        });
+      }
+
+      final targetPlayer = stemPlayers[stemName]!;
+
+      if (kIsWeb) {
+        await targetPlayer.setAudioSource(MyCustomBytesSource(bytes, contentType: 'audio/ogg'));
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/voxray_stem_$stemName.opus');
+        await tempFile.writeAsBytes(bytes);
+        await targetPlayer.setFilePath(tempFile.path);
+      }
+
+      await targetPlayer.seek(masterPlayer.position);
+      if (masterPlayer.playing) await targetPlayer.play();
+    } catch (e) {
+      debugPrint("Stem track layer $stemName build failed: $e");
+      _showSaveConfirmation('Stem layer $stemName unavailable: $e');
+      setState(() => activePlaybackSources.remove('stem_$stemName'));
+    } finally {
+      setState(() { isFetchingStems = false; });
+    }
+  }
+
+  Future<void> _loadSynthSource() async {
+    if (rawNotes.isEmpty) return;
+    setState(() { isSynthRendering = true; synthMessage = "Synthesizing note data..."; });
+
+    try {
+      final Uint8List wavBytes = renderNotesToWavBytes(
+        notes: rawNotes,
+        duration: songDuration,
+        settings: synthSettings,
+      );
+
+      if (kIsWeb) {
+        await synthPlayer.setAudioSource(MyCustomBytesSource(wavBytes, contentType: 'audio/wav'));
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/voxray_synth_layer.wav');
+        await tempFile.writeAsBytes(wavBytes);
+        await synthPlayer.setFilePath(tempFile.path);
+      }
+
+      await synthPlayer.seek(masterPlayer.position);
+      if (masterPlayer.playing) await synthPlayer.play();
+    } catch (e) {
+      debugPrint("Synth layer load failed: $e");
+      _showSaveConfirmation('Synth layer failed: $e');
+      setState(() => activePlaybackSources.remove('synth'));
+    } finally {
+      setState(() { isSynthRendering = false; synthMessage = ''; });
+    }
+  }
+
+  Future<void> _refreshSynthLayerIfActive() async {
+    if (activePlaybackSources.contains('synth')) {
+      await _loadSynthSource();
+    }
+  }
+
+  Future<void> _togglePlaybackSource(String key, bool enabled) async {
+    setState(() {
+      if (enabled) {
+        activePlaybackSources.add(key);
+      } else {
+        activePlaybackSources.remove(key);
+      }
+    });
+
+    if (key == 'original') {
+      await masterPlayer.setVolume(enabled ? 1.0 : 0.0);
+    } else if (key == 'synth') {
+      if (enabled) {
+        await _loadSynthSource();
+        await synthPlayer.setVolume(synthMixVolume);
+      } else {
+        await synthPlayer.setVolume(0.0);
+      }
+    } else if (key.startsWith('stem_')) {
+      String stemKey = key.substring(5);
+      if (enabled) {
+        await _loadStemPlayerSource(stemKey);
+        if (stemPlayers.containsKey(stemKey)) {
+          await stemPlayers[stemKey]!.setVolume(1.0);
+        }
+      } else {
+        if (stemPlayers.containsKey(stemKey)) {
+          await stemPlayers[stemKey]!.setVolume(0.0);
+        }
+      }
+    }
+  }
+
+  // ============================================================
+  // PROJECT SAVING & EXPORTS
+  // ============================================================
+
+  void _undo() {
+    if (undoStack.isNotEmpty) {
+      setState(() {
+        redoStack.add(json.encode(allStemsNotes));
+        allStemsNotes = Map<String, List<dynamic>>.from(json.decode(undoStack.removeLast()));
+      });
+    }
+  }
+
+  void _redo() {
+    if (redoStack.isNotEmpty) {
+      setState(() {
+        undoStack.add(json.encode(allStemsNotes));
+        allStemsNotes = Map<String, List<dynamic>>.from(json.decode(redoStack.removeLast()));
+      });
+    }
+  }
+
+  Future<void> _previewWithEdits() async {
+    if (originalAudioBytes == null) return;
+    
+    bool wasPlaying = masterPlayer.playing;
+    double resumePosition = currentPosition;
+    if (wasPlaying) await masterPlayer.pause();
+    
+    setState(() { isPreviewing = true; exportMessage = "Rendering preview mix..."; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+        ..fields['edit_manifest'] = jsonEncode({
+          'track_settings': {'target_volume': targetVolume, 'accomp_volume': accompVolume, 'apply_denoise': applyDenoise},
+          'edits': rawNotes,
+        })
+        ..fields['task_id'] = currentTaskId ?? ''  
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+      
+      if (responseData.statusCode != 200) {
+        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
+      }
+
+      var result = jsonDecode(responseData.body);
+
+      if (result['status'] == 'success') {
+        Uint8List previewBytes = base64Decode(result['master_mix_b64']);
+
+        if (kIsWeb) {
+          await masterPlayer.setAudioSource(MyCustomBytesSource(previewBytes, contentType: 'audio/wav'));
+        } else {
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File('${tempDir.path}/preview_mix.wav');
+          await tempFile.writeAsBytes(previewBytes);
+          await masterPlayer.setFilePath(tempFile.path);
+        }
+
+        await masterPlayer.seek(Duration(milliseconds: (resumePosition * 1000).round()));
+        
+        if (wasPlaying) {
+          await masterPlayer.play();
+          _showSaveConfirmation('Preview ready — resuming with edits applied.', isPreview: true);
+        } else {
+          _showSaveConfirmation('Preview ready — tap Play to hear your edits.', isPreview: true);
+        }
+      } else {
+        if (wasPlaying) await masterPlayer.play();
+        _showSaveConfirmation('Preview failed: ${result['message'] ?? 'unknown error'}');
+      }
+    } catch (e) {
+      if (wasPlaying) await masterPlayer.play();
+      debugPrint("Preview render failed: $e");
+      _showSaveConfirmation('Preview failed: $e');
+    } finally {
+      setState(() { isPreviewing = false; exportMessage = ''; });
+    }
+  }
+
+  Future<void> _exportSynthAudio() async {
+    if (rawNotes.isEmpty) return;
+    setState(() { isSynthRendering = true; synthMessage = "Rendering synth audio..."; });
+
+    try {
+      final Uint8List wavBytes = renderNotesToWavBytes(
+        notes: rawNotes,
+        duration: songDuration,
+        settings: synthSettings,
+      );
+
+      String defaultName = originalFileName.contains('.')
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : (originalFileName.isNotEmpty ? originalFileName : projectName);
+      defaultName = '${defaultName}_synth';
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: defaultName,
+          bytes: wavBytes,
+          fileExtension: 'wav',
+          mimeType: MimeType.custom,
+          customMimeType: 'audio/wav',
+        );
+        _showSaveConfirmation('Synth audio exported as WAV.');
+      } else {
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultName,
+          bytes: wavBytes,
+          fileExtension: 'wav',
+          mimeType: MimeType.custom,
+          customMimeType: 'audio/wav',
+        );
+        if (path != null && path.isNotEmpty) {
+          _showSaveConfirmation('Synth audio exported as WAV.');
+        } else {
+          _showSaveConfirmation('Export cancelled.');
+        }
+      }
+    } catch (e) {
+      debugPrint("Synth export failed: $e");
+      _showSaveConfirmation('Synth export failed: $e');
+    } finally {
+      setState(() { isSynthRendering = false; synthMessage = ''; });
+    }
+  }
+
+  Future<void> _exportFinalMaster(String format) async {
+    if (originalAudioBytes == null) return;
+    setState(() { isExporting = true; exportMessage = "Rendering $format..."; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+        ..fields['edit_manifest'] = json.encode({
+          "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
+          "edits": rawNotes
+        })
+        ..fields['task_id'] = currentTaskId ?? '' 
+        ..fields['export_format'] = format 
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+      
+      if (responseData.statusCode != 200) {
+        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
+      }
+      
+      var data = jsonDecode(responseData.body);
+
+      if (data['status'] == 'success') {
+        final Uint8List bytes = base64.decode(data['master_mix_b64']);
+
+        String mimeType = 'audio/wav';
+        if (format == 'mp3') mimeType = 'audio/mpeg';
+        if (format == 'flac') mimeType = 'audio/flac';
+
+        String defaultName = originalFileName.contains('.')
+            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+            : originalFileName;
+        defaultName = '${defaultName}_voxray_master';
+
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultName,
+          bytes: bytes,
+          fileExtension: format,
+          mimeType: MimeType.custom,
+          customMimeType: mimeType,
+        );
+        
+        if (path != null && path.isNotEmpty) {
+          _showSaveConfirmation('Master mix saved as ${format.toUpperCase()}.');
+        } else {
+          _showSaveConfirmation('Export cancelled.');
+        }
+      } else {
+        _showSaveConfirmation('Export failed: ${data['message'] ?? 'Unknown error'}');
+      }
+    } catch (e) {
+      debugPrint("Export error: $e");
+      _showSaveConfirmation('Export failed: $e');
+    } finally {
+      setState(() { isExporting = false; exportMessage = ''; });
     }
   }
 
@@ -456,159 +1052,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() { isExporting = false; exportMessage = ''; });
     }
   }
-
-  Future<void> _toggleXrayMode() async {
-    if (rawNotes.isEmpty || currentTaskId == null) return;
-    
-    if (isXrayMode || rawNotes.any((n) => n.containsKey('contour'))) {
-      setState(() => isXrayMode = !isXrayMode);
-      return;
-    }
-
-    setState(() { isXrayProcessing = true; isXrayMode = true; });
-
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
-        ..fields['task_id'] = currentTaskId!
-        ..fields['notes_manifest'] = jsonEncode(rawNotes);
-
-      var response = await request.send();
-      var responseData = await http.Response.fromStream(response);
-      
-      if (responseData.statusCode == 200) {
-        var data = jsonDecode(responseData.body);
-        if (data['status'] == 'success') {
-          setState(() {
-            rawNotes = data['notes'];
-            registerUndoSnapshot(); 
-          });
-        } else {
-          _showSaveConfirmation('XRAY failed: ${data['message']}');
-          setState(() => isXrayMode = false);
-        }
-      }
-    } catch (e) {
-      debugPrint("XRAY error: $e");
-      setState(() => isXrayMode = false);
-    } finally {
-      setState(() => isXrayProcessing = false);
-    }
-  }
-
-  void addMarkerAtCurrentPlayhead() {
-    double visualPlayheadTime = (horizontalScrollController.hasClients
-        ? (horizontalScrollController.position.pixels + 150) / zoomX
-        : currentPosition);
-    
-    visualPlayheadTime = visualPlayheadTime.clamp(0.0, songDuration);
-
-    bool tooClose = markers.any((m) => 
-        ((m['time'] as double) - visualPlayheadTime).abs() < 0.5);
-    if (tooClose) {
-      debugPrint("Marker too close to existing one, skipping");
-      return;
-    }
-
-    setState(() {
-      markers.add({
-        "id": "mk_${DateTime.now().millisecondsSinceEpoch}",
-        "time": visualPlayheadTime,
-        "label": "Marker ${markers.length + 1}"
-      });
-    });
-    debugPrint("Marker added at $visualPlayheadTime, total: ${markers.length}");
-  }
-
-  void setLoopFromMarkers(double start, double end) {
-    setState(() {
-      loopStartBoundary = start;
-      loopEndBoundary = end;
-    });
-  }
-
-  void deleteMarker(String id) {
-    setState(() {
-      markers.removeWhere((m) => m['id'] == id);
-    });
-  }
-
-  void _undo() {
-    if (undoStack.isNotEmpty) {
-      setState(() {
-        redoStack.add(json.encode(allStemsNotes));
-        allStemsNotes = Map<String, List<dynamic>>.from(json.decode(undoStack.removeLast()));
-      });
-    }
-  }
-
-  void _redo() {
-    if (redoStack.isNotEmpty) {
-      setState(() {
-        undoStack.add(json.encode(allStemsNotes));
-        allStemsNotes = Map<String, List<dynamic>>.from(json.decode(redoStack.removeLast()));
-      });
-    }
-  }
-
-  Future<void> _previewWithEdits() async {
-    if (originalAudioBytes == null) return;
-    
-    bool wasPlaying = masterPlayer.playing;
-    double resumePosition = currentPosition;
-    if (wasPlaying) await masterPlayer.pause();
-    
-    setState(() { isPreviewing = true; exportMessage = "Rendering preview mix..."; });
-
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['edit_manifest'] = jsonEncode({
-          'track_settings': {'target_volume': targetVolume, 'accomp_volume': accompVolume, 'apply_denoise': applyDenoise},
-          'edits': rawNotes,
-        })
-        ..fields['task_id'] = currentTaskId ?? ''  
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
-
-      var response = await request.send();
-      var responseData = await http.Response.fromStream(response);
-      
-      if (responseData.statusCode != 200) {
-        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
-      }
-
-      var result = jsonDecode(responseData.body);
-
-      if (result['status'] == 'success') {
-        Uint8List previewBytes = base64Decode(result['master_mix_b64']);
-
-        if (kIsWeb) {
-          await masterPlayer.setAudioSource(MyCustomBytesSource(previewBytes, contentType: 'audio/wav'));
-        } else {
-          final tempDir = await getTemporaryDirectory();
-          final tempFile = File('${tempDir.path}/preview_mix.wav');
-          await tempFile.writeAsBytes(previewBytes);
-          await masterPlayer.setFilePath(tempFile.path);
-        }
-
-        await masterPlayer.seek(Duration(milliseconds: (resumePosition * 1000).round()));
-        
-        if (wasPlaying) {
-          await masterPlayer.play();
-          _showSaveConfirmation('Preview ready — resuming with edits applied.', isPreview: true);
-        } else {
-          _showSaveConfirmation('Preview ready — tap Play to hear your edits.', isPreview: true);
-        }
-      } else {
-        if (wasPlaying) await masterPlayer.play();
-        _showSaveConfirmation('Preview failed: ${result['message'] ?? 'unknown error'}');
-      }
-    } catch (e) {
-      if (wasPlaying) await masterPlayer.play();
-      debugPrint("Preview render failed: $e");
-      _showSaveConfirmation('Preview failed: $e');
-    } finally {
-      setState(() { isPreviewing = false; exportMessage = ''; });
-    }
-  }
   
   Future<void> _saveVoxrayProject() async {
     Map<String, dynamic> projectData = {
@@ -616,8 +1059,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         "project_name": projectName,
         "original_file": originalFileName, 
         "original_file_path": originalFilePath, 
+        "is_original_mix_available": isOriginalMixAvailable,
         "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
         "target_stems_selection": targetStemsSelection.toList(),
+        "generated_stems": generatedStems.toList(),
         "all_stems_notes": allStemsNotes,
         "active_editable_stem": activeEditableStem,
         "history": {"undo_stack": undoStack, "redo_stack": redoStack}
@@ -672,12 +1117,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       projectName = projectData['project_name'] ?? "Voxray_Session";
       originalFileName = projectData['original_file'] ?? "Unknown File";
       originalFilePath = projectData['original_file_path'] ?? "";
+      isOriginalMixAvailable = projectData['is_original_mix_available'] ?? true;
       targetVolume = projectData['track_settings']['target_volume'] ?? 0.85;
       accompVolume = projectData['track_settings']['accomp_volume'] ?? 1.0;
       applyDenoise = projectData['track_settings']['apply_denoise'] ?? false;
       
       if (projectData['target_stems_selection'] != null) {
         targetStemsSelection = Set<String>.from(projectData['target_stems_selection']);
+      }
+      if (projectData['generated_stems'] != null) {
+        generatedStems = Set<String>.from(projectData['generated_stems']);
       }
       if (projectData['all_stems_notes'] != null) {
         allStemsNotes = Map<String, List<dynamic>>.from(projectData['all_stems_notes']);
@@ -694,449 +1143,39 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
   }
 
-  void _showStemSelectorTreeDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setTreeState) {
-          Widget buildStemCheckbox(String stem) {
-            return CheckboxListTile(
-              dense: true,
-              title: Text(stem, style: const TextStyle(fontSize: 13, color: Colors.white70)),
-              value: targetStemsSelection.contains(stem),
-              activeColor: Colors.tealAccent,
-              onChanged: (bool? checked) {
-                setTreeState(() {
-                  if (checked == true) {
-                    targetStemsSelection.add(stem);
-                  } else {
-                    targetStemsSelection.remove(stem);
-                  }
-                });
-                setState(() {});
-              },
-            );
-          }
+  // --- TIMELINE & MARKER UTILS ---
 
-          return AlertDialog(
-            backgroundColor: Colors.grey[900],
-            title: const Text("Stem Extraction Matrix", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            content: SizedBox(
-              width: 300,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("POP & ROCK MODELS", style: TextStyle(color: Colors.tealAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ...popStems.map((s) => buildStemCheckbox(s)),
-                    const Divider(color: Colors.white24),
-                    const Text("ORCHESTRAL MODELS", style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ...orchStems.map((s) => buildStemCheckbox(s)),
-                    const Divider(color: Colors.white24),
-                    const Text("FORENSIC SUITE", style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ...forensicStems.map((s) => buildStemCheckbox(s)),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context), 
-                child: const Text("Confirm Selection", style: TextStyle(color: Colors.tealAccent))
-              )
-            ],
-          );
-        }
-      ),
-    );
-  }
+  void addMarkerAtCurrentPlayhead() {
+    double visualPlayheadTime = (horizontalScrollController.hasClients
+        ? (horizontalScrollController.position.pixels + 150) / zoomX
+        : currentPosition);
+    
+    visualPlayheadTime = visualPlayheadTime.clamp(0.0, songDuration);
 
-  _loadFileAndAnalyze() async {
-    FilePickerResult? result = await FilePicker.pickFiles(
-      type: FileType.audio, withData: true);
-    if (result == null) return;
-
-    Uint8List? audioBytes;
-    if (result.files.single.bytes != null) {
-      audioBytes = result.files.single.bytes!;
-    } else if (result.files.single.path != null) {
-      audioBytes = await File(result.files.single.path!).readAsBytes();
-    } else return;
+    bool tooClose = markers.any((m) => 
+        ((m['time'] as double) - visualPlayheadTime).abs() < 0.5);
+    if (tooClose) return;
 
     setState(() {
-      isLoading = true;
-      processingProgress = 0.0;
-      processingMessage = "Uploading file...";
-      originalAudioBytes = audioBytes;
-      originalFileName = result.files.single.name; 
-      originalFilePath = result.files.single.path ?? "";
-      
-      cachedStemBytes.clear();
-      for (var player in stemPlayers.values) {
-        player.stop();
-      }
-      stemPlayers.clear();
-      activePlaybackSources = {'original'};
-    });
-    await synthPlayer.stop();
-
-    try {
-      if (kIsWeb) {
-        await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!, contentType: 'audio/wav'));
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/preview_audio.wav');
-        await tempFile.writeAsBytes(originalAudioBytes!);
-        await masterPlayer.setFilePath(tempFile.path);
-      }
-    } catch (e) {
-      debugPrint("Audio preview setup failed (non-fatal): $e");
-    }
-
-    try {
-      var request = http.MultipartRequest(
-          'POST', Uri.parse('$apiBase/analyze-advanced'))
-        ..fields['stem_target'] = "vocals"
-        ..fields['instruments'] = jsonEncode(targetStemsSelection.toList())
-        ..files.add(http.MultipartFile.fromBytes(
-            'file', originalAudioBytes!,
-            filename: result.files.single.name));
-  
-      var response = await request.send();
-      if (response.statusCode != 200) {
-        throw Exception("Server rejected file upload");
-      }
-      
-      var data = json.decode(await response.stream.bytesToString());
-      String taskId = data['task_id'];
-
-      pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
-        try {
-          var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$taskId'));
-          if (statusRes.statusCode == 200) {
-            var statusData = json.decode(statusRes.body);
-            
-            setState(() {
-              processingProgress = (statusData['progress'] ?? 0).toDouble() / 100.0;
-              processingMessage = statusData['message'] ?? "Processing...";
-            });
-
-            if (statusData['status'] == 'complete') {
-              timer.cancel();
-              setState(() {
-                // Initialize the stem structures map with the notes response
-                List<dynamic> fetchedNotes = statusData['result']['notes'];
-                allStemsNotes.clear();
-                
-                // Populate all extracted targets with structural tracks
-                for (var target in targetStemsSelection) {
-                  allStemsNotes[target] = json.decode(json.encode(fetchedNotes));
-                }
-                
-                // Set default focus track view fallback
-                if (!allStemsNotes.containsKey(activeEditableStem)) {
-                  activeEditableStem = allStemsNotes.keys.first;
-                }
-                
-                songDuration = statusData['result']['duration'].toDouble();
-                loopEndBoundary = songDuration; 
-                currentTaskId = taskId;
-                isLoading = false;
-              });
-            } else if (statusData['status'] == 'error') {
-              timer.cancel();
-              debugPrint("Server Error: ${statusData['message']}");
-              setState(() { 
-                isLoading = false; 
-                processingMessage = "Error: ${statusData['message']}"; 
-              });
-            }
-          }
-        } catch (e) {
-          debugPrint("Polling error (retrying): $e");
-        }
+      markers.add({
+        "id": "mk_${DateTime.now().millisecondsSinceEpoch}",
+        "time": visualPlayheadTime,
+        "label": "Marker ${markers.length + 1}"
       });
-
-    } catch (e) {
-      debugPrint("Initialization Failed: $e");
-      setState(() { isLoading = false; processingMessage = "Failed to start."; });
-    }
-  }
-
-  // ============================================================
-  // MULTI-SOURCE PLAYBACK MIXER
-  // ============================================================
-
-  Future<void> _seekAllPlayers(Duration position) async {
-    final futures = <Future>[masterPlayer.seek(position)];
-    for (var player in stemPlayers.values) {
-      if (player.audioSource != null) futures.add(player.seek(position));
-    }
-    if (synthPlayer.audioSource != null) futures.add(synthPlayer.seek(position));
-    await Future.wait(futures);
-  }
-
-  Future<void> _playAllPlayers() async {
-    final futures = <Future>[masterPlayer.play()];
-    for (var player in stemPlayers.values) {
-      if (player.audioSource != null) futures.add(player.play());
-    }
-    if (synthPlayer.audioSource != null) futures.add(synthPlayer.play());
-    await Future.wait(futures);
-  }
-
-  Future<void> _pauseAllPlayers() async {
-    final futures = <Future>[masterPlayer.pause()];
-    for (var player in stemPlayers.values) {
-      if (player.audioSource != null) futures.add(player.pause());
-    }
-    if (synthPlayer.audioSource != null) futures.add(synthPlayer.seek(masterPlayer.position));
-    await Future.wait(futures);
-  }
-
-  Future<void> _toggleMasterTransport() async {
-    if (masterPlayer.playing) {
-      await _pauseAllPlayers();
-    } else {
-      await _playAllPlayers();
-    }
-  }
-
-  Future<Uint8List> _fetchStemBytes(String stemName) async {
-    var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-      ..fields['edit_manifest'] = jsonEncode({
-        'track_settings': {'target_volume': 1.0, 'accomp_volume': 0.0, 'apply_denoise': applyDenoise},
-        'edits': allStemsNotes[stemName] ?? [],
-      })
-      ..fields['task_id'] = currentTaskId ?? ''
-      ..fields['export_format'] = 'opus' // Request light high-performance Opus formatting from endpoint
-      ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
-
-    var response = await request.send();
-    var responseData = await http.Response.fromStream(response);
-    if (responseData.statusCode != 200) {
-      throw Exception("Server error ${responseData.statusCode}");
-    }
-    var result = jsonDecode(responseData.body);
-    if (result['status'] != 'success') {
-      throw Exception(result['message'] ?? 'Unknown error');
-    }
-    return base64Decode(result['master_mix_b64']);
-  }
-
-  Future<void> _loadStemPlayerSource(String stemName) async {
-    if (originalAudioBytes == null) return;
-    setState(() { isFetchingStems = true; });
-
-    try {
-      final Uint8List bytes = cachedStemBytes[stemName] ?? await _fetchStemBytes(stemName);
-      cachedStemBytes[stemName] = bytes;
-
-      if (!stemPlayers.containsKey(stemName)) {
-        stemPlayers[stemName] = AudioPlayer();
-        stemPlayers[stemName]!.playerStateStream.listen((state) {
-          if (mounted) setState(() {});
-        });
-      }
-
-      final targetPlayer = stemPlayers[stemName]!;
-
-      if (kIsWeb) {
-        // Feed Opus content to custom source under Ogg runtime codec
-        await targetPlayer.setAudioSource(MyCustomBytesSource(bytes, contentType: 'audio/ogg'));
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/voxray_stem_$stemName.opus');
-        await tempFile.writeAsBytes(bytes);
-        await targetPlayer.setFilePath(tempFile.path);
-      }
-
-      await targetPlayer.seek(masterPlayer.position);
-      if (masterPlayer.playing) await targetPlayer.play();
-    } catch (e) {
-      debugPrint("Stem track layer $stemName build failed: $e");
-      _showSaveConfirmation('Stem layer $stemName unavailable: $e');
-      setState(() => activePlaybackSources.remove('stem_$stemName'));
-    } finally {
-      setState(() { isFetchingStems = false; });
-    }
-  }
-
-  Future<void> _loadSynthSource() async {
-    if (rawNotes.isEmpty) return;
-    setState(() { isSynthRendering = true; synthMessage = "Synthesizing note data..."; });
-
-    try {
-      final Uint8List wavBytes = renderNotesToWavBytes(
-        notes: rawNotes,
-        duration: songDuration,
-        settings: synthSettings,
-      );
-
-      if (kIsWeb) {
-        await synthPlayer.setAudioSource(MyCustomBytesSource(wavBytes, contentType: 'audio/wav'));
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/voxray_synth_layer.wav');
-        await tempFile.writeAsBytes(wavBytes);
-        await synthPlayer.setFilePath(tempFile.path);
-      }
-
-      await synthPlayer.seek(masterPlayer.position);
-      if (masterPlayer.playing) await synthPlayer.play();
-    } catch (e) {
-      debugPrint("Synth layer load failed: $e");
-      _showSaveConfirmation('Synth layer failed: $e');
-      setState(() => activePlaybackSources.remove('synth'));
-    } finally {
-      setState(() { isSynthRendering = false; synthMessage = ''; });
-    }
-  }
-
-  Future<void> _refreshSynthLayerIfActive() async {
-    if (activePlaybackSources.contains('synth')) {
-      await _loadSynthSource();
-    }
-  }
-
-  Future<void> _togglePlaybackSource(String key, bool enabled) async {
-    setState(() {
-      if (enabled) {
-        activePlaybackSources.add(key);
-      } else {
-        activePlaybackSources.remove(key);
-      }
     });
-
-    if (key == 'original') {
-      await masterPlayer.setVolume(enabled ? 1.0 : 0.0);
-    } else if (key == 'synth') {
-      if (enabled) {
-        await _loadSynthSource();
-        await synthPlayer.setVolume(synthMixVolume);
-      } else {
-        await synthPlayer.setVolume(0.0);
-      }
-    } else if (key.startsWith('stem_')) {
-      String stemKey = key.substring(5);
-      if (enabled) {
-        await _loadStemPlayerSource(stemKey);
-        if (stemPlayers.containsKey(stemKey)) {
-          await stemPlayers[stemKey]!.setVolume(1.0);
-        }
-      } else {
-        if (stemPlayers.containsKey(stemKey)) {
-          await stemPlayers[stemKey]!.setVolume(0.0);
-        }
-      }
-    }
   }
 
-  Future<void> _exportSynthAudio() async {
-    if (rawNotes.isEmpty) return;
-    setState(() { isSynthRendering = true; synthMessage = "Rendering synth audio..."; });
-
-    try {
-      final Uint8List wavBytes = renderNotesToWavBytes(
-        notes: rawNotes,
-        duration: songDuration,
-        settings: synthSettings,
-      );
-
-      String defaultName = originalFileName.contains('.')
-          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-          : (originalFileName.isNotEmpty ? originalFileName : projectName);
-      defaultName = '${defaultName}_synth';
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: defaultName,
-          bytes: wavBytes,
-          fileExtension: 'wav',
-          mimeType: MimeType.custom,
-          customMimeType: 'audio/wav',
-        );
-        _showSaveConfirmation('Synth audio exported as WAV.');
-      } else {
-        String? path = await FileSaver.instance.saveAs(
-          name: defaultName,
-          bytes: wavBytes,
-          fileExtension: 'wav',
-          mimeType: MimeType.custom,
-          customMimeType: 'audio/wav',
-        );
-        if (path != null && path.isNotEmpty) {
-          _showSaveConfirmation('Synth audio exported as WAV.');
-        } else {
-          _showSaveConfirmation('Export cancelled.');
-        }
-      }
-    } catch (e) {
-      debugPrint("Synth export failed: $e");
-      _showSaveConfirmation('Synth export failed: $e');
-    } finally {
-      setState(() { isSynthRendering = false; synthMessage = ''; });
-    }
+  void setLoopFromMarkers(double start, double end) {
+    setState(() {
+      loopStartBoundary = start;
+      loopEndBoundary = end;
+    });
   }
 
-  Future<void> _exportFinalMaster(String format) async {
-    if (originalAudioBytes == null) return;
-    setState(() { isExporting = true; exportMessage = "Rendering $format..."; });
-
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['edit_manifest'] = json.encode({
-          "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
-          "edits": rawNotes
-        })
-        ..fields['task_id'] = currentTaskId ?? '' 
-        ..fields['export_format'] = format 
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
-
-      var response = await request.send();
-      var responseData = await http.Response.fromStream(response);
-      
-      if (responseData.statusCode != 200) {
-        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
-      }
-      
-      var data = jsonDecode(responseData.body);
-
-      if (data['status'] == 'success') {
-        final Uint8List bytes = base64.decode(data['master_mix_b64']);
-
-        String mimeType = 'audio/wav';
-        if (format == 'mp3') mimeType = 'audio/mpeg';
-        if (format == 'flac') mimeType = 'audio/flac';
-
-        String defaultName = originalFileName.contains('.')
-            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-            : originalFileName;
-        defaultName = '${defaultName}_voxray_master';
-
-        String? path = await FileSaver.instance.saveAs(
-          name: defaultName,
-          bytes: bytes,
-          fileExtension: format,
-          mimeType: MimeType.custom,
-          customMimeType: mimeType,
-        );
-        
-        if (path != null && path.isNotEmpty) {
-          _showSaveConfirmation('Master mix saved as ${format.toUpperCase()}.');
-        } else {
-          _showSaveConfirmation('Export cancelled.');
-        }
-      } else {
-        _showSaveConfirmation('Export failed: ${data['message'] ?? 'Unknown error'}');
-      }
-    } catch (e) {
-      debugPrint("Export error: $e");
-      _showSaveConfirmation('Export failed: $e');
-    } finally {
-      setState(() { isExporting = false; exportMessage = ''; });
-    }
+  void deleteMarker(String id) {
+    setState(() {
+      markers.removeWhere((m) => m['id'] == id);
+    });
   }
 
   // --- DIALOGS AND UI BUILDERS ---
@@ -1550,7 +1589,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (note['isDeleted'] == true) { deletedCount++; continue; }
       
       double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
-      // Gating out absolute silence (MIDI 36) from scoring analysis calculations
       if (baseMidi.round() == 36) continue;
 
       if (note['isMuted'] == true) mutedCount++;
@@ -1765,6 +1803,66 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 
+  void _showStemSelectorTreeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setTreeState) {
+          Widget buildStemCheckbox(String stem) {
+            return CheckboxListTile(
+              dense: true,
+              title: Text(stem, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+              value: targetStemsSelection.contains(stem),
+              activeColor: Colors.tealAccent,
+              onChanged: (bool? checked) {
+                setTreeState(() {
+                  if (checked == true) {
+                    targetStemsSelection.add(stem);
+                  } else {
+                    targetStemsSelection.remove(stem);
+                  }
+                });
+                setState(() {});
+              },
+            );
+          }
+
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Text("Stem Extraction Matrix", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            content: SizedBox(
+              width: 300,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Select which stems will be available in the dropdown to generate later.", style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    const SizedBox(height: 10),
+                    const Text("POP & ROCK MODELS", style: TextStyle(color: Colors.tealAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ...popStems.map((s) => buildStemCheckbox(s)),
+                    const Divider(color: Colors.white24),
+                    const Text("ORCHESTRAL MODELS", style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ...orchStems.map((s) => buildStemCheckbox(s)),
+                    const Divider(color: Colors.white24),
+                    const Text("FORENSIC SUITE", style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ...forensicStems.map((s) => buildStemCheckbox(s)),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: const Text("Confirm Selection", style: TextStyle(color: Colors.tealAccent))
+              )
+            ],
+          );
+        }
+      ),
+    );
+  }
+
   List<PopupMenuEntry<String>> _buildMainMenu() {
     return [
       const PopupMenuItem(value: 'upload', child: ListTile(leading: Icon(Icons.cloud_upload, color: Colors.tealAccent), title: Text('Upload Audio'))),
@@ -1815,7 +1913,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       case 'mix_settings': _showMixSettingsDialog(); break;
       case 'show_dossier': _showDossier(); break;
       case 'downloads': _showAdvancedDownloadsDialog(); break;
-      case 'live_mode': setState(() => isLiveModeActive = !isLiveModeActive); break; // Added Live Mode routing
+      case 'live_mode': setState(() => isLiveModeActive = !isLiveModeActive); break;
       case 'reprocess': _forceReprocessXray(); break;
     }
   }
@@ -1894,12 +1992,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    sourceRow(
-                      key: 'original',
-                      label: 'Original Mix',
-                      icon: Icons.album,
-                      enabled: originalAudioBytes != null,
-                    ),
+                    if (isOriginalMixAvailable)
+                      sourceRow(
+                        key: 'original',
+                        label: 'Original Mix',
+                        icon: Icons.album,
+                        enabled: originalAudioBytes != null,
+                      ),
                     sourceRow(
                       key: 'synth',
                       label: 'Synth (Note Data)',
@@ -1909,8 +2008,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       loading: isSynthRendering,
                     ),
                     const Divider(height: 1, color: Colors.white12),
-                    // Dynamically structuralize playback mixer row toggles for all available created stems
-                    ...allStemsNotes.keys.map((stem) {
+                    ...generatedStems.map((stem) {
                       return sourceRow(
                         key: 'stem_$stem',
                         label: '${stem.toUpperCase()} Stem',
@@ -1932,6 +2030,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   @override
   Widget build(BuildContext context) {
+    bool isCurrentStemGenerated = generatedStems.contains(activeEditableStem);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(isLiveModeActive ? 'Voxray: Live Pedagogy' : 'Voxray: Forensic DAW'),
@@ -1956,20 +2056,26 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               onPressed: () => setState(() => isDragMode = !isDragMode),
             ),
             // Dropdown selection matrix for active editable focus stem track targeting
-            if (allStemsNotes.isNotEmpty)
+            if (targetStemsSelection.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: Center(
                   child: DropdownButton<String>(
-                    value: activeEditableStem,
+                    value: targetStemsSelection.contains(activeEditableStem) ? activeEditableStem : null,
                     dropdownColor: Colors.grey[900],
                     underline: const SizedBox(),
                     icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
                     style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                    items: allStemsNotes.keys.map((String stemKey) {
+                    items: targetStemsSelection.map((String stemKey) {
                       return DropdownMenuItem<String>(
                         value: stemKey,
-                        child: Text(stemKey.toUpperCase()),
+                        child: Row(
+                          children: [
+                            Text(stemKey.toUpperCase()),
+                            if (!generatedStems.contains(stemKey)) 
+                               const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38))
+                          ],
+                        ),
                       );
                     }).toList(),
                     onChanged: (String? newSelection) {
@@ -1994,7 +2100,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       body: SafeArea(
         child: isLiveModeActive
             ? LivePedagogyView(
-                onExit: () => setState(() => isLiveModeActive = false) // Flip the state back to false
+                onExit: () => setState(() => isLiveModeActive = false) 
               )
             : Column(
                 children: [
@@ -2082,7 +2188,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           : IconButton(
                               icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 22),
                               tooltip: "X-ray Pitch Analysis", 
-                              onPressed: _toggleXrayMode,
+                              onPressed: isCurrentStemGenerated ? _toggleXrayMode : null,
                             ),
 
                         Row(
@@ -2175,11 +2281,29 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                   ),
 
                   Expanded(
-                    child: TimelineCanvasWidget(
-                      dawState: this,
-                      horizontalScrollController: horizontalScrollController,
-                      verticalScrollController: verticalScrollController,
-                    ),
+                    child: !isCurrentStemGenerated && originalAudioBytes != null
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.graphic_eq, size: 64, color: Colors.white24),
+                              const SizedBox(height: 16),
+                              Text("The ${activeEditableStem.toUpperCase()} stem has not been extracted yet.", style: const TextStyle(color: Colors.white54)),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
+                                icon: const Icon(Icons.build),
+                                label: Text("Generate & Analyze ${activeEditableStem.toUpperCase()}"),
+                                onPressed: _generateStemOnDemand,
+                              )
+                            ],
+                          ),
+                        )
+                      : TimelineCanvasWidget(
+                          dawState: this,
+                          horizontalScrollController: horizontalScrollController,
+                          verticalScrollController: verticalScrollController,
+                        ),
                   ),
                 ],
               ),
