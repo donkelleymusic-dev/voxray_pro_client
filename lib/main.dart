@@ -1936,18 +1936,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       appBar: AppBar(
         title: Text(isLiveModeActive ? 'Voxray: Live Pedagogy' : 'Voxray: Forensic DAW'),
         actions: [
-          Row(
-            children: [
-              const Icon(Icons.mic_external_on, size: 16, color: Colors.redAccent),
-              const SizedBox(width: 8),
-              const Text("Live", style: TextStyle(fontWeight: FontWeight.bold)),
-              Switch(
-                value: isLiveModeActive,
-                onChanged: (val) => setState(() => isLiveModeActive = val),
-                activeColor: Colors.redAccent,
-              ),
-            ],
-          ),
           if (!isLiveModeActive) ...[
             // Undo Button
             IconButton(
