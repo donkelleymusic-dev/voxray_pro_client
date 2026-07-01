@@ -7,11 +7,18 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'live_canvas.dart';
 
-class LivePedagogyView extends StatefulWidget {
+/* class LivePedagogyView extends StatefulWidget {
   const LivePedagogyView({Key? key}) : super(key: key);
   @override State<LivePedagogyView> createState() => _LivePedagogyViewState();
-}
+} */
+class LivePedagogyView extends StatefulWidget {
+  final VoidCallback onExit; // Add this callback
 
+  const LivePedagogyView({Key? key, required this.onExit}) : super(key: key); // Require it in the constructor
+  
+  @override 
+  State<LivePedagogyView> createState() => _LivePedagogyViewState();
+}
 class _LivePedagogyViewState extends State<LivePedagogyView> {
   final AudioRecorder _audioRecorder = AudioRecorder();
   PitchDetector? _pitchDetector;
@@ -154,7 +161,18 @@ class _LivePedagogyViewState extends State<LivePedagogyView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("LIVE INTONATION TRACKER", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                // Group the new back button and title together
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+                      tooltip: "Exit Live Mode",
+                      onPressed: widget.onExit, // Trigger the callback here
+                    ),
+                    const SizedBox(width: 8),
+                    const Text("LIVE INTONATION TRACKER", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                  ],
+                ),
                 Text(
                   _pitchHistory.isNotEmpty && _pitchHistory.last != null ? "Target: ${_midiToNoteName(_pitchHistory.last!.round())}" : "Listening...",
                   style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
@@ -170,7 +188,7 @@ class _LivePedagogyViewState extends State<LivePedagogyView> {
 
   String _midiToNoteName(int midi) {
     List<String> notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    int octave = (midi ~/ 12) - 1; // Used integer division (~/) for safety
+    int octave = (midi ~/ 12) - 1; 
     return "${notes[midi % 12]}$octave";
   }
 }
