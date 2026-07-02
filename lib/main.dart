@@ -143,18 +143,22 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   @override
   void initState() {
     super.initState();
+    // Use > 0.1 delta threshold to prevent infinite ping-pong loops
     horizontalScrollController.addListener(() {
-      if (rulerScrollController.hasClients &&
-          rulerScrollController.position.pixels != horizontalScrollController.position.pixels) {
-        rulerScrollController.jumpTo(horizontalScrollController.position.pixels);
+      if (rulerScrollController.hasClients) {
+        if ((rulerScrollController.position.pixels - horizontalScrollController.position.pixels).abs() > 0.1) {
+          rulerScrollController.jumpTo(horizontalScrollController.position.pixels);
+        }
       }
     });
     rulerScrollController.addListener(() {
-      if (horizontalScrollController.hasClients &&
-          horizontalScrollController.position.pixels != rulerScrollController.position.pixels) {
-        horizontalScrollController.jumpTo(rulerScrollController.position.pixels);
+      if (horizontalScrollController.hasClients) {
+        if ((horizontalScrollController.position.pixels - rulerScrollController.position.pixels).abs() > 0.1) {
+          horizontalScrollController.jumpTo(rulerScrollController.position.pixels);
+        }
       }
     });
+    
     masterPlayer.playerStateStream.listen((state) {
       debugPrint("Player state: ${state.processingState} playing:${state.playing} isLoading:$isLoading");
     });
@@ -175,10 +179,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
       setState(() => currentPosition = currentT);
 
-      if (masterPlayer.playing) {
+      // Only force playhead scroll if the user isn't actively interacting with the grid
+      if (masterPlayer.playing && !isUserScrolling) {
         double targetX = (currentT * zoomX) - 150.0;
         if (targetX < 0) targetX = 0;
-        if (horizontalScrollController.hasClients) {
+        if (horizontalScrollController.hasClients && horizontalScrollController.position.maxScrollExtent > 0) {
           horizontalScrollController.jumpTo(
             targetX.clamp(0.0, horizontalScrollController.position.maxScrollExtent)
           );
@@ -248,15 +253,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (horizontalScrollController.hasClients &&
-          horizontalScrollController.positions.length == 1) {
+          horizontalScrollController.positions.length == 1 &&
+          horizontalScrollController.position.maxScrollExtent > 0) {
         horizontalScrollController.jumpTo(
           targetX.clamp(0.0, horizontalScrollController.position.maxScrollExtent)
-        );
-      }
-      if (rulerScrollController.hasClients &&
-          rulerScrollController.positions.length == 1) {
-        rulerScrollController.jumpTo(
-          targetX.clamp(0.0, rulerScrollController.position.maxScrollExtent)
         );
       }
     });
@@ -426,6 +426,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     } catch (e) {
       debugPrint("Initialization Failed: $e");
       setState(() { isLoading = false; processingMessage = "Failed to start."; });
+      _showSaveConfirmation('Initialization Failed: $e');
     }
   }
 
@@ -458,8 +459,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             setState(() {
               allStemsNotes[targetStem] = stemNotes;
               generatedStems.add(targetStem);
-              songDuration = (result['duration'] ?? songDuration).toDouble();
-              loopEndBoundary = songDuration; 
+              
+              double newDuration = (result['duration'] ?? songDuration).toDouble();
+              if (newDuration > 0) {
+                 songDuration = newDuration;
+                 loopEndBoundary = songDuration; 
+              }
               isLoading = false;
               processingMessage = '';
             });
@@ -472,12 +477,29 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             setState(() { 
               isLoading = false; 
               processingMessage = "Error: ${statusData['message']}"; 
+              activePlaybackSources.remove('stem_$targetStem');
             });
             _showSaveConfirmation('Processing Error: ${statusData['message']}');
           }
+        } else {
+          // Graceful handling of 404/500 API errors to prevent infinite polling lock
+          timer.cancel();
+          setState(() { 
+            isLoading = false; 
+            processingMessage = "Error: Server returned ${statusRes.statusCode}"; 
+            activePlaybackSources.remove('stem_$targetStem');
+          });
+          _showSaveConfirmation('Processing Error: Server returned ${statusRes.statusCode}');
         }
       } catch (e) {
         debugPrint("Polling error: $e");
+        timer.cancel();
+        setState(() { 
+          isLoading = false; 
+          processingMessage = "Error: $e"; 
+          activePlaybackSources.remove('stem_$targetStem');
+        });
+        _showSaveConfirmation('Connection error during polling.');
       }
     });
   }
@@ -508,10 +530,19 @@ class VoxrayDAWState extends State<VoxrayDAW> {
          currentJobId = jobId;
          _pollForStemData(jobId, targetToGenerate);
       } else {
-        throw Exception("Server failed to initiate generation.");
+        throw Exception("Server returned status code ${res.statusCode}");
       }
     } catch (e) {
-      setState(() { isLoading = false; processingMessage = "Generation failed: $e"; });
+      setState(() { 
+        isLoading = false; 
+        processingMessage = ""; 
+        activePlaybackSources.remove('stem_$targetToGenerate');
+        // Revert active stem so the GUI doesn't get stuck on the "Generate" screen for a failed stem
+        if (generatedStems.isNotEmpty && !generatedStems.contains(activeEditableStem)) {
+           activeEditableStem = generatedStems.first;
+        }
+      });
+      _showSaveConfirmation("Failed to generate ${targetToGenerate.toUpperCase()} stem: $e");
     }
   }
 
