@@ -1777,6 +1777,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (note['isDeleted'] == true) { deletedCount++; continue; }
       
       double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      int semitoneShift = note['semitone_shift'] ?? 0;
+      baseMidi += semitoneShift; // Ensure macro edits are included for accurate dossier
+      
       if (baseMidi.round() == 36) continue;
 
       if (note['isMuted'] == true) mutedCount++;
