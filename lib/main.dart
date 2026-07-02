@@ -99,7 +99,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   double processingProgress = 0.0; 
   String processingMessage = "";   
   Timer? pollingTimer;     
-  String? currentTaskId;       
+  String? currentTaskId; // Session ID (file cache pointer)
+  String? currentJobId;  // Polling ID (active stem extraction pointer)
 
   bool isXrayMode = false;
   bool isXrayProcessing = false;
@@ -359,6 +360,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       activePlaybackSources.clear();
       allStemsNotes.clear();
       generatedStems.clear();
+      currentTaskId = null;
+      currentJobId = null;
 
       if (uploadOptions['type'] == 'mix') {
         isOriginalMixAvailable = true;
@@ -399,8 +402,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (response.statusCode != 200) throw Exception("Server rejected file upload");
       
       var data = json.decode(await response.stream.bytesToString());
-      String taskId = data['task_id'];
-      currentTaskId = taskId;
+      
+      currentTaskId = data['task_id']; // The cache marker
 
       if (uploadOptions['type'] == 'mix') {
         setState(() {
@@ -411,7 +414,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         return;
       }
 
-      _pollForStemData(taskId, uploadOptions['stem']!);
+      currentJobId = data['job_id']; // The active stem generation poll ID
+      _pollForStemData(currentJobId!, uploadOptions['stem']!);
 
     } catch (e) {
       debugPrint("Initialization Failed: $e");
@@ -419,10 +423,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  void _pollForStemData(String taskId, String targetStem) {
+  void _pollForStemData(String jobId, String targetStem) {
+    pollingTimer?.cancel();
     pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
-        var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$taskId'));
+        var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
         if (statusRes.statusCode == 200) {
           var statusData = json.decode(statusRes.body);
           
@@ -433,13 +438,26 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
           if (statusData['status'] == 'complete') {
             timer.cancel();
+            final result = statusData['result'];
+
+            // Extract the specific stem notes without overwriting or crossing the master list
+            List<dynamic> stemNotes = [];
+            final allStemsMap = result['all_stems_notes'];
+            if (allStemsMap != null && allStemsMap[targetStem] != null) {
+              stemNotes = json.decode(json.encode(allStemsMap[targetStem]));
+            } else {
+              stemNotes = json.decode(json.encode(result['notes'] ?? []));
+            }
+
             setState(() {
-              allStemsNotes[targetStem] = json.decode(json.encode(statusData['result']['notes']));
+              allStemsNotes[targetStem] = stemNotes;
               generatedStems.add(targetStem);
-              songDuration = statusData['result']['duration'].toDouble();
+              songDuration = (result['duration'] ?? songDuration).toDouble();
               loopEndBoundary = songDuration; 
               isLoading = false;
+              processingMessage = '';
             });
+
             if (activePlaybackSources.contains('stem_$targetStem')) {
               _loadStemPlayerSource(targetStem);
             }
@@ -461,6 +479,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<void> _generateStemOnDemand() async {
     if (currentTaskId == null) return;
     String targetToGenerate = activeEditableStem;
+    
+    if (generatedStems.contains(targetToGenerate)) {
+      return;
+    }
 
     setState(() {
       isLoading = true;
@@ -472,13 +494,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-stem-on-demand'))
         ..fields['task_id'] = currentTaskId!
         ..fields['target_stem'] = targetToGenerate;
-      if (originalAudioBytes != null) {
-        request.files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: originalFileName));
-      }
 
       var res = await request.send();
       if (res.statusCode == 200) {
-         _pollForStemData(currentTaskId!, targetToGenerate);
+         final resData = json.decode(await res.stream.bytesToString());
+         final String jobId = resData['job_id'];
+         currentJobId = jobId;
+         _pollForStemData(jobId, targetToGenerate);
       } else {
         throw Exception("Server failed to initiate generation.");
       }
@@ -630,13 +652,23 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   Future<Uint8List> _fetchStemBytes(String stemName) async {
+    if (currentTaskId == null) throw Exception("No active session");
+
+    try {
+      final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName'));
+      if (stemRes.statusCode == 200) return stemRes.bodyBytes;
+      if (stemRes.statusCode != 404) throw Exception("Stem fetch error ${stemRes.statusCode}");
+    } catch (e) {
+      debugPrint("Direct stem fetch failed, trying render fallback: $e");
+    }
+
     var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
       ..fields['edit_manifest'] = jsonEncode({
-        'track_settings': {'target_volume': 1.0, 'accomp_volume': 0.0, 'apply_denoise': applyDenoise},
+        'track_settings': {'target_volume': 1.0, 'accomp_volume': 0.0, 'apply_denoise': false},
         'edits': allStemsNotes[stemName] ?? [],
       })
-      ..fields['task_id'] = currentTaskId ?? ''
-      ..fields['export_format'] = 'opus' 
+      ..fields['task_id'] = currentTaskId!
+      ..fields['export_format'] = 'wav' 
       ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
     var response = await request.send();
@@ -669,10 +701,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       final targetPlayer = stemPlayers[stemName]!;
 
       if (kIsWeb) {
-        await targetPlayer.setAudioSource(MyCustomBytesSource(bytes, contentType: 'audio/ogg'));
+        await targetPlayer.setAudioSource(MyCustomBytesSource(bytes, contentType: 'audio/wav'));
       } else {
         final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/voxray_stem_$stemName.opus');
+        final tempFile = File('${tempDir.path}/voxray_stem_$stemName.wav');
         await tempFile.writeAsBytes(bytes);
         await targetPlayer.setFilePath(tempFile.path);
       }
@@ -921,6 +953,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         String mimeType = 'audio/wav';
         if (format == 'mp3') mimeType = 'audio/mpeg';
         if (format == 'flac') mimeType = 'audio/flac';
+        if (format == 'opus') mimeType = 'audio/ogg';
+
+        final fileExt = format == 'opus' ? 'ogg' : format;
 
         String defaultName = originalFileName.contains('.')
             ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
@@ -930,7 +965,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         String? path = await FileSaver.instance.saveAs(
           name: defaultName,
           bytes: bytes,
-          fileExtension: format,
+          fileExtension: fileExt,
           mimeType: MimeType.custom,
           customMimeType: mimeType,
         );
@@ -2053,25 +2088,21 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         title: Text(isLiveModeActive ? 'Voxray: Live Pedagogy' : 'Voxray: Forensic DAW'),
         actions: [
           if (!isLiveModeActive) ...[
-            // Undo Button
             IconButton(
               icon: const Icon(Icons.undo),
               tooltip: 'Undo',
               onPressed: undoStack.isNotEmpty ? _undo : null,
             ),
-            // Redo Button
             IconButton(
               icon: const Icon(Icons.redo),
               tooltip: 'Redo',
               onPressed: redoStack.isNotEmpty ? _redo : null,
             ),
-            // Drag Pitch Toggle
             IconButton(
               icon: Icon(Icons.pan_tool, color: isDragMode ? Colors.amberAccent : Colors.white),
               tooltip: isDragMode ? 'Disable Drag Pitch' : 'Enable Drag Pitch',
               onPressed: () => setState(() => isDragMode = !isDragMode),
             ),
-            // Dropdown selection matrix for active editable focus stem track targeting
             if (targetStemsSelection.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -2123,7 +2154,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               )
             : Column(
                 children: [
-                  // --- 1. CURRENT FILE & PROGRESS BANNER ---
                   Container(
                     width: double.infinity,
                     color: Colors.black,
@@ -2171,7 +2201,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     )
                   ),
 
-                  // --- 2. CONTROLS TOOLBAR ---
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -2285,7 +2314,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     )
                   ),
 
-                  // --- 3. TIMELINE & CANVAS ---
                   Row(
                     children: [
                       Container(width: 60, height: 35, color: Colors.grey[900]),
