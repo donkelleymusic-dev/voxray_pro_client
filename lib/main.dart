@@ -80,6 +80,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   Set<String> targetStemsSelection = {'vocals', 'instrumental'};
   Set<String> generatedStems = {}; 
+  List<String> suggestedStems = []; 
   bool isOriginalMixAvailable = false; 
 
   List<dynamic> get rawNotes => allStemsNotes[activeEditableStem] ?? [];
@@ -88,7 +89,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   final List<String> popStems = ['vocals', 'instrumental', 'drums', 'bass', 'guitar', 'piano', 'other'];
-  final List<String> orchStems = ['strings', 'brass', 'woodwinds', 'percussion'];
+  final List<String> orchStems = ['violin', 'cello', 'contrabass', 'flute', 'oboe', 'bassoon', 'trumpet', 'trombone', 'tuba', 'percussion'];
   final List<String> forensicStems = ['forensic_id'];
 
   List<Map<String, dynamic>> markers = [];
@@ -362,11 +363,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       generatedStems.clear();
       currentTaskId = null;
       currentJobId = null;
+      suggestedStems.clear();
 
       if (uploadOptions['type'] == 'mix') {
         isOriginalMixAvailable = true;
         activePlaybackSources.add('original');
-        processingMessage = "Caching Full Mix...";
+        processingMessage = "Caching Full Mix & Extracting Forensic ID...";
       } else {
         isOriginalMixAvailable = false;
         activeEditableStem = uploadOptions['stem']!;
@@ -404,6 +406,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       var data = json.decode(await response.stream.bytesToString());
       
       currentTaskId = data['task_id']; // The cache marker
+      
+      if (data['detected_instruments'] != null) {
+        suggestedStems = List<String>.from(data['detected_instruments']);
+      }
 
       if (uploadOptions['type'] == 'mix') {
         setState(() {
@@ -1860,9 +1866,19 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       builder: (context) => StatefulBuilder(
         builder: (context, setTreeState) {
           Widget buildStemCheckbox(String stem) {
+            bool isSuggested = suggestedStems.contains(stem);
             return CheckboxListTile(
               dense: true,
-              title: Text(stem, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+              title: Row(
+                children: [
+                  Text(stem, style: TextStyle(fontSize: 13, color: isSuggested ? Colors.yellowAccent : Colors.white70)),
+                  if (isSuggested) 
+                    const Padding(
+                      padding: EdgeInsets.only(left: 6.0), 
+                      child: Text("RECOMMENDED", style: TextStyle(fontSize: 9, color: Colors.yellowAccent, fontWeight: FontWeight.bold))
+                    ),
+                ],
+              ),
               value: targetStemsSelection.contains(stem),
               activeColor: Colors.tealAccent,
               onChanged: (bool? checked) {
@@ -2114,11 +2130,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
                     style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
                     items: targetStemsSelection.map((String stemKey) {
+                      bool isSuggested = suggestedStems.contains(stemKey);
                       return DropdownMenuItem<String>(
                         value: stemKey,
                         child: Row(
                           children: [
-                            Text(stemKey.toUpperCase()),
+                            Text(stemKey.toUpperCase(), style: TextStyle(color: isSuggested ? Colors.yellowAccent : Colors.white)),
+                            if (isSuggested) 
+                               const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
                             if (!generatedStems.contains(stemKey)) 
                                const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38))
                           ],
@@ -2130,7 +2149,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         setState(() {
                           activeEditableStem = newSelection;
                         });
-                        if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null) {
+                        if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
                           _generateStemOnDemand();
                         }
                       }
@@ -2243,11 +2262,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const Text("Zx", style: TextStyle(fontSize: 12)),
-                            SizedBox(width: 60, child: Slider(value: zoomX, min: 50.0, max: 400.0, onChanged: (v) => setState(() => zoomX = v))),
+                            SizedBox(width: 60, child: Slider(value: zoomX, min: 50.0, max: 500.0, onChanged: (v) => setState(() => zoomX = v))),
                             const SizedBox(width: 8),
                             const Text("Zy", style: TextStyle(fontSize: 12)),
-                            SizedBox(width: 60, child: Slider(value: zoomY, min: 10.0, max: 60.0, onChanged: (v) => setState(() => zoomY = v))),
+                            SizedBox(width: 60, child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: (v) => setState(() => zoomY = v))),
                           ]
+                        ),
+
+                        IconButton(
+                          icon: Icon(Icons.loop, color: isLoopModeActive ? Colors.tealAccent : Colors.white38, size: 22),
+                          tooltip: "Loop Mode", onPressed: () => setState(() => isLoopModeActive = !isLoopModeActive)
                         ),
 
                         IconButton(
@@ -2276,13 +2300,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           ),
 
                         if (markers.length >= 2) ...[
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.repeat, size: 16, color: Colors.blueAccent),
-                              Switch(value: isLoopModeActive, onChanged: (val) => setState(() => isLoopModeActive = val), activeColor: Colors.blueAccent),
-                            ],
-                          ),
                           PopupMenuButton<String>(
                             icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
                             tooltip: "Set Loop Region",
@@ -2328,12 +2345,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                   ),
 
                   Expanded(
-                    child: !isCurrentStemGenerated && originalAudioBytes != null
+                    child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
                       ? Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.graphic_eq, size: 64, color: Colors.white24),
+                              const Icon(Icons.music_note, size: 48, color: Colors.white24),
                               const SizedBox(height: 16),
                               Text("The ${activeEditableStem.toUpperCase()} stem has not been extracted yet.", style: const TextStyle(color: Colors.white54)),
                               const SizedBox(height: 24),
@@ -2341,15 +2358,34 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
                                 icon: const Icon(Icons.build),
                                 label: Text("Generate & Analyze ${activeEditableStem.toUpperCase()}"),
-                                onPressed: _generateStemOnDemand,
+                                onPressed: isLoading ? null : _generateStemOnDemand,
                               )
                             ],
                           ),
                         )
                       : TimelineCanvasWidget(
-                          dawState: this,
+                          notes: rawNotes,
+                          allStemsNotes: allStemsNotes,
+                          activeEditableStem: activeEditableStem,
+                          songDuration: songDuration,
+                          currentPosition: currentPosition,
+                          zoomX: zoomX, zoomY: zoomY,
+                          minMidi: minMidi, maxMidi: maxMidi,
+                          isXrayMode: isXrayMode,
+                          isScrubMode: isScrubMode, isDragMode: isDragMode,
+                          isLoopModeActive: isLoopModeActive,
+                          loopStartBoundary: loopStartBoundary, loopEndBoundary: loopEndBoundary,
                           horizontalScrollController: horizontalScrollController,
                           verticalScrollController: verticalScrollController,
+                          markers: markers,
+                          onNotesChanged: (updated) {
+                            setState(() => rawNotes = updated);
+                            registerUndoSnapshot();
+                          },
+                          onSeek: jumpToTimelinePosition,
+                          onLoopBoundariesChanged: (start, end) {
+                            setState(() { loopStartBoundary = start; loopEndBoundary = end; });
+                          },
                         ),
                   ),
                 ],
