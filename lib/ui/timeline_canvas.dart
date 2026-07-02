@@ -26,7 +26,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
 
   int? draggingNoteIndex;
   double dragStartY = 0;
-  double initialCentsShift = 0;
+  int initialSemitoneShift = 0;
   int lastPlayedMidi = -1;
 
   // Converts a MIDI note value to frequency (Hz)
@@ -65,9 +65,10 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
 
     var processedNotes = widget.dawState.rawNotes.map<Map<String, dynamic>>((note) {
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      int semitoneShift = note['semitone_shift'] ?? 0;
       double shiftCents = (note['cents_shift'] ?? 0).toDouble();
       
-      double effectiveMidi = actualMidi + (shiftCents / 100.0);
+      double effectiveMidi = actualMidi + semitoneShift + (shiftCents / 100.0);
       int nearest = effectiveMidi.round();
       
       return <String, dynamic>{
@@ -146,7 +147,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           double startX = pNote['start_time'] * widget.dawState.zoomX;
                           double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
                           
-                          double effectiveMidi = (pNote['actual_midi'] ?? 60.0) + ((pNote['cents_shift'] ?? 0) / 100.0);
+                          double effectiveMidi = (pNote['actual_midi'] ?? 60.0) + (pNote['semitone_shift'] ?? 0) + ((pNote['cents_shift'] ?? 0) / 100.0);
                           double visualY = (maxMidi - effectiveMidi) * widget.dawState.zoomY;
                           
                           Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2) - touchSlop, endX, visualY + (widget.dawState.zoomY / 2) + touchSlop);
@@ -166,7 +167,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           double startX = pNote['start_time'] * widget.dawState.zoomX;
                           double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
                           
-                          double effectiveMidi = (pNote['actual_midi'] ?? 60.0) + ((pNote['cents_shift'] ?? 0) / 100.0);
+                          double effectiveMidi = (pNote['actual_midi'] ?? 60.0) + (pNote['semitone_shift'] ?? 0) + ((pNote['cents_shift'] ?? 0) / 100.0);
                           double visualY = (maxMidi - effectiveMidi) * widget.dawState.zoomY;
                           
                           Rect hitBox = Rect.fromLTRB(startX, visualY - (widget.dawState.zoomY / 2) - touchSlop, endX, visualY + (widget.dawState.zoomY / 2) + touchSlop);
@@ -176,9 +177,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                             setState(() {
                               draggingNoteIndex = i;
                               dragStartY = details.localPosition.dy;
-                              initialCentsShift = (widget.dawState.rawNotes[i]['cents_shift'] ?? 0).toDouble();
+                              initialSemitoneShift = widget.dawState.rawNotes[i]['semitone_shift'] ?? 0;
                             });
-                            double trueMidi = (pNote['actual_midi'] ?? 60.0) + (initialCentsShift / 100.0);
+                            double trueMidi = (pNote['actual_midi'] ?? 60.0) + initialSemitoneShift + ((pNote['cents_shift'] ?? 0) / 100.0);
                             _playPitchFeedback(trueMidi);
                             break;
                           }
@@ -189,15 +190,16 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         
                         double deltaY = details.localPosition.dy - dragStartY;
                         int semitoneDelta = -(deltaY / widget.dawState.zoomY).round();
-                        double targetShift = initialCentsShift + (semitoneDelta * 100);
+                        int targetShift = initialSemitoneShift + semitoneDelta;
                         
-                        if (widget.dawState.rawNotes[draggingNoteIndex!]['cents_shift'] != targetShift) {
+                        if (widget.dawState.rawNotes[draggingNoteIndex!]['semitone_shift'] != targetShift) {
                           widget.dawState.setState(() {
-                            widget.dawState.rawNotes[draggingNoteIndex!]['cents_shift'] = targetShift;
+                            widget.dawState.rawNotes[draggingNoteIndex!]['semitone_shift'] = targetShift;
                           });
                           
                           double originalMidi = (widget.dawState.rawNotes[draggingNoteIndex!]['actual_midi'] ?? 60.0).toDouble();
-                          _playPitchFeedback(originalMidi + (targetShift / 100.0));
+                          double microCents = (widget.dawState.rawNotes[draggingNoteIndex!]['cents_shift'] ?? 0) / 100.0;
+                          _playPitchFeedback(originalMidi + targetShift + microCents);
                         }
                       } : null,
                       onPanEnd: widget.dawState.isDragMode 
@@ -216,7 +218,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           maxMidi: maxMidi,
                           isXrayMode: widget.dawState.isXrayMode,
                           draggingNoteIndex: draggingNoteIndex,
-                          initialCentsShift: initialCentsShift,
+                          initialSemitoneShift: initialSemitoneShift,
                         ),
                       ),
                     ),
@@ -290,7 +292,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
   final int maxMidi;
   final bool isXrayMode;
   final int? draggingNoteIndex;
-  final double initialCentsShift;
+  final int initialSemitoneShift;
 
   AdvancedPianoRollPainter({
     required this.notes,
@@ -300,7 +302,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
     required this.maxMidi,
     this.isXrayMode = false,
     this.draggingNoteIndex,
-    this.initialCentsShift = 0.0,
+    this.initialSemitoneShift = 0,
   });
 
   String getNoteName(int midi) {
@@ -335,13 +337,14 @@ class AdvancedPianoRollPainter extends CustomPainter {
 
       // Calculate absolute effective positioning
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      int semitoneShift = note['semitone_shift'] ?? 0;
       double currentShiftCents = (note['cents_shift'] ?? 0).toDouble();
-      double effectiveMidi = actualMidi + (currentShiftCents / 100.0);
+      double effectiveMidi = actualMidi + semitoneShift + (currentShiftCents / 100.0);
       double visualY = (maxMidi - effectiveMidi) * zoomY;
 
       // --- PAINT GHOST NOTE IF DRAGGING ---
       if (i == draggingNoteIndex) {
-        double ghostEffectiveMidi = actualMidi + (initialCentsShift / 100.0);
+        double ghostEffectiveMidi = actualMidi + initialSemitoneShift + (currentShiftCents / 100.0);
         double ghostVisualY = (maxMidi - ghostEffectiveMidi) * zoomY;
         
         Rect ghostRect = Rect.fromLTRB(startX, ghostVisualY + padding, endX, ghostVisualY + zoomY - padding);
@@ -364,7 +367,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double baseFraction = note['xray_cents'] != null 
           ? (note['xray_cents'] / 100.0)
           : (actualMidi - actualMidi.round());
-      double exactCurrentMidi = actualMidi.round() + baseFraction + (currentShiftCents / 100.0);
+      double exactCurrentMidi = actualMidi.round() + baseFraction + semitoneShift + (currentShiftCents / 100.0);
       int deviationFromDisplay = ((exactCurrentMidi - note['display_midi']) * 100).round();
 
       Color noteColor;
@@ -392,7 +395,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
           Path contourPath = Path();
           double stepX = (endX - startX) / (contour.length > 1 ? contour.length - 1 : 1);
           double vibrato = (note['vibrato_scale'] ?? 1.0).toDouble();
-          double baseMidiForContour = actualMidi.round().toDouble();
+          double baseMidiForContour = actualMidi.round().toDouble() + semitoneShift;
           
           for (int j = 0; j < contour.length; j++) {
             double rawCents = contour[j].toDouble();
