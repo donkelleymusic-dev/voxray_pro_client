@@ -2364,28 +2364,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           ),
                         )
                       : TimelineCanvasWidget(
-                          notes: rawNotes,
-                          allStemsNotes: allStemsNotes,
-                          activeEditableStem: activeEditableStem,
-                          songDuration: songDuration,
-                          currentPosition: currentPosition,
-                          zoomX: zoomX, zoomY: zoomY,
-                          minMidi: minMidi, maxMidi: maxMidi,
-                          isXrayMode: isXrayMode,
-                          isScrubMode: isScrubMode, isDragMode: isDragMode,
-                          isLoopModeActive: isLoopModeActive,
-                          loopStartBoundary: loopStartBoundary, loopEndBoundary: loopEndBoundary,
+                          dawState: this,
                           horizontalScrollController: horizontalScrollController,
                           verticalScrollController: verticalScrollController,
-                          markers: markers,
-                          onNotesChanged: (updated) {
-                            setState(() => rawNotes = updated);
-                            registerUndoSnapshot();
-                          },
-                          onSeek: jumpToTimelinePosition,
-                          onLoopBoundariesChanged: (start, end) {
-                            setState(() { loopStartBoundary = start; loopEndBoundary = end; });
-                          },
                         ),
                   ),
                 ],
