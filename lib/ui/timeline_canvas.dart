@@ -50,11 +50,16 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
       };
     }).toList();
 
+    // Prevent scroll views from stealing pan gestures when Drag Pitch mode is enabled
+    final ScrollPhysics? scrollPhysics = (widget.dawState.isDragMode || draggingNoteIndex != null)
+        ? const NeverScrollableScrollPhysics()
+        : null;
+
     return Stack(
       children: [
         SingleChildScrollView(
           controller: widget.verticalScrollController,
-          physics: draggingNoteIndex != null ? const NeverScrollableScrollPhysics() : null,
+          physics: scrollPhysics,
           scrollDirection: Axis.vertical,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,7 +107,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                   },
                   child: SingleChildScrollView(
                     controller: widget.horizontalScrollController,
-                    physics: draggingNoteIndex != null ? const NeverScrollableScrollPhysics() : null,
+                    physics: scrollPhysics,
                     scrollDirection: Axis.horizontal,
                     child: GestureDetector(
                       onTapDown: (details) {
