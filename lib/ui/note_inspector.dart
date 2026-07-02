@@ -31,7 +31,7 @@ class NoteInspector {
                   .map((c) => (c as num).toDouble())
                   .reduce((a, b) => a + b) / contour.length;
             } else {
-              // Basic Pitch gives integer midi so this will be ~0 without xray
+              // Fractional microtonal difference natively derived from the floating point MIDI integer
               rawCentsFromPitch = (actualMidi - originalMidiInt) * 100;
             }
 
@@ -42,7 +42,6 @@ class NoteInspector {
             double adjustedMidi = actualMidi + (centsShift / 100.0);
             int adjustedMidiInt = adjustedMidi.round();
             String adjustedNoteName = _midiToName(adjustedMidiInt);
-            double adjustedCentsFromNote = rawCentsFromPitch + centsShift;
 
             bool noteNameChanged = adjustedMidiInt != originalMidiInt;
 
