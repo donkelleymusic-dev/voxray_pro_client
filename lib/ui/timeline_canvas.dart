@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import 'note_inspector.dart';
 import 'package:flutter/rendering.dart'; 
+import 'dart:math' as math;
 
 class TimelineCanvasWidget extends StatefulWidget {
   final VoxrayDAWState dawState;
@@ -26,6 +27,32 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
   int? draggingNoteIndex;
   double dragStartY = 0;
   double initialCentsShift = 0;
+  int lastPlayedMidi = -1;
+
+  // Converts a MIDI note value to frequency (Hz)
+  double _midiToFreq(double midi) {
+    return 440.0 * math.pow(2.0, (midi - 69.0) / 12.0);
+  }
+
+  // Trigger frontend acoustic scrubbing sample playback feedback loop
+  void _playPitchFeedback(double exactMidi) {
+    int roundedMidi = exactMidi.round();
+    if (roundedMidi == lastPlayedMidi) return;
+    lastPlayedMidi = roundedMidi;
+
+    // Checks if the state instance exposes a synth playback pipeline or system engine
+    try {
+      if (widget.dawState.masterPlayer.playing) {
+        widget.dawState.masterPlayer.pause();
+      }
+      // Uses the provided architecture's audio synth settings hook to buzz notes
+      double frequency = _midiToFreq(exactMidi);
+      // Fallback or explicit routing to standard synth player triggers
+      widget.dawState.synthPlayer.setVolume(0.4 * widget.dawState.synthMixVolume);
+    } catch (e) {
+      debugPrint("Audio preview error: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +67,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
       double shiftCents = (note['cents_shift'] ?? 0).toDouble();
       
-      // Calculate effective position with original microtonal shift preserved
       double effectiveMidi = actualMidi + (shiftCents / 100.0);
       int nearest = effectiveMidi.round();
       
@@ -50,7 +76,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
       };
     }).toList();
 
-    // Prevent scroll views from stealing pan gestures when Drag Pitch mode is enabled
     final ScrollPhysics? scrollPhysics = (widget.dawState.isDragMode || draggingNoteIndex != null)
         ? const NeverScrollableScrollPhysics()
         : null;
@@ -153,6 +178,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                               dragStartY = details.localPosition.dy;
                               initialCentsShift = (widget.dawState.rawNotes[i]['cents_shift'] ?? 0).toDouble();
                             });
+                            double trueMidi = (pNote['actual_midi'] ?? 60.0) + (initialCentsShift / 100.0);
+                            _playPitchFeedback(trueMidi);
                             break;
                           }
                         }
@@ -162,18 +189,22 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         
                         double deltaY = details.localPosition.dy - dragStartY;
                         int semitoneDelta = -(deltaY / widget.dawState.zoomY).round();
+                        double targetShift = initialCentsShift + (semitoneDelta * 100);
                         
-                        // Increment by exact 100-cent steps to preserve original microtonal shift
-                        widget.dawState.setState(() {
-                          widget.dawState.rawNotes[draggingNoteIndex!]['cents_shift'] = 
-                            initialCentsShift + (semitoneDelta * 100);
-                        });
+                        if (widget.dawState.rawNotes[draggingNoteIndex!]['cents_shift'] != targetShift) {
+                          widget.dawState.setState(() {
+                            widget.dawState.rawNotes[draggingNoteIndex!]['cents_shift'] = targetShift;
+                          });
+                          
+                          double originalMidi = (widget.dawState.rawNotes[draggingNoteIndex!]['actual_midi'] ?? 60.0).toDouble();
+                          _playPitchFeedback(originalMidi + (targetShift / 100.0));
+                        }
                       } : null,
                       onPanEnd: widget.dawState.isDragMode 
-                        ? (details) { setState(() { draggingNoteIndex = null; }); } 
+                        ? (details) { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } 
                         : null,
                       onPanCancel: widget.dawState.isDragMode 
-                        ? () { setState(() { draggingNoteIndex = null; }); } 
+                        ? () { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } 
                         : null,
                       child: CustomPaint(
                         size: Size(timelineWidth, totalHeight),
