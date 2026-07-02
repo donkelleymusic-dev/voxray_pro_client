@@ -871,19 +871,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  Future<void> _previewWithEdits() async {
+  Future<void> _renderStemEdits() async {
     if (originalAudioBytes == null) return;
     
     bool wasPlaying = masterPlayer.playing;
     double resumePosition = currentPosition;
-    if (wasPlaying) await masterPlayer.pause();
+    if (wasPlaying) await _pauseAllPlayers();
     
-    setState(() { isPreviewing = true; exportMessage = "Rendering preview mix..."; });
+    setState(() { isPreviewing = true; exportMessage = "Rendering stem edits..."; });
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['edit_manifest'] = jsonEncode({
-          'track_settings': {'target_volume': targetVolume, 'accomp_volume': accompVolume, 'apply_denoise': applyDenoise},
+          // Send 0.0 for accomp_volume so the backend prints ONLY the target stem edits.
+          'track_settings': {'target_volume': 1.0, 'accomp_volume': 0.0, 'apply_denoise': applyDenoise},
           'edits': rawNotes,
         })
         ..fields['task_id'] = currentTaskId ?? ''  
@@ -901,31 +902,49 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (result['status'] == 'success') {
         Uint8List previewBytes = base64Decode(result['master_mix_b64']);
 
-        if (kIsWeb) {
-          await masterPlayer.setAudioSource(MyCustomBytesSource(previewBytes, contentType: 'audio/wav'));
-        } else {
-          final tempDir = await getTemporaryDirectory();
-          final tempFile = File('${tempDir.path}/preview_mix.wav');
-          await tempFile.writeAsBytes(previewBytes);
-          await masterPlayer.setFilePath(tempFile.path);
+        // Cache the newly rendered stem
+        cachedStemBytes[activeEditableStem] = previewBytes;
+
+        if (!stemPlayers.containsKey(activeEditableStem)) {
+          stemPlayers[activeEditableStem] = AudioPlayer();
+          stemPlayers[activeEditableStem]!.playerStateStream.listen((state) {
+            if (mounted) setState(() {});
+          });
         }
 
-        await masterPlayer.seek(Duration(milliseconds: (resumePosition * 1000).round()));
-        
-        if (wasPlaying) {
-          await masterPlayer.play();
-          _showSaveConfirmation('Preview ready — resuming with edits applied.', isPreview: true);
+        final targetPlayer = stemPlayers[activeEditableStem]!;
+
+        if (kIsWeb) {
+          await targetPlayer.setAudioSource(MyCustomBytesSource(previewBytes, contentType: 'audio/wav'));
         } else {
-          _showSaveConfirmation('Preview ready — tap Play to hear your edits.', isPreview: true);
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File('${tempDir.path}/voxray_stem_${activeEditableStem}_edited.wav');
+          await tempFile.writeAsBytes(previewBytes);
+          await targetPlayer.setFilePath(tempFile.path);
+        }
+
+        await targetPlayer.setVolume(targetVolume); // Apply current mix setting
+        await _seekAllPlayers(Duration(milliseconds: (resumePosition * 1000).round()));
+        
+        // Ensure the stem is active in the playback sources so the user hears it
+        if (!activePlaybackSources.contains('stem_$activeEditableStem')) {
+           setState(() { activePlaybackSources.add('stem_$activeEditableStem'); });
+        }
+
+        if (wasPlaying) {
+          await _playAllPlayers();
+          _showSaveConfirmation('Edits applied to ${activeEditableStem.toUpperCase()} stem.', isPreview: true);
+        } else {
+          _showSaveConfirmation('Stem updated — tap Play to hear edits.', isPreview: true);
         }
       } else {
-        if (wasPlaying) await masterPlayer.play();
-        _showSaveConfirmation('Preview failed: ${result['message'] ?? 'unknown error'}');
+        if (wasPlaying) await _playAllPlayers();
+        _showSaveConfirmation('Render failed: ${result['message'] ?? 'unknown error'}');
       }
     } catch (e) {
-      if (wasPlaying) await masterPlayer.play();
-      debugPrint("Preview render failed: $e");
-      _showSaveConfirmation('Preview failed: $e');
+      if (wasPlaying) await _playAllPlayers();
+      debugPrint("Stem render failed: $e");
+      _showSaveConfirmation('Render failed: $e');
     } finally {
       setState(() { isPreviewing = false; exportMessage = ''; });
     }
@@ -1357,6 +1376,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                   Expanded(child: Slider(value: targetVolume, min: 0.0, max: 2.0, activeColor: Colors.tealAccent, onChanged: (v) {
                     setDialogState(() => targetVolume = v);
                     setState(() => targetVolume = v); 
+                    // Update stem volume in real-time
+                    if (stemPlayers.containsKey(activeEditableStem)) {
+                       stemPlayers[activeEditableStem]!.setVolume(v);
+                    }
                   })),
                   SizedBox(width: 45, child: Text("${(targetVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
                 ],
@@ -1367,6 +1390,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                   Expanded(child: Slider(value: accompVolume, min: 0.0, max: 2.0, activeColor: Colors.amberAccent, onChanged: (v) {
                     setDialogState(() => accompVolume = v);
                     setState(() => accompVolume = v);
+                    // Update instrumental volume in real-time
+                    if (stemPlayers.containsKey('instrumental')) {
+                       stemPlayers['instrumental']!.setVolume(v);
+                    }
                   })),
                   SizedBox(width: 45, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
                 ],
@@ -2345,8 +2372,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple[700], visualDensity: VisualDensity.compact),
                           icon: const Icon(Icons.play_circle, size: 16), 
-                          label: const Text("Preview Mix"),
-                          onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing ? _previewWithEdits : null,
+                          label: const Text("Render Stem Edits"),
+                          onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing ? _renderStemEdits : null,
                         ),
 
                         IconButton(
@@ -2471,7 +2498,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
                                   ? Center(
                                       child: Column(
-                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisSize: Main late MainAxisSize.min,
                                         children: [
                                           const Icon(Icons.music_note, size: 48, color: Colors.white24),
                                           const SizedBox(height: 16),
