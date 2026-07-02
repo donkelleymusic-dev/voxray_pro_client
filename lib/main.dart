@@ -2364,7 +2364,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           ),
                         )
                       : TimelineCanvasWidget(
-                          rawNotes: rawNotes,
+                          notes: rawNotes,
                           allStemsNotes: allStemsNotes,
                           activeEditableStem: activeEditableStem,
                           songDuration: songDuration,
