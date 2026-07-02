@@ -2498,7 +2498,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
                                   ? Center(
                                       child: Column(
-                                        mainAxisSize: Main late MainAxisSize.min,
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           const Icon(Icons.music_note, size: 48, color: Colors.white24),
                                           const SizedBox(height: 16),
