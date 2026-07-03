@@ -48,7 +48,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
       // Uses the provided architecture's audio synth settings hook to buzz notes
       double frequency = _midiToFreq(exactMidi);
       // Fallback or explicit routing to standard synth player triggers
-      widget.dawState.synthPlayer.setVolume(0.4 * widget.dawState.synthMixVolume);
+      widget.dawState.synthPlayer.setVolume(0.4 * widget.dawState.getChannelState('synth').volume);
     } catch (e) {
       debugPrint("Audio preview error: $e");
     }
