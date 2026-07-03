@@ -58,7 +58,6 @@ class ChannelState {
   double volume;
   bool isMuted;
   bool isSoloed;
-  bool isHQ; // Toggle between API high-fidelity render and local frontend proxy
 
   String plugin1;
   String plugin2;
@@ -77,7 +76,6 @@ class ChannelState {
     this.volume = 1.0,
     this.isMuted = false,
     this.isSoloed = false,
-    this.isHQ = true, 
     this.plugin1 = 'None',
     this.plugin2 = 'None',
     this.plugin3 = 'None',
@@ -94,7 +92,6 @@ class ChannelState {
     'volume': volume,
     'isMuted': isMuted,
     'isSoloed': isSoloed,
-    'isHQ': isHQ,
     'plugin1': plugin1,
     'plugin2': plugin2,
     'plugin3': plugin3,
@@ -106,7 +103,6 @@ class ChannelState {
       volume: json['volume'] ?? 1.0,
       isMuted: json['isMuted'] ?? false,
       isSoloed: json['isSoloed'] ?? false,
-      isHQ: json['isHQ'] ?? true,
       plugin1: json['plugin1'] ?? 'None',
       plugin2: json['plugin2'] ?? 'None',
       plugin3: json['plugin3'] ?? 'None',
@@ -118,7 +114,6 @@ class ChannelState {
     double? volume,
     bool? isMuted,
     bool? isSoloed,
-    bool? isHQ,
     String? plugin1,
     String? plugin2,
     String? plugin3,
@@ -128,7 +123,6 @@ class ChannelState {
       volume: volume ?? this.volume,
       isMuted: isMuted ?? this.isMuted,
       isSoloed: isSoloed ?? this.isSoloed,
-      isHQ: isHQ ?? this.isHQ,
       plugin1: plugin1 ?? this.plugin1,
       plugin2: plugin2 ?? this.plugin2,
       plugin3: plugin3 ?? this.plugin3,
@@ -186,6 +180,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Set<String> generatedStems = {}; 
   List<String> suggestedStems = []; 
   bool isOriginalMixAvailable = false; 
+  bool isTestModeActive = false; // Dev bypass flag
 
   List<dynamic> get rawNotes => allStemsNotes[activeEditableStem] ?? [];
   set rawNotes(List<dynamic> updatedNotes) {
@@ -578,6 +573,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         ..fields['instruments_json'] = jsonEncode(targetStemsSelection.toList())
         ..fields['upload_type'] = uploadOptions['type']! 
         ..fields['stem_target'] = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'none'
+        ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: result.files.single.name));
       
       var response = await request.send();
@@ -829,39 +825,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+  // Raw stem pull. For applying effects/edits, rendering endpoints will update the cache directly.
   Future<Uint8List> _fetchStemBytes(String stemName) async {
     if (currentTaskId == null) throw Exception("No active session");
-
-    ChannelState state = getChannelState(stemName);
-
-    // If local mode is forced, just fetch the raw stem and apply volume locally.
-    if (!state.isHQ) {
-      final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName'));
-      if (stemRes.statusCode == 200) return stemRes.bodyBytes;
-      if (stemRes.statusCode != 404) throw Exception("Stem fetch error ${stemRes.statusCode}");
-    }
-
-    // Otherwise (or if raw fetch fails), batch render it with server-side plugins
-    var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-      ..fields['edit_manifest'] = jsonEncode({
-        'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-        'edits': _enrichManifestWithPolyphonicContext(allStemsNotes[stemName] ?? []),
-        'solo_stem': stemName, 
-      })
-      ..fields['task_id'] = currentTaskId!
-      ..fields['export_format'] = 'wav' 
-      ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
-
-    var response = await request.send();
-    var responseData = await http.Response.fromStream(response);
-    if (responseData.statusCode != 200) {
-      throw Exception("Server error ${responseData.statusCode}");
-    }
-    var result = jsonDecode(responseData.body);
-    if (result['status'] != 'success') {
-      throw Exception(result['message'] ?? 'Unknown error');
-    }
-    return base64Decode(result['master_mix_b64']);
+    final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName'));
+    if (stemRes.statusCode == 200) return stemRes.bodyBytes;
+    throw Exception("Stem fetch error ${stemRes.statusCode}");
   }
 
   Future<void> _loadStemPlayerSource(String stemName) async {
@@ -880,10 +849,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
 
       ChannelState state = getChannelState(stemName);
-      double effectiveVolume = state.volume;
-      if (!state.isHQ) {
-        if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ') effectiveVolume *= 0.85; 
-      }
+      double effectiveVolume = state.isMuted ? 0.0 : state.volume;
       
       SoLoud.instance.setVolume(stemHandles[stemName]!, effectiveVolume);
       SoLoud.instance.seek(stemHandles[stemName]!, Duration(milliseconds: (currentPosition * 1000).round()));
@@ -990,6 +956,41 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+  // Extracted polling logic to handle heavy backend processing asynchronously
+  Future<Uint8List?> _pollRenderJob(String jobId) async {
+    bool isComplete = false;
+    int retryCount = 0;
+    const int maxRetries = 100; // 5 mins max
+    
+    while (!isComplete && retryCount < maxRetries) {
+      try {
+        final res = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
+        if (res.statusCode == 200) {
+          final taskData = jsonDecode(res.body);
+          final status = taskData['status'];
+          
+          setState(() {
+            processingProgress = (taskData['progress'] ?? 0).toDouble() / 100.0;
+            if (isPreviewing) exportMessage = taskData['message'] ?? 'Processing...';
+          });
+
+          if (status == 'complete') {
+            return base64Decode(taskData['result']['master_mix_b64']);
+          } else if (status == 'error') {
+            throw Exception(taskData['message']);
+          }
+        } else if (res.statusCode == 404) {
+          throw Exception('Task expired or crashed on server');
+        }
+      } catch (e) {
+        debugPrint('Polling network blink: $e');
+      }
+      await Future.delayed(const Duration(seconds: 3));
+      retryCount++;
+    }
+    throw Exception('Polling timed out after 5 minutes.');
+  }
+
   Future<void> _renderStemEdits() async {
     if (originalAudioBytes == null) return;
     
@@ -997,7 +998,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     double resumePosition = currentPosition;
     if (wasPlaying) pauseAllPlayers();
     
-    setState(() { isPreviewing = true; exportMessage = "Rendering stem edits via Server..."; });
+    setState(() { isPreviewing = true; exportMessage = "Queueing edits via Server..."; processingProgress = 0.0; });
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
@@ -1006,7 +1007,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           'edits': _enrichManifestWithPolyphonicContext(rawNotes),
           'solo_stem': activeEditableStem,
         })
-        ..fields['task_id'] = currentTaskId ?? ''  
+        ..fields['task_id'] = currentTaskId ?? ''
+        ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
       var response = await request.send();
@@ -1017,9 +1019,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
 
       var result = jsonDecode(responseData.body);
-
       if (result['status'] == 'success') {
-        Uint8List previewBytes = base64Decode(result['master_mix_b64']);
+        String jobId = result['job_id'];
+        Uint8List previewBytes = await _pollRenderJob(jobId) ?? Uint8List(0);
 
         cachedStemBytes[activeEditableStem] = previewBytes;
 
@@ -1031,7 +1033,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
         
         SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
-        
         seekAllPlayers(resumePosition);
         
         if (!activePlaybackSources.contains(activeEditableStem)) {
@@ -1053,7 +1054,56 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       debugPrint("Stem render failed: $e");
       _showSaveConfirmation('Render failed: $e');
     } finally {
-      setState(() { isPreviewing = false; exportMessage = ''; });
+      setState(() { isPreviewing = false; exportMessage = ''; processingProgress = 0.0; });
+    }
+  }
+
+  Future<void> _renderStemPlugins(String stem) async {
+    if (originalAudioBytes == null) return;
+    
+    bool wasPlaying = isPlaying;
+    double resumePosition = currentPosition;
+    
+    setState(() { isPreviewing = true; exportMessage = "Rendering plugins for $stem..."; processingProgress = 0.0; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+        ..fields['edit_manifest'] = jsonEncode({
+          'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
+          'edits': _enrichManifestWithPolyphonicContext(allStemsNotes[stem] ?? []),
+          'solo_stem': stem,
+        })
+        ..fields['task_id'] = currentTaskId ?? ''
+        ..fields['is_test_mode'] = isTestModeActive.toString()
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
+      
+      if (responseData.statusCode == 200) {
+        var result = jsonDecode(responseData.body);
+        if (result['status'] == 'success') {
+          String jobId = result['job_id'];
+          Uint8List previewBytes = await _pollRenderJob(jobId) ?? Uint8List(0);
+
+          cachedStemBytes[stem] = previewBytes;
+
+          if (stemHandles.containsKey(stem)) {
+             SoLoud.instance.stop(stemHandles[stem]!);
+          }
+
+          stemSources[stem] = await SoLoud.instance.loadMem("stem_${stem}_edited", previewBytes);
+          stemHandles[stem] = SoLoud.instance.play(stemSources[stem]!, paused: !wasPlaying);
+          
+          SoLoud.instance.setVolume(stemHandles[stem]!, getChannelState(stem).volume);
+          seekAllPlayers(resumePosition);
+        }
+      }
+    } catch (e) {
+      debugPrint("Plugin render failed: $e");
+      _showSaveConfirmation('Plugin render failed: $e');
+    } finally {
+      setState(() { isPreviewing = false; exportMessage = ''; processingProgress = 0.0; });
     }
   }
 
@@ -1106,9 +1156,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   Future<void> _exportFinalMaster(String format) async {
     if (originalAudioBytes == null) return;
-    setState(() { isExporting = true; exportMessage = "Rendering $format Master..."; });
+    setState(() { isExporting = true; exportMessage = "Queuing $format Master..."; processingProgress = 0.0; });
 
-    // Map through track map matrix keys to bundle individual parameters safely
     Map<String, dynamic> enrichedStemsNotesMap = {};
     allStemsNotes.forEach((stemKey, notesList) {
       enrichedStemsNotesMap[stemKey] = _enrichManifestWithPolyphonicContext(notesList);
@@ -1122,6 +1171,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         })
         ..fields['task_id'] = currentTaskId ?? '' 
         ..fields['export_format'] = format 
+        ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
 
       var response = await request.send();
@@ -1134,7 +1184,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       var data = jsonDecode(responseData.body);
 
       if (data['status'] == 'success') {
-        final Uint8List bytes = base64.decode(data['master_mix_b64']);
+        String jobId = data['job_id'];
+        final Uint8List bytes = await _pollRenderJob(jobId) ?? Uint8List(0);
 
         String mimeType = 'audio/wav';
         if (format == 'mp3') mimeType = 'audio/mpeg';
@@ -1168,7 +1219,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       debugPrint("Export error: $e");
       _showSaveConfirmation('Export failed: $e');
     } finally {
-      setState(() { isExporting = false; exportMessage = ''; });
+      setState(() { isExporting = false; exportMessage = ''; processingProgress = 0.0; });
     }
   }
 
@@ -1491,33 +1542,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                   ),
                   child: Column(
                     children: [
-                      // Title & HQ Toggle Header
                       Padding(
                         padding: const EdgeInsets.all(4.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 10), overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 2),
-                            if (!isMaster)
-                              GestureDetector(
-                                onTap: () {
-                                  setMixerState(() => state.isHQ = !state.isHQ);
-                                  if (cachedStemBytes.containsKey(key)) cachedStemBytes.remove(key);
-                                  if (isAudible) _loadStemPlayerSource(key);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: state.isHQ ? Colors.green[800] : Colors.grey[800],
-                                    borderRadius: BorderRadius.circular(3),
-                                    border: Border.all(color: state.isHQ ? Colors.greenAccent : Colors.white24)
-                                  ),
-                                  child: Text("HQ", style: TextStyle(fontSize: 7, color: state.isHQ ? Colors.greenAccent : Colors.white54, fontWeight: FontWeight.bold)),
-                                ),
-                              )
-                          ],
-                        ),
+                        child: Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 10), overflow: TextOverflow.ellipsis),
                       ),
                       
                       // DB Meter Simulation
@@ -1540,11 +1567,31 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       ),
                       const SizedBox(height: 8),
 
-                      // Plugins
-                      _pluginDropdown(state.plugin1, highlight, (val) => setMixerState(() => state.plugin1 = val!)),
-                      _pluginDropdown(state.plugin2, highlight, (val) => setMixerState(() => state.plugin2 = val!)),
-                      _pluginDropdown(state.plugin3, highlight, (val) => setMixerState(() => state.plugin3 = val!)),
-                      _pluginDropdown(state.plugin4, highlight, (val) => setMixerState(() => state.plugin4 = val!)),
+                      // Plugins (Sends async call to backend when changed)
+                      _pluginDropdown(state.plugin1, highlight, (val) {
+                         if(state.plugin1 != val) {
+                             setMixerState(() => state.plugin1 = val!);
+                             if (!isMaster) _renderStemPlugins(key);
+                         }
+                      }),
+                      _pluginDropdown(state.plugin2, highlight, (val) {
+                         if(state.plugin2 != val) {
+                             setMixerState(() => state.plugin2 = val!);
+                             if (!isMaster) _renderStemPlugins(key);
+                         }
+                      }),
+                      _pluginDropdown(state.plugin3, highlight, (val) {
+                         if(state.plugin3 != val) {
+                             setMixerState(() => state.plugin3 = val!);
+                             if (!isMaster) _renderStemPlugins(key);
+                         }
+                      }),
+                      _pluginDropdown(state.plugin4, highlight, (val) {
+                         if(state.plugin4 != val) {
+                             setMixerState(() => state.plugin4 = val!);
+                             if (!isMaster) _renderStemPlugins(key);
+                         }
+                      }),
                       
                       const SizedBox(height: 4),
 
@@ -1553,10 +1600,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         IconButton(
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
-                          icon: Icon(isAudible ? Icons.volume_up : Icons.volume_off, color: isAudible ? highlight : Colors.white38, size: 18),
+                          icon: Icon(state.isMuted ? Icons.volume_off : Icons.volume_up, color: !state.isMuted ? highlight : Colors.white38, size: 18),
                           onPressed: () {
-                            setMixerState(() {}); 
-                            _togglePlaybackSource(key, !isAudible);
+                            setMixerState(() => state.isMuted = !state.isMuted); 
+                            if (key == 'synth') {
+                               if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, state.isMuted ? 0.0 : state.volume);
+                            } else if (stemHandles.containsKey(key)) {
+                               SoLoud.instance.setVolume(stemHandles[key]!, state.isMuted ? 0.0 : state.volume);
+                            }
                           },
                         ),
                       
@@ -1578,6 +1629,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               max: 1.5, 
                               onChanged: (v) {
                                 setMixerState(() => state.volume = v);
+                                if (state.isMuted) return;
+                                
                                 if (key == 'master' || key == 'original') {
                                   if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v);
                                 } else if (key == 'synth') {
@@ -2306,6 +2359,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)),
         )
       ),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'test_mode', 
+        child: ListTile(
+          leading: Icon(Icons.bug_report, color: isTestModeActive ? Colors.redAccent : Colors.white38), 
+          title: Text(isTestModeActive ? 'Disable MOCK API Mode' : 'Enable MOCK API Mode', style: TextStyle(color: isTestModeActive ? Colors.redAccent : Colors.white))
+        )
+      ),
     ];
   }
 
@@ -2323,6 +2384,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       case 'downloads': _showAdvancedDownloadsDialog(); break;
       case 'live_mode': setState(() => isLiveModeActive = !isLiveModeActive); break;
       case 'reprocess': _forceReprocessXray(); break;
+      case 'test_mode': setState(() => isTestModeActive = !isTestModeActive); break;
     }
   }
 
@@ -2441,7 +2503,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           const SizedBox(height: 6),
                           Row(
                             children: [
-                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)),
+                              Expanded(child: LinearProgressIndicator(value: processingProgress, color: Colors.amberAccent, backgroundColor: Colors.grey[800])),
                               const SizedBox(width: 8),
                               Text(exportMessage.isNotEmpty ? exportMessage : synthMessage, style: const TextStyle(fontSize: 10, color: Colors.amberAccent)),
                             ],
@@ -2475,7 +2537,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple[700], visualDensity: VisualDensity.compact),
                           icon: const Icon(Icons.play_circle, size: 16), 
                           label: const Text("Render Stem Edits"),
-                          onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing ? _renderStemEdits : null,
+                          onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting ? _renderStemEdits : null,
                         ),
 
                         IconButton(
