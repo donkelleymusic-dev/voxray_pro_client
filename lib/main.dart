@@ -34,6 +34,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async'; 
+import 'dart:math' as math;
 import 'package:file_saver/file_saver.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:typed_data';
@@ -47,6 +48,33 @@ void main() => runApp(MaterialApp(
   home: const VoxrayDAW(), 
   theme: ThemeData(brightness: Brightness.dark)
 ));
+
+// --- MIXER STATE MODEL ---
+class ChannelState {
+  double volume = 1.0;
+  String plugin1 = 'None';
+  String plugin2 = 'None';
+  String plugin3 = 'None';
+  String plugin4 = 'None';
+
+  Map<String, dynamic> toJson() => {
+    'volume': volume,
+    'plugin1': plugin1,
+    'plugin2': plugin2,
+    'plugin3': plugin3,
+    'plugin4': plugin4,
+  };
+
+  factory ChannelState.fromJson(Map<String, dynamic> json) {
+    var state = ChannelState();
+    state.volume = json['volume'] ?? 1.0;
+    state.plugin1 = json['plugin1'] ?? 'None';
+    state.plugin2 = json['plugin2'] ?? 'None';
+    state.plugin3 = json['plugin3'] ?? 'None';
+    state.plugin4 = json['plugin4'] ?? 'None';
+    return state;
+  }
+}
 
 class VoxrayDAW extends StatefulWidget {
   const VoxrayDAW({Key? key}) : super(key: key);
@@ -67,7 +95,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   SynthSettings synthSettings = const SynthSettings();
   bool isSynthRendering = false;
   String synthMessage = '';
-  double synthMixVolume = 1.0;
+  
+  // Mixer State
+  Map<String, ChannelState> mixerState = {
+    'master': ChannelState(),
+    'synth': ChannelState(),
+    'vocals': ChannelState(),
+    'instrumental': ChannelState(),
+  };
   
   final ScrollController horizontalScrollController = ScrollController();
   final ScrollController verticalScrollController = ScrollController();
@@ -126,12 +161,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   
   String projectName = "Voxray_Session";
   Uint8List? originalAudioBytes;
-
-  double targetVolume = 0.85;
-  double accompVolume = 1.0;
-  bool applyDenoise = false;
-  String temperament = 'Equal';
-  int rootKeyMidi = 60;
   
   bool isLiveModeActive = false;
   bool isLoopModeActive = false;
@@ -164,7 +193,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
     
     masterPlayer.playerStateStream.listen((state) {
-      debugPrint("Player state: ${state.processingState} playing:${state.playing} isLoading:$isLoading");
       if (state.processingState == ProcessingState.completed) {
         _pauseAllPlayers();
         if (mounted) setState(() {});
@@ -250,6 +278,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       redoStack.clear();
       cachedStemBytes.remove(activeEditableStem);
     });
+  }
+
+  ChannelState getChannelState(String key) {
+    if (!mixerState.containsKey(key)) {
+      mixerState[key] = ChannelState();
+    }
+    return mixerState[key]!;
   }
 
   void jumpToTimelinePosition(double seconds) {
@@ -380,7 +415,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       } else {
         isOriginalMixAvailable = false;
         activeEditableStem = uploadOptions['stem']!;
-        activePlaybackSources.add('stem_$activeEditableStem');
+        activePlaybackSources.add(activeEditableStem);
         targetStemsSelection.add(activeEditableStem);
         processingMessage = "Analyzing ${activeEditableStem.toUpperCase()} stem notes...";
       }
@@ -480,7 +515,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               processingMessage = '';
             });
 
-            if (activePlaybackSources.contains('stem_$targetStem')) {
+            if (activePlaybackSources.contains(targetStem)) {
               _loadStemPlayerSource(targetStem);
             }
           } else if (statusData['status'] == 'error') {
@@ -488,7 +523,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             setState(() { 
               isLoading = false; 
               processingMessage = "Error: ${statusData['message']}"; 
-              activePlaybackSources.remove('stem_$targetStem');
+              activePlaybackSources.remove(targetStem);
             });
             _showSaveConfirmation('Processing Error: ${statusData['message']}');
           }
@@ -497,7 +532,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           setState(() { 
             isLoading = false; 
             processingMessage = "Error: Server returned ${statusRes.statusCode}"; 
-            activePlaybackSources.remove('stem_$targetStem');
+            activePlaybackSources.remove(targetStem);
           });
           _showSaveConfirmation('Processing Error: Server returned ${statusRes.statusCode}');
         }
@@ -507,16 +542,15 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         setState(() { 
           isLoading = false; 
           processingMessage = "Error: $e"; 
-          activePlaybackSources.remove('stem_$targetStem');
+          activePlaybackSources.remove(targetStem);
         });
         _showSaveConfirmation('Connection error during polling.');
       }
     });
   }
 
-  Future<void> _generateStemOnDemand() async {
+  Future<void> _generateStemOnDemand(String targetToGenerate) async {
     if (currentTaskId == null) return;
-    String targetToGenerate = activeEditableStem;
     
     if (generatedStems.contains(targetToGenerate)) {
       return;
@@ -546,7 +580,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() { 
         isLoading = false; 
         processingMessage = ""; 
-        activePlaybackSources.remove('stem_$targetToGenerate');
+        activePlaybackSources.remove(targetToGenerate);
         if (generatedStems.isNotEmpty && !generatedStems.contains(activeEditableStem)) {
            activeEditableStem = generatedStems.first;
         }
@@ -718,8 +752,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
       ..fields['edit_manifest'] = jsonEncode({
-        'track_settings': {'target_volume': 1.0, 'accomp_volume': 0.0, 'apply_denoise': false},
+        'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
         'edits': allStemsNotes[stemName] ?? [],
+        'solo_stem': stemName, 
       })
       ..fields['task_id'] = currentTaskId!
       ..fields['export_format'] = 'wav' 
@@ -762,13 +797,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         await tempFile.writeAsBytes(bytes);
         await targetPlayer.setFilePath(tempFile.path);
       }
+      
+      await targetPlayer.load(); // Explicit load to ensure buffer is ready
+      await targetPlayer.setVolume(getChannelState(stemName).volume);
 
       await targetPlayer.seek(masterPlayer.position);
       if (masterPlayer.playing) await targetPlayer.play();
     } catch (e) {
       debugPrint("Stem track layer $stemName build failed: $e");
       _showSaveConfirmation('Stem layer $stemName unavailable: $e');
-      setState(() => activePlaybackSources.remove('stem_$stemName'));
+      setState(() => activePlaybackSources.remove(stemName));
     } finally {
       setState(() { isFetchingStems = false; });
     }
@@ -794,6 +832,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         await synthPlayer.setFilePath(tempFile.path);
       }
 
+      await synthPlayer.load();
+      await synthPlayer.setVolume(getChannelState('synth').volume);
+      
       await synthPlayer.seek(masterPlayer.position);
       if (masterPlayer.playing) await synthPlayer.play();
     } catch (e) {
@@ -821,29 +862,24 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
 
     if (key == 'original') {
-      await masterPlayer.setVolume(enabled ? 1.0 : 0.0);
+      await masterPlayer.setVolume(enabled ? getChannelState('master').volume : 0.0);
     } else if (key == 'synth') {
       if (enabled) {
         await _loadSynthSource();
-        await synthPlayer.setVolume(synthMixVolume);
       } else {
         await synthPlayer.setVolume(0.0);
       }
-    } else if (key.startsWith('stem_')) {
-      String stemKey = key.substring(5);
+    } else {
+      // It is an isolated stem
       if (enabled) {
-        if (!generatedStems.contains(stemKey)) {
-          setState(() => activeEditableStem = stemKey);
-          await _generateStemOnDemand();
+        if (!generatedStems.contains(key)) {
+          await _generateStemOnDemand(key);
         } else {
-          await _loadStemPlayerSource(stemKey);
-          if (stemPlayers.containsKey(stemKey)) {
-            await stemPlayers[stemKey]!.setVolume(1.0);
-          }
+          await _loadStemPlayerSource(key);
         }
       } else {
-        if (stemPlayers.containsKey(stemKey)) {
-          await stemPlayers[stemKey]!.setVolume(0.0);
+        if (stemPlayers.containsKey(key)) {
+          await stemPlayers[key]!.setVolume(0.0);
         }
       }
     }
@@ -878,14 +914,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     double resumePosition = currentPosition;
     if (wasPlaying) await _pauseAllPlayers();
     
-    setState(() { isPreviewing = true; exportMessage = "Rendering stem edits..."; });
+    setState(() { isPreviewing = true; exportMessage = "Rendering stem edits via Server..."; });
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['edit_manifest'] = jsonEncode({
-          // Send 0.0 for accomp_volume so the backend prints ONLY the target stem edits.
-          'track_settings': {'target_volume': 1.0, 'accomp_volume': 0.0, 'apply_denoise': applyDenoise},
+          'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
           'edits': rawNotes,
+          'solo_stem': activeEditableStem, // Tell server to only return this stem
         })
         ..fields['task_id'] = currentTaskId ?? ''  
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
@@ -923,12 +959,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           await targetPlayer.setFilePath(tempFile.path);
         }
 
-        await targetPlayer.setVolume(targetVolume); // Apply current mix setting
+        await targetPlayer.load(); // CRITICAL: Await load so seek doesn't fail causing silence
+        await targetPlayer.setVolume(getChannelState(activeEditableStem).volume);
+        
         await _seekAllPlayers(Duration(milliseconds: (resumePosition * 1000).round()));
         
-        // Ensure the stem is active in the playback sources so the user hears it
-        if (!activePlaybackSources.contains('stem_$activeEditableStem')) {
-           setState(() { activePlaybackSources.add('stem_$activeEditableStem'); });
+        if (!activePlaybackSources.contains(activeEditableStem)) {
+           setState(() { activePlaybackSources.add(activeEditableStem); });
         }
 
         if (wasPlaying) {
@@ -999,13 +1036,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   Future<void> _exportFinalMaster(String format) async {
     if (originalAudioBytes == null) return;
-    setState(() { isExporting = true; exportMessage = "Rendering $format..."; });
+    setState(() { isExporting = true; exportMessage = "Rendering $format Master..."; });
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['edit_manifest'] = json.encode({
-          "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
-          "edits": rawNotes
+          "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
+          "all_stems_notes": allStemsNotes,
         })
         ..fields['task_id'] = currentTaskId ?? '' 
         ..fields['export_format'] = format 
@@ -1072,7 +1109,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           'duration': songDuration,
           'stem_target': activeEditableStem,
           'xray_enabled': rawNotes.any((n) => n.containsKey('contour')),
-          'version': '1.3.0',
+          'version': '1.4.0',
         });
 
       var response = await request.send();
@@ -1179,12 +1216,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   
   Future<void> _saveVoxrayProject() async {
     Map<String, dynamic> projectData = {
-        "voxray_version": "1.3.0",
+        "voxray_version": "1.4.0",
         "project_name": projectName,
         "original_file": originalFileName, 
         "original_file_path": originalFilePath, 
         "is_original_mix_available": isOriginalMixAvailable,
-        "track_settings": {"target_volume": targetVolume, "accomp_volume": accompVolume, "apply_denoise": applyDenoise},
+        "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
         "target_stems_selection": targetStemsSelection.toList(),
         "generated_stems": generatedStems.toList(),
         "all_stems_notes": allStemsNotes,
@@ -1242,9 +1279,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       originalFileName = projectData['original_file'] ?? "Unknown File";
       originalFilePath = projectData['original_file_path'] ?? "";
       isOriginalMixAvailable = projectData['is_original_mix_available'] ?? true;
-      targetVolume = projectData['track_settings']['target_volume'] ?? 0.85;
-      accompVolume = projectData['track_settings']['accomp_volume'] ?? 1.0;
-      applyDenoise = projectData['track_settings']['apply_denoise'] ?? false;
+      
+      if (projectData['mixer_state'] != null) {
+        Map<String, dynamic> ms = projectData['mixer_state'];
+        mixerState = ms.map((k, v) => MapEntry(k, ChannelState.fromJson(v)));
+      }
       
       if (projectData['target_stems_selection'] != null) {
         targetStemsSelection = Set<String>.from(projectData['target_stems_selection']);
@@ -1358,81 +1397,182 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
   }
 
-  // --- DIALOGS AND UI BUILDERS ---
+  // --- STUDIO MIXER UI ---
 
-  void _showMixSettingsDialog() {
-    showDialog(
+  void _showStudioMixer() {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Text("Mix Settings", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setMixerState) {
+            
+            // Build a single channel strip
+            Widget buildChannelStrip(String title, String key, Color highlight, {bool isMaster = false}) {
+              ChannelState state = getChannelState(key);
+              bool isAudible = activePlaybackSources.contains(key) || (isMaster && activePlaybackSources.isNotEmpty);
+              
+              // Simulating DB Meter for visual feedback. In a real native C++ engine, this would poll PCM.
+              double simulatedMeterValue = 0.0;
+              if (masterPlayer.playing && isAudible) {
+                simulatedMeterValue = 0.3 + (math.Random().nextDouble() * 0.6); // Fake bounce
+                simulatedMeterValue *= state.volume;
+              }
+
+              return Container(
+                width: 90,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: isMaster ? Colors.redAccent.withOpacity(0.1) : Colors.black87,
+                  border: Border.all(color: isMaster ? Colors.redAccent : Colors.white24),
+                  borderRadius: BorderRadius.circular(8)
+                ),
+                child: Column(
+                  children: [
+                    // Title
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis),
+                    ),
+                    
+                    // DB Meter Simulation
+                    Container(
+                      height: 8,
+                      width: 60,
+                      decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(4)),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: simulatedMeterValue.clamp(0.0, 1.0),
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(colors: [Colors.green, Colors.yellow, Colors.red])
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Plugins (Simulated Client-Side, Rendered Server-Side)
+                    _pluginDropdown(state.plugin1, highlight, (val) => setMixerState(() => state.plugin1 = val!)),
+                    _pluginDropdown(state.plugin2, highlight, (val) => setMixerState(() => state.plugin2 = val!)),
+                    _pluginDropdown(state.plugin3, highlight, (val) => setMixerState(() => state.plugin3 = val!)),
+                    _pluginDropdown(state.plugin4, highlight, (val) => setMixerState(() => state.plugin4 = val!)),
+                    
+                    const SizedBox(height: 12),
+
+                    // Active Toggle (Replaces old source checkboxes)
+                    if (!isMaster)
+                      IconButton(
+                        icon: Icon(isAudible ? Icons.volume_up : Icons.volume_off, color: isAudible ? highlight : Colors.white38),
+                        onPressed: () {
+                          setMixerState(() {}); // UI updates immediately
+                          _togglePlaybackSource(key, !isAudible);
+                        },
+                      ),
+                    
+                    // Vertical Fader
+                    Expanded(
+                      child: RotatedBox(
+                        quarterTurns: 3,
+                        child: SliderTheme(
+                          data: SliderThemeData(
+                            trackHeight: 6,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                            overlayShape: SliderComponentShape.noOverlay,
+                            activeTrackColor: highlight,
+                            inactiveTrackColor: Colors.white10,
+                          ),
+                          child: Slider(
+                            value: state.volume, 
+                            min: 0.0, 
+                            max: 1.5, 
+                            onChanged: (v) {
+                              setMixerState(() => state.volume = v);
+                              // Realtime volume update if playing
+                              if (key == 'master' || key == 'original') {
+                                masterPlayer.setVolume(v);
+                              } else if (key == 'synth') {
+                                synthPlayer.setVolume(v);
+                              } else if (stemPlayers.containsKey(key)) {
+                                stemPlayers[key]!.setVolume(v);
+                              }
+                            }
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text("${(state.volume * 100).round()}%", style: const TextStyle(fontSize: 10, color: Colors.white54)),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              );
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.65,
+              decoration: BoxDecoration(
+                color: Colors.grey[900],
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                border: const Border(top: BorderSide(color: Colors.white24))
+              ),
+              child: Column(
                 children: [
-                  const SizedBox(width: 80, child: Text("Vocal Vol", style: TextStyle(color: Colors.white70, fontSize: 13))),
-                  Expanded(child: Slider(value: targetVolume, min: 0.0, max: 2.0, activeColor: Colors.tealAccent, onChanged: (v) {
-                    setDialogState(() => targetVolume = v);
-                    setState(() => targetVolume = v); 
-                    // Update stem volume in real-time
-                    if (stemPlayers.containsKey(activeEditableStem)) {
-                       stemPlayers[activeEditableStem]!.setVolume(v);
-                    }
-                  })),
-                  SizedBox(width: 45, child: Text("${(targetVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("STUDIO MIXER", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
+                        const Text("Client Volume Preview / Server Export FX", style: TextStyle(color: Colors.white38, fontSize: 10)),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      children: [
+                        if (isOriginalMixAvailable) buildChannelStrip("ORIGINAL", "original", Colors.blueGrey),
+                        buildChannelStrip("SYNTH", "synth", Colors.purpleAccent),
+                        ...targetStemsSelection.map((stem) => buildChannelStrip(stem.toUpperCase(), stem, Colors.tealAccent)),
+                        const SizedBox(width: 20),
+                        buildChannelStrip("MASTER", "master", Colors.redAccent, isMaster: true),
+                      ],
+                    ),
+                  )
                 ],
               ),
-              Row(
-                children: [
-                  const SizedBox(width: 80, child: Text("Accomp Vol", style: TextStyle(color: Colors.white70, fontSize: 13))),
-                  Expanded(child: Slider(value: accompVolume, min: 0.0, max: 2.0, activeColor: Colors.amberAccent, onChanged: (v) {
-                    setDialogState(() => accompVolume = v);
-                    setState(() => accompVolume = v);
-                    // Update instrumental volume in real-time
-                    if (stemPlayers.containsKey('instrumental')) {
-                       stemPlayers['instrumental']!.setVolume(v);
-                    }
-                  })),
-                  SizedBox(width: 45, child: Text("${(accompVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
-                ],
-              ),
-              Row(
-                children: [
-                  const SizedBox(width: 80, child: Text("Synth Vol", style: TextStyle(color: Colors.white70, fontSize: 13))),
-                  Expanded(child: Slider(
-                    value: synthMixVolume, min: 0.0, max: 2.0,
-                    activeColor: Colors.purpleAccent,
-                    onChanged: (v) {
-                      setDialogState(() => synthMixVolume = v);
-                      setState(() => synthMixVolume = v);
-                      if (activePlaybackSources.contains('synth')) {
-                        synthPlayer.setVolume(v);
-                      }
-                    },
-                  )),
-                  SizedBox(width: 45, child: Text("${(synthMixVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 13))),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text("Apply De-Hiss Filter", style: TextStyle(color: Colors.white70, fontSize: 13)),
-                  Switch(value: applyDenoise, activeColor: Colors.amberAccent, onChanged: (v) {
-                    setDialogState(() => applyDenoise = v);
-                    setState(() => applyDenoise = v);
-                  }),
-                ],
-              )
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close", style: TextStyle(color: Colors.white54)))
-          ],
-        )
-      )
+            );
+          }
+        );
+      }
+    );
+  }
+
+  Widget _pluginDropdown(String currentValue, Color highlightColor, ValueChanged<String?> onChanged) {
+    return Container(
+      height: 24,
+      width: 76,
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(4)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          dropdownColor: Colors.grey[850],
+          iconSize: 12,
+          style: TextStyle(fontSize: 9, color: currentValue == 'None' ? Colors.white38 : highlightColor),
+          value: currentValue,
+          items: ['None', 'Compressor', 'EQ', 'Reverb', 'De-esser'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 
@@ -1491,24 +1631,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(sustain: v)))),
                     _synthSlider('Release', synthSettings.adsr.release, 0.0, 1.0,
                         (v) => update((s) => s.copyWith(adsr: s.adsr.copyWith(release: v)))),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const SizedBox(width: 56, child: Text("Synth Vol", style: TextStyle(color: Colors.white70, fontSize: 11))),
-                        Expanded(child: Slider(
-                          value: synthMixVolume, min: 0.0, max: 2.0,
-                          activeColor: Colors.amberAccent,
-                          onChanged: (v) {
-                            setDialogState(() => synthMixVolume = v);
-                            setState(() => synthMixVolume = v);
-                            if (activePlaybackSources.contains('synth')) {
-                              synthPlayer.setVolume(v);
-                            }
-                          },
-                        )),
-                        SizedBox(width: 36, child: Text("${(synthMixVolume * 100).round()}%", style: const TextStyle(color: Colors.white54, fontSize: 10))),
-                      ],
-                    ),
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2081,7 +2203,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           title: Text(isDragMode ? 'Disable Drag Pitch' : 'Enable Drag Pitch', style: TextStyle(color: isDragMode ? Colors.amberAccent : Colors.white))
         )
       ),
-      const PopupMenuItem(value: 'mix_settings', child: ListTile(leading: Icon(Icons.tune), title: Text('Mix Settings'))),
       const PopupMenuItem(value: 'synth_settings', child: ListTile(leading: Icon(Icons.piano, color: Colors.purpleAccent), title: Text('Synth Audio Settings'))),
       const PopupMenuItem(value: 'show_dossier', child: ListTile(leading: Icon(Icons.assessment, color: Colors.greenAccent), title: Text('View GUI Dossier'))),
       const PopupMenuDivider(),
@@ -2112,123 +2233,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       case 'undo': _undo(); break;
       case 'redo': _redo(); break;
       case 'drag_pitch': setState(() => isDragMode = !isDragMode); break;
-      case 'mix_settings': _showMixSettingsDialog(); break;
       case 'synth_settings': _showSynthSettingsDialog(); break;
       case 'show_dossier': _showDossier(); break;
       case 'downloads': _showAdvancedDownloadsDialog(); break;
       case 'live_mode': setState(() => isLiveModeActive = !isLiveModeActive); break;
       case 'reprocess': _forceReprocessXray(); break;
     }
-  }
-
-  Widget _playbackSourcesButton() {
-    bool anyLoading = isFetchingStems || isSynthRendering;
-    int activeCount = activePlaybackSources.length;
-
-    return PopupMenuButton<void>(
-      tooltip: "Playback Sources Mixer",
-      icon: anyLoading
-          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.tealAccent))
-          : Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.library_music, color: Colors.tealAccent, size: 22),
-                if (activeCount > 0)
-                  Positioned(
-                    right: -4,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(color: Colors.tealAccent, shape: BoxShape.circle),
-                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                      child: Text('$activeCount', textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 9, color: Colors.black, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-              ],
-            ),
-      itemBuilder: (context) => [
-        PopupMenuItem<void>(
-          enabled: false,
-          padding: EdgeInsets.zero,
-          child: StatefulBuilder(
-            builder: (context, setMenuState) {
-              Widget sourceRow({
-                required String key,
-                required String label,
-                required IconData icon,
-                required bool enabled,
-                String? subtitle,
-                bool loading = false,
-              }) {
-                return CheckboxListTile(
-                  dense: true,
-                  enabled: enabled,
-                  value: activePlaybackSources.contains(key),
-                  activeColor: Colors.tealAccent,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: Row(
-                    children: [
-                      Icon(icon, size: 15, color: enabled ? Colors.white70 : Colors.white24),
-                      const SizedBox(width: 6),
-                      Text(label, style: TextStyle(fontSize: 13, color: enabled ? Colors.white : Colors.white38)),
-                      if (loading) ...[
-                        const SizedBox(width: 6),
-                        const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.tealAccent)),
-                      ],
-                    ],
-                  ),
-                  subtitle: subtitle != null
-                      ? Text(subtitle, style: const TextStyle(fontSize: 10, color: Colors.white30))
-                      : null,
-                  onChanged: enabled
-                      ? (checked) {
-                          setMenuState(() {});
-                          _togglePlaybackSource(key, checked == true);
-                        }
-                      : null,
-                );
-              }
-
-              return SizedBox(
-                width: 260,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isOriginalMixAvailable)
-                      sourceRow(
-                        key: 'original',
-                        label: 'Original Mix',
-                        icon: Icons.album,
-                        enabled: originalAudioBytes != null,
-                      ),
-                    sourceRow(
-                      key: 'synth',
-                      label: 'Synth (Note Data)',
-                      icon: Icons.piano,
-                      enabled: rawNotes.isNotEmpty,
-                      subtitle: 'Sonified pitch from note grid',
-                      loading: isSynthRendering,
-                    ),
-                    const Divider(height: 1, color: Colors.white12),
-                    ...generatedStems.map((stem) {
-                      return sourceRow(
-                        key: 'stem_$stem',
-                        label: '${stem.toUpperCase()} Stem',
-                        icon: Icons.graphic_eq,
-                        enabled: originalAudioBytes != null && currentTaskId != null,
-                        subtitle: 'Isolated $stem audio runtime',
-                        loading: isFetchingStems && activePlaybackSources.contains('stem_$stem') && !stemPlayers.containsKey(stem),
-                      );
-                    }).toList(),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
   }
 
   @override
@@ -2286,7 +2296,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           activeEditableStem = newSelection;
                         });
                         if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
-                          _generateStemOnDemand();
+                          _generateStemOnDemand(newSelection);
                         }
                       }
                     },
@@ -2366,7 +2376,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       alignment: WrapAlignment.start,
                       children: [
-                        _playbackSourcesButton(),
+                        IconButton(
+                          icon: const Icon(Icons.tune, color: Colors.orangeAccent),
+                          tooltip: "Studio Mixer",
+                          onPressed: _showStudioMixer,
+                        ),
                         IconButton(
                           icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow, size: 26), 
                           onPressed: _toggleMasterTransport
@@ -2511,7 +2525,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                             style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
                                             icon: const Icon(Icons.build),
                                             label: Text("Generate & Analyze ${activeEditableStem.toUpperCase()}"),
-                                            onPressed: isLoading ? null : _generateStemOnDemand,
+                                            onPressed: isLoading ? null : () => _generateStemOnDemand(activeEditableStem),
                                           )
                                         ],
                                       ),
