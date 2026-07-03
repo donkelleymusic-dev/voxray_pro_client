@@ -332,7 +332,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     horizontalScrollController.dispose();
     verticalScrollController.dispose();
     rulerScrollController.dispose();
-    SoLoud.instance.disposeAllSound();
+    SoLoud.instance.disposeAllSources();
     SoLoud.instance.deinit();
     super.dispose();
   }
@@ -539,7 +539,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     try {
       masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
-      masterHandle = await SoLoud.instance.play(masterSource!, paused: true);
+      masterHandle = SoLoud.instance.play(masterSource!, paused: true);
     } catch (e) {
       debugPrint("Audio preview setup failed (non-fatal): $e");
     }
@@ -848,7 +848,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
 
       stemSources[stemName] = await SoLoud.instance.loadMem("stem_$stemName", bytes);
-      stemHandles[stemName] = await SoLoud.instance.play(stemSources[stemName]!, paused: true);
+      stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
 
       ChannelState state = getChannelState(stemName);
       double effectiveVolume = state.volume;
@@ -883,7 +883,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
       if (synthHandle != null) SoLoud.instance.stop(synthHandle!);
       synthSource = await SoLoud.instance.loadMem("synth_layer", wavBytes);
-      synthHandle = await SoLoud.instance.play(synthSource!, paused: true);
+      synthHandle = SoLoud.instance.play(synthSource!, paused: true);
       
       SoLoud.instance.setVolume(synthHandle!, getChannelState('synth').volume);
       SoLoud.instance.seek(synthHandle!, Duration(milliseconds: (currentPosition * 1000).round()));
@@ -999,7 +999,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         }
 
         stemSources[activeEditableStem] = await SoLoud.instance.loadMem("stem_${activeEditableStem}_edited", previewBytes);
-        stemHandles[activeEditableStem] = await SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
+        stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
         
         SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
         
@@ -1371,7 +1371,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               activePlaybackSources.add('original');
               if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
               masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
-              masterHandle = await SoLoud.instance.play(masterSource!, paused: true);
+              masterHandle = SoLoud.instance.play(masterSource!, paused: true);
             }
             _showSaveConfirmation("Session re-established successfully.");
           } else {
