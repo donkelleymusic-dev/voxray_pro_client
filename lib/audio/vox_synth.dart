@@ -356,3 +356,143 @@ Uint8List renderNotesToWavBytes({
   preventClipping(audio);
   return encodeWav(audio, sampleRate: settings.sampleRate);
 }
+
+
+
+/// Client-Side DSP Processing Engine for Pitch Shifting and Crossfading
+class ClientSideDSP {
+  
+  /// Applies local pitch shifting and crossfades to raw PCM/WAV byte arrays
+  /// based on the user's `rawNotes` timeline edits using a Granular approach.
+  static Future<Uint8List> applyPitchEditsAndCrossfades({
+    required Uint8List audioBytes,
+    required List<dynamic> notes,
+    required int sampleRate,
+  }) async {
+    // Basic validation for WAV header (44 bytes)
+    if (audioBytes.length < 44) return audioBytes;
+
+    // Isolate PCM data, assuming 16-bit Mono (based on previous encodeWav implementation)
+    final int dataSize = audioBytes.length - 44;
+    final ByteData pcmData = ByteData.sublistView(audioBytes, 44);
+    
+    // Convert Int16 bytes to Float32 array for DSP mathematics
+    Float32List audioBuffer = Float32List(dataSize ~/ 2);
+    for (int i = 0; i < audioBuffer.length; i++) {
+      audioBuffer[i] = pcmData.getInt16(i * 2, Endian.little) / 32768.0;
+    }
+
+    final int crossfadeSamples = (0.01 * sampleRate).round(); // 10ms Hanning crossfade
+
+    for (var note in notes) {
+      if (note['isDeleted'] == true || note['isMuted'] == true) continue;
+      
+      // Do not attempt to pitch shift silence blocks (MIDI 36)
+      if ((note['actual_midi'] ?? 60.0).round() == 36) continue;
+
+      int semitoneShift = note['semitone_shift'] ?? 0;
+      double centsShift = (note['cents_shift'] ?? 0).toDouble();
+
+      if (semitoneShift == 0 && centsShift == 0) continue; // No shift required
+
+      double totalCents = (semitoneShift * 100) + centsShift;
+      double pitchRatio = pow(2.0, totalCents / 1200.0).toDouble();
+
+      double startTime = (note['start_time'] ?? 0.0).toDouble();
+      double endTime = (note['end_time'] ?? startTime).toDouble();
+
+      int startSample = (startTime * sampleRate).round();
+      int endSample = (endTime * sampleRate).round();
+
+      if (startSample >= audioBuffer.length || startSample >= endSample) continue;
+      endSample = min(endSample, audioBuffer.length);
+
+      // Extract the original phrase
+      Float32List segment = audioBuffer.sublist(startSample, endSample);
+
+      // Apply Time-Domain Granular Pitch Shift
+      Float32List shiftedSegment = _granularPitchShift(segment, pitchRatio, sampleRate);
+      
+      // Truncate or zero-pad the shifted segment to fit the original exact timeline boundary 
+      // (This prevents desyncing the rest of the stem over time)
+      Float32List fittedSegment = Float32List(endSample - startSample);
+      for(int i = 0; i < fittedSegment.length; i++) {
+        if (i < shiftedSegment.length) {
+          fittedSegment[i] = shiftedSegment[i];
+        } else {
+          fittedSegment[i] = 0.0;
+        }
+      }
+
+      // Apply Hanning Window Crossfade at boundaries to eliminate zero-crossing clicks
+      _applyCrossfade(fittedSegment, crossfadeSamples);
+
+      // Splice back into main buffer
+      for (int i = 0; i < fittedSegment.length; i++) {
+        audioBuffer[startSample + i] = fittedSegment[i];
+      }
+    }
+
+    // Anti-clip Normalization
+    preventClipping(audioBuffer);
+
+    // Re-encode back to WAV format 
+    return encodeWav(audioBuffer, sampleRate: sampleRate);
+  }
+
+  /// Granular Overlap-Add algorithm for time-domain pitch shifting.
+  /// Bypasses the heavy computational cost of a pure-Dart Phase Vocoder / FFT.
+  static Float32List _granularPitchShift(Float32List input, double pitchRatio, int sampleRate) {
+    if (pitchRatio == 1.0) return input;
+
+    // Grain size: 30ms. Overlap: 50%
+    int grainSize = (0.03 * sampleRate).round(); 
+    int hopSize = grainSize ~/ 2; 
+
+    // Output length will roughly match input length (time-preserving)
+    Float32List output = Float32List(input.length);
+    
+    // We resample the input array based on the pitch ratio
+    int resampledLength = (input.length / pitchRatio).round();
+    Float32List resampledInput = Float32List(resampledLength);
+    
+    for (int i = 0; i < resampledLength; i++) {
+      double mappedIndex = i * pitchRatio;
+      int idx1 = mappedIndex.floor();
+      int idx2 = min(idx1 + 1, input.length - 1);
+      double frac = mappedIndex - idx1;
+      
+      if (idx1 >= 0 && idx1 < input.length) {
+        // Linear interpolation
+        resampledInput[i] = (input[idx1] * (1.0 - frac)) + (input[idx2] * frac);
+      }
+    }
+
+    // Granular overlap-add to correct the time domain duration
+    for (int outPos = 0; outPos < output.length - grainSize; outPos += hopSize) {
+      // Map the output position to the corresponding position in the resampled array
+      int inPos = (outPos * pitchRatio).round();
+      if (inPos > resampledInput.length - grainSize) {
+         inPos = resampledInput.length - grainSize;
+      }
+      if (inPos < 0) continue;
+
+      for (int i = 0; i < grainSize; i++) {
+        // Hanning Window for the grain
+        double window = 0.5 * (1.0 - cos(2 * pi * i / (grainSize - 1)));
+        output[outPos + i] += resampledInput[inPos + i] * window;
+      }
+    }
+
+    return output;
+  }
+
+  static void _applyCrossfade(Float32List segment, int crossfadeLengthSamples) {
+    if (segment.length <= crossfadeLengthSamples * 2) return;
+    for (int i = 0; i < crossfadeLengthSamples; i++) {
+      double fade = 0.5 * (1.0 - cos(pi * i / crossfadeLengthSamples));
+      segment[i] *= fade; 
+      segment[segment.length - 1 - i] *= fade; 
+    }
+  }
+}
