@@ -49,16 +49,48 @@ void main() => runApp(MaterialApp(
   theme: ThemeData(brightness: Brightness.dark)
 ));
 
-// --- MIXER STATE MODEL ---
+// --- MIXER STATE MODEL (Merged & Fixed) ---
 class ChannelState {
-  double volume = 1.0;
-  String plugin1 = 'None';
-  String plugin2 = 'None';
-  String plugin3 = 'None';
-  String plugin4 = 'None';
+  double volume;
+  bool isMuted;
+  bool isSoloed;
+  bool isHQ; // Toggle between API high-fidelity render and local frontend proxy
+
+  String plugin1;
+  String plugin2;
+  String plugin3;
+  String plugin4;
+
+  // Real-time Effect Parameters (Frontend proxies for local playback)
+  double reverbMix;
+  double compressionThreshold; 
+  double compressionRatio;
+  double eqLowGain;
+  double eqMidGain;
+  double eqHighGain;
+
+  ChannelState({
+    this.volume = 1.0,
+    this.isMuted = false,
+    this.isSoloed = false,
+    this.isHQ = true, 
+    this.plugin1 = 'None',
+    this.plugin2 = 'None',
+    this.plugin3 = 'None',
+    this.plugin4 = 'None',
+    this.reverbMix = 0.0,
+    this.compressionThreshold = 0.0,
+    this.compressionRatio = 1.0,
+    this.eqLowGain = 0.0,
+    this.eqMidGain = 0.0,
+    this.eqHighGain = 0.0,
+  });
 
   Map<String, dynamic> toJson() => {
     'volume': volume,
+    'isMuted': isMuted,
+    'isSoloed': isSoloed,
+    'isHQ': isHQ,
     'plugin1': plugin1,
     'plugin2': plugin2,
     'plugin3': plugin3,
@@ -66,13 +98,38 @@ class ChannelState {
   };
 
   factory ChannelState.fromJson(Map<String, dynamic> json) {
-    var state = ChannelState();
-    state.volume = json['volume'] ?? 1.0;
-    state.plugin1 = json['plugin1'] ?? 'None';
-    state.plugin2 = json['plugin2'] ?? 'None';
-    state.plugin3 = json['plugin3'] ?? 'None';
-    state.plugin4 = json['plugin4'] ?? 'None';
-    return state;
+    return ChannelState(
+      volume: json['volume'] ?? 1.0,
+      isMuted: json['isMuted'] ?? false,
+      isSoloed: json['isSoloed'] ?? false,
+      isHQ: json['isHQ'] ?? true,
+      plugin1: json['plugin1'] ?? 'None',
+      plugin2: json['plugin2'] ?? 'None',
+      plugin3: json['plugin3'] ?? 'None',
+      plugin4: json['plugin4'] ?? 'None',
+    );
+  }
+
+  ChannelState copyWith({
+    double? volume,
+    bool? isMuted,
+    bool? isSoloed,
+    bool? isHQ,
+    String? plugin1,
+    String? plugin2,
+    String? plugin3,
+    String? plugin4,
+  }) {
+    return ChannelState(
+      volume: volume ?? this.volume,
+      isMuted: isMuted ?? this.isMuted,
+      isSoloed: isSoloed ?? this.isSoloed,
+      isHQ: isHQ ?? this.isHQ,
+      plugin1: plugin1 ?? this.plugin1,
+      plugin2: plugin2 ?? this.plugin2,
+      plugin3: plugin3 ?? this.plugin3,
+      plugin4: plugin4 ?? this.plugin4,
+    );
   }
 }
 
@@ -742,14 +799,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<Uint8List> _fetchStemBytes(String stemName) async {
     if (currentTaskId == null) throw Exception("No active session");
 
-    try {
+    ChannelState state = getChannelState(stemName);
+
+    // If local mode is forced, just fetch the raw stem and apply volume locally.
+    if (!state.isHQ) {
       final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName'));
       if (stemRes.statusCode == 200) return stemRes.bodyBytes;
       if (stemRes.statusCode != 404) throw Exception("Stem fetch error ${stemRes.statusCode}");
-    } catch (e) {
-      debugPrint("Direct stem fetch failed, trying render fallback: $e");
     }
 
+    // Otherwise (or if raw fetch fails), batch render it with server-side plugins
     var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
       ..fields['edit_manifest'] = jsonEncode({
         'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
@@ -798,8 +857,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         await targetPlayer.setFilePath(tempFile.path);
       }
       
-      await targetPlayer.load(); // Explicit load to ensure buffer is ready
-      await targetPlayer.setVolume(getChannelState(stemName).volume);
+      await targetPlayer.load(); 
+      
+      // Apply local volume dampening proxy if HQ is bypassed
+      ChannelState state = getChannelState(stemName);
+      double effectiveVolume = state.volume;
+      if (!state.isHQ) {
+        // Pseudo real-time plugin attenuation simulation
+        if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ') effectiveVolume *= 0.85; 
+      }
+      await targetPlayer.setVolume(effectiveVolume);
 
       await targetPlayer.seek(masterPlayer.position);
       if (masterPlayer.playing) await targetPlayer.play();
@@ -870,7 +937,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         await synthPlayer.setVolume(0.0);
       }
     } else {
-      // It is an isolated stem
       if (enabled) {
         if (!generatedStems.contains(key)) {
           await _generateStemOnDemand(key);
@@ -921,7 +987,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         ..fields['edit_manifest'] = jsonEncode({
           'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
           'edits': rawNotes,
-          'solo_stem': activeEditableStem, // Tell server to only return this stem
+          'solo_stem': activeEditableStem,
         })
         ..fields['task_id'] = currentTaskId ?? ''  
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
@@ -938,7 +1004,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (result['status'] == 'success') {
         Uint8List previewBytes = base64Decode(result['master_mix_b64']);
 
-        // Cache the newly rendered stem
         cachedStemBytes[activeEditableStem] = previewBytes;
 
         if (!stemPlayers.containsKey(activeEditableStem)) {
@@ -959,7 +1024,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           await targetPlayer.setFilePath(tempFile.path);
         }
 
-        await targetPlayer.load(); // CRITICAL: Await load so seek doesn't fail causing silence
+        await targetPlayer.load(); 
         await targetPlayer.setVolume(getChannelState(activeEditableStem).volume);
         
         await _seekAllPlayers(Duration(milliseconds: (resumePosition * 1000).round()));
@@ -1408,15 +1473,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         return StatefulBuilder(
           builder: (context, setMixerState) {
             
-            // Build a single channel strip
             Widget buildChannelStrip(String title, String key, Color highlight, {bool isMaster = false}) {
               ChannelState state = getChannelState(key);
               bool isAudible = activePlaybackSources.contains(key) || (isMaster && activePlaybackSources.isNotEmpty);
               
-              // Simulating DB Meter for visual feedback. In a real native C++ engine, this would poll PCM.
               double simulatedMeterValue = 0.0;
               if (masterPlayer.playing && isAudible) {
-                simulatedMeterValue = 0.3 + (math.Random().nextDouble() * 0.6); // Fake bounce
+                simulatedMeterValue = 0.3 + (math.Random().nextDouble() * 0.6); 
                 simulatedMeterValue *= state.volume;
               }
 
@@ -1430,10 +1493,33 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                 ),
                 child: Column(
                   children: [
-                    // Title
+                    // Title & HQ Toggle Header
                     Padding(
                       padding: const EdgeInsets.all(8.0),
-                      child: Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(child: Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis)),
+                          if (!isMaster)
+                            GestureDetector(
+                              onTap: () {
+                                setMixerState(() => state.isHQ = !state.isHQ);
+                                // Purge cached client stem to force re-fetch or re-render based on new HQ state
+                                if (cachedStemBytes.containsKey(key)) cachedStemBytes.remove(key);
+                                if (isAudible) _loadStemPlayerSource(key); // Refresh layer
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: state.isHQ ? Colors.green[800] : Colors.grey[800],
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: state.isHQ ? Colors.greenAccent : Colors.white24)
+                                ),
+                                child: Text("HQ", style: TextStyle(fontSize: 8, color: state.isHQ ? Colors.greenAccent : Colors.white54, fontWeight: FontWeight.bold)),
+                              ),
+                            )
+                        ],
+                      ),
                     ),
                     
                     // DB Meter Simulation
@@ -1456,7 +1542,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Plugins (Simulated Client-Side, Rendered Server-Side)
+                    // Plugins
                     _pluginDropdown(state.plugin1, highlight, (val) => setMixerState(() => state.plugin1 = val!)),
                     _pluginDropdown(state.plugin2, highlight, (val) => setMixerState(() => state.plugin2 = val!)),
                     _pluginDropdown(state.plugin3, highlight, (val) => setMixerState(() => state.plugin3 = val!)),
@@ -1464,12 +1550,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     
                     const SizedBox(height: 12),
 
-                    // Active Toggle (Replaces old source checkboxes)
+                    // Active Toggle
                     if (!isMaster)
                       IconButton(
                         icon: Icon(isAudible ? Icons.volume_up : Icons.volume_off, color: isAudible ? highlight : Colors.white38),
                         onPressed: () {
-                          setMixerState(() {}); // UI updates immediately
+                          setMixerState(() {}); 
                           _togglePlaybackSource(key, !isAudible);
                         },
                       ),
@@ -1492,7 +1578,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             max: 1.5, 
                             onChanged: (v) {
                               setMixerState(() => state.volume = v);
-                              // Realtime volume update if playing
                               if (key == 'master' || key == 'original') {
                                 masterPlayer.setVolume(v);
                               } else if (key == 'synth') {
@@ -1900,7 +1985,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       
       double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
       int semitoneShift = note['semitone_shift'] ?? 0;
-      baseMidi += semitoneShift; // Ensure macro edits are included for accurate dossier
+      baseMidi += semitoneShift; 
       
       if (baseMidi.round() == 36) continue;
 
