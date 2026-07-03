@@ -36,7 +36,7 @@ import 'dart:convert';
 import 'dart:async'; 
 import 'dart:math' as math;
 import 'package:file_saver/file_saver.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'dart:typed_data';
 
 import 'ui/timeline_canvas.dart';
@@ -44,12 +44,16 @@ import 'pedagogy/live_analyzer.dart';
 import 'ui/timeline_ruler.dart';
 import 'audio/vox_synth.dart';
 
-void main() => runApp(MaterialApp(
-  home: const VoxrayDAW(), 
-  theme: ThemeData(brightness: Brightness.dark)
-));
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SoLoud.instance.init();
+  runApp(MaterialApp(
+    home: const VoxrayDAW(), 
+    theme: ThemeData(brightness: Brightness.dark)
+  ));
+}
 
-// --- MIXER STATE MODEL (Merged & Fixed) ---
+// --- MIXER STATE MODEL ---
 class ChannelState {
   double volume;
   bool isMuted;
@@ -140,10 +144,18 @@ class VoxrayDAW extends StatefulWidget {
 }
 
 class VoxrayDAWState extends State<VoxrayDAW> {
-  final AudioPlayer masterPlayer = AudioPlayer();
-  final AudioPlayer synthPlayer = AudioPlayer();
+  // --- SoLoud Audio Engine Handles ---
+  AudioSource? masterSource;
+  SoundHandle? masterHandle;
   
-  final Map<String, AudioPlayer> stemPlayers = {};
+  AudioSource? synthSource;
+  SoundHandle? synthHandle;
+  
+  Map<String, AudioSource> stemSources = {};
+  Map<String, SoundHandle> stemHandles = {};
+  
+  bool isPlaying = false;
+  Timer? positionTimer;
 
   Set<String> activePlaybackSources = {};
   final Map<String, Uint8List> cachedStemBytes = {}; 
@@ -249,30 +261,32 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
     });
     
-    masterPlayer.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        _pauseAllPlayers();
-        if (mounted) setState(() {});
+    positionTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
+      if (!isPlaying || !mounted) return;
+      
+      double currentT = 0.0;
+      if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
+        currentT = SoLoud.instance.getPosition(masterHandle!).inMilliseconds / 1000.0;
+      } else if (stemHandles.isNotEmpty) {
+        final firstHandle = stemHandles.values.first;
+        if (SoLoud.instance.getIsValidVoiceHandle(firstHandle)) {
+          currentT = SoLoud.instance.getPosition(firstHandle).inMilliseconds / 1000.0;
+        }
+      } else if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) {
+        currentT = SoLoud.instance.getPosition(synthHandle!).inMilliseconds / 1000.0;
       }
-    });
-    synthPlayer.playerStateStream.listen((state) {
-      if (mounted) setState(() {});
-    });
-    masterPlayer.positionStream.listen((pos) {
-      if (!mounted) return;
-      double currentT = pos.inMilliseconds / 1000.0;
 
       if (isLoopModeActive && 
           loopEndBoundary > loopStartBoundary && 
           loopEndBoundary > 0.0 &&
           currentT >= loopEndBoundary) {
-        _seekAllPlayers(Duration(milliseconds: (loopStartBoundary * 1000).round()));
+        seekAllPlayers(loopStartBoundary);
         currentT = loopStartBoundary;
       }
 
       setState(() => currentPosition = currentT);
 
-      if (masterPlayer.playing && !isUserScrolling) {
+      if (!isUserScrolling) {
         double targetX = (currentT * zoomX) - 150.0;
         if (targetX < 0) targetX = 0;
         if (horizontalScrollController.hasClients && horizontalScrollController.position.maxScrollExtent > 0) {
@@ -314,14 +328,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   @override
   void dispose() {
     pollingTimer?.cancel();
+    positionTimer?.cancel();
     horizontalScrollController.dispose();
     verticalScrollController.dispose();
     rulerScrollController.dispose();
-    synthPlayer.dispose();
-    for (var player in stemPlayers.values) {
-      player.dispose();
-    }
-    masterPlayer.dispose();
+    SoLoud.instance.disposeAllSound();
+    SoLoud.instance.deinit();
     super.dispose();
   }
 
@@ -345,7 +357,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   void jumpToTimelinePosition(double seconds) {
-    _seekAllPlayers(Duration(milliseconds: (seconds * 1000).round()));
+    seekAllPlayers(seconds);
     setState(() => currentPosition = seconds);
 
     double targetX = (seconds * zoomX) - 150.0;
@@ -360,6 +372,49 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         );
       }
     });
+  }
+
+  // ============================================================
+  // MULTI-SOURCE NATIVE PLAYBACK MIXER (SoLoud)
+  // ============================================================
+
+  void seekAllPlayers(double seconds) {
+    final time = Duration(milliseconds: (seconds * 1000).round());
+    if (masterHandle != null) SoLoud.instance.seek(masterHandle!, time);
+    if (synthHandle != null) SoLoud.instance.seek(synthHandle!, time);
+    for (var handle in stemHandles.values) {
+      SoLoud.instance.seek(handle, time);
+    }
+  }
+
+  void playAllPlayers() {
+    setState(() => isPlaying = true);
+    if (masterHandle != null) SoLoud.instance.setPause(masterHandle!, false);
+    if (synthHandle != null) SoLoud.instance.setPause(synthHandle!, false);
+    for (var handle in stemHandles.values) {
+      SoLoud.instance.setPause(handle, false);
+    }
+  }
+
+  void pauseAllPlayers() {
+    setState(() => isPlaying = false);
+    if (masterHandle != null) SoLoud.instance.setPause(masterHandle!, true);
+    if (synthHandle != null) SoLoud.instance.setPause(synthHandle!, true);
+    for (var handle in stemHandles.values) {
+      SoLoud.instance.setPause(handle, true);
+    }
+  }
+
+  void setSynthVolume(double vol) {
+    if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, vol);
+  }
+
+  void _toggleMasterTransport() {
+    if (isPlaying) {
+      pauseAllPlayers();
+    } else {
+      playAllPlayers();
+    }
   }
 
   // ============================================================
@@ -456,8 +511,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       originalFilePath = result.files.single.path ?? "";
       
       cachedStemBytes.clear();
-      for (var player in stemPlayers.values) player.stop();
-      stemPlayers.clear();
+      for(var h in stemHandles.values) SoLoud.instance.stop(h);
+      stemHandles.clear();
+      stemSources.clear();
       activePlaybackSources.clear();
       allStemsNotes.clear();
       generatedStems.clear();
@@ -478,17 +534,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
     });
 
-    await synthPlayer.stop();
+    if (synthHandle != null) SoLoud.instance.stop(synthHandle!);
+    if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
 
     try {
-      if (kIsWeb) {
-        await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!, contentType: 'audio/wav'));
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/preview_audio.wav');
-        await tempFile.writeAsBytes(originalAudioBytes!);
-        await masterPlayer.setFilePath(tempFile.path);
-      }
+      masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
+      masterHandle = await SoLoud.instance.play(masterSource!, paused: true);
     } catch (e) {
       debugPrint("Audio preview setup failed (non-fatal): $e");
     }
@@ -749,53 +800,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  // ============================================================
-  // MULTI-SOURCE PLAYBACK MIXER
-  // ============================================================
-
-  Future<void> _seekAllPlayers(Duration position) async {
-    final futures = <Future>[masterPlayer.seek(position)];
-    for (var player in stemPlayers.values) {
-      if (player.audioSource != null) futures.add(player.seek(position));
-    }
-    if (synthPlayer.audioSource != null) futures.add(synthPlayer.seek(position));
-    await Future.wait(futures);
-  }
-
-  Future<void> _playAllPlayers() async {
-    final pos = masterPlayer.position;
-    final futures = <Future>[];
-    for (var player in stemPlayers.values) {
-      if (player.audioSource != null) futures.add(player.seek(pos));
-    }
-    if (synthPlayer.audioSource != null) futures.add(synthPlayer.seek(pos));
-    await Future.wait(futures);
-
-    final playFutures = <Future>[masterPlayer.play()];
-    for (var player in stemPlayers.values) {
-      if (player.audioSource != null) playFutures.add(player.play());
-    }
-    if (synthPlayer.audioSource != null) playFutures.add(synthPlayer.play());
-    await Future.wait(playFutures);
-  }
-
-  Future<void> _pauseAllPlayers() async {
-    final futures = <Future>[masterPlayer.pause()];
-    for (var player in stemPlayers.values) {
-      if (player.audioSource != null) futures.add(player.pause());
-    }
-    if (synthPlayer.audioSource != null) futures.add(synthPlayer.pause());
-    await Future.wait(futures);
-  }
-
-  Future<void> _toggleMasterTransport() async {
-    if (masterPlayer.playing) {
-      await _pauseAllPlayers();
-    } else {
-      await _playAllPlayers();
-    }
-  }
-
   Future<Uint8List> _fetchStemBytes(String stemName) async {
     if (currentTaskId == null) throw Exception("No active session");
 
@@ -839,37 +843,24 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       final Uint8List bytes = cachedStemBytes[stemName] ?? await _fetchStemBytes(stemName);
       cachedStemBytes[stemName] = bytes;
 
-      if (!stemPlayers.containsKey(stemName)) {
-        stemPlayers[stemName] = AudioPlayer();
-        stemPlayers[stemName]!.playerStateStream.listen((state) {
-          if (mounted) setState(() {});
-        });
+      if (stemHandles.containsKey(stemName)) {
+        SoLoud.instance.stop(stemHandles[stemName]!);
       }
 
-      final targetPlayer = stemPlayers[stemName]!;
+      stemSources[stemName] = await SoLoud.instance.loadMem("stem_$stemName", bytes);
+      stemHandles[stemName] = await SoLoud.instance.play(stemSources[stemName]!, paused: true);
 
-      if (kIsWeb) {
-        await targetPlayer.setAudioSource(MyCustomBytesSource(bytes, contentType: 'audio/wav'));
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/voxray_stem_$stemName.wav');
-        await tempFile.writeAsBytes(bytes);
-        await targetPlayer.setFilePath(tempFile.path);
-      }
-      
-      await targetPlayer.load(); 
-      
-      // Apply local volume dampening proxy if HQ is bypassed
       ChannelState state = getChannelState(stemName);
       double effectiveVolume = state.volume;
       if (!state.isHQ) {
-        // Pseudo real-time plugin attenuation simulation
         if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ') effectiveVolume *= 0.85; 
       }
-      await targetPlayer.setVolume(effectiveVolume);
+      
+      SoLoud.instance.setVolume(stemHandles[stemName]!, effectiveVolume);
+      SoLoud.instance.seek(stemHandles[stemName]!, Duration(milliseconds: (currentPosition * 1000).round()));
+      
+      if (isPlaying) SoLoud.instance.setPause(stemHandles[stemName]!, false);
 
-      await targetPlayer.seek(masterPlayer.position);
-      if (masterPlayer.playing) await targetPlayer.play();
     } catch (e) {
       debugPrint("Stem track layer $stemName build failed: $e");
       _showSaveConfirmation('Stem layer $stemName unavailable: $e');
@@ -890,20 +881,15 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         settings: synthSettings,
       );
 
-      if (kIsWeb) {
-        await synthPlayer.setAudioSource(MyCustomBytesSource(wavBytes, contentType: 'audio/wav'));
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/voxray_synth_layer.wav');
-        await tempFile.writeAsBytes(wavBytes);
-        await synthPlayer.setFilePath(tempFile.path);
-      }
-
-      await synthPlayer.load();
-      await synthPlayer.setVolume(getChannelState('synth').volume);
+      if (synthHandle != null) SoLoud.instance.stop(synthHandle!);
+      synthSource = await SoLoud.instance.loadMem("synth_layer", wavBytes);
+      synthHandle = await SoLoud.instance.play(synthSource!, paused: true);
       
-      await synthPlayer.seek(masterPlayer.position);
-      if (masterPlayer.playing) await synthPlayer.play();
+      SoLoud.instance.setVolume(synthHandle!, getChannelState('synth').volume);
+      SoLoud.instance.seek(synthHandle!, Duration(milliseconds: (currentPosition * 1000).round()));
+      
+      if (isPlaying) SoLoud.instance.setPause(synthHandle!, false);
+
     } catch (e) {
       debugPrint("Synth layer load failed: $e");
       _showSaveConfirmation('Synth layer failed: $e');
@@ -929,12 +915,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
 
     if (key == 'original') {
-      await masterPlayer.setVolume(enabled ? getChannelState('master').volume : 0.0);
+      if (masterHandle != null) {
+        SoLoud.instance.setVolume(masterHandle!, enabled ? getChannelState('master').volume : 0.0);
+      }
     } else if (key == 'synth') {
       if (enabled) {
         await _loadSynthSource();
       } else {
-        await synthPlayer.setVolume(0.0);
+        if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, 0.0);
       }
     } else {
       if (enabled) {
@@ -944,8 +932,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           await _loadStemPlayerSource(key);
         }
       } else {
-        if (stemPlayers.containsKey(key)) {
-          await stemPlayers[key]!.setVolume(0.0);
+        if (stemHandles.containsKey(key)) {
+          SoLoud.instance.setVolume(stemHandles[key]!, 0.0);
         }
       }
     }
@@ -976,9 +964,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<void> _renderStemEdits() async {
     if (originalAudioBytes == null) return;
     
-    bool wasPlaying = masterPlayer.playing;
+    bool wasPlaying = isPlaying;
     double resumePosition = currentPosition;
-    if (wasPlaying) await _pauseAllPlayers();
+    if (wasPlaying) pauseAllPlayers();
     
     setState(() { isPreviewing = true; exportMessage = "Rendering stem edits via Server..."; });
 
@@ -1006,45 +994,33 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
         cachedStemBytes[activeEditableStem] = previewBytes;
 
-        if (!stemPlayers.containsKey(activeEditableStem)) {
-          stemPlayers[activeEditableStem] = AudioPlayer();
-          stemPlayers[activeEditableStem]!.playerStateStream.listen((state) {
-            if (mounted) setState(() {});
-          });
+        if (stemHandles.containsKey(activeEditableStem)) {
+          SoLoud.instance.stop(stemHandles[activeEditableStem]!);
         }
 
-        final targetPlayer = stemPlayers[activeEditableStem]!;
-
-        if (kIsWeb) {
-          await targetPlayer.setAudioSource(MyCustomBytesSource(previewBytes, contentType: 'audio/wav'));
-        } else {
-          final tempDir = await getTemporaryDirectory();
-          final tempFile = File('${tempDir.path}/voxray_stem_${activeEditableStem}_edited.wav');
-          await tempFile.writeAsBytes(previewBytes);
-          await targetPlayer.setFilePath(tempFile.path);
-        }
-
-        await targetPlayer.load(); 
-        await targetPlayer.setVolume(getChannelState(activeEditableStem).volume);
+        stemSources[activeEditableStem] = await SoLoud.instance.loadMem("stem_${activeEditableStem}_edited", previewBytes);
+        stemHandles[activeEditableStem] = await SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
         
-        await _seekAllPlayers(Duration(milliseconds: (resumePosition * 1000).round()));
+        SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
+        
+        seekAllPlayers(resumePosition);
         
         if (!activePlaybackSources.contains(activeEditableStem)) {
            setState(() { activePlaybackSources.add(activeEditableStem); });
         }
 
         if (wasPlaying) {
-          await _playAllPlayers();
+          playAllPlayers();
           _showSaveConfirmation('Edits applied to ${activeEditableStem.toUpperCase()} stem.', isPreview: true);
         } else {
           _showSaveConfirmation('Stem updated — tap Play to hear edits.', isPreview: true);
         }
       } else {
-        if (wasPlaying) await _playAllPlayers();
+        if (wasPlaying) playAllPlayers();
         _showSaveConfirmation('Render failed: ${result['message'] ?? 'unknown error'}');
       }
     } catch (e) {
-      if (wasPlaying) await _playAllPlayers();
+      if (wasPlaying) playAllPlayers();
       debugPrint("Stem render failed: $e");
       _showSaveConfirmation('Render failed: $e');
     } finally {
@@ -1391,26 +1367,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             var data = json.decode(await response.stream.bytesToString());
             setState(() => currentTaskId = data['task_id']);
             
-            if (!kIsWeb) {
-              final tempDir = await getTemporaryDirectory();
-              for (String stem in generatedStems) {
-                File f = File('${tempDir.path}/voxray_stem_$stem.wav');
-                if (f.existsSync()) {
-                  cachedStemBytes[stem] = await f.readAsBytes();
-                }
-              }
-            }
-
             if (isOriginalMixAvailable) {
               activePlaybackSources.add('original');
-              if (kIsWeb) {
-                await masterPlayer.setAudioSource(MyCustomBytesSource(originalAudioBytes!, contentType: 'audio/wav'));
-              } else {
-                final tempDir = await getTemporaryDirectory();
-                final tempFile = File('${tempDir.path}/preview_audio.wav');
-                await tempFile.writeAsBytes(originalAudioBytes!);
-                await masterPlayer.setFilePath(tempFile.path);
-              }
+              if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
+              masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
+              masterHandle = await SoLoud.instance.play(masterSource!, paused: true);
             }
             _showSaveConfirmation("Session re-established successfully.");
           } else {
@@ -1478,7 +1439,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               bool isAudible = activePlaybackSources.contains(key) || (isMaster && activePlaybackSources.isNotEmpty);
               
               double simulatedMeterValue = 0.0;
-              if (masterPlayer.playing && isAudible) {
+              if (isPlaying && isAudible) {
                 simulatedMeterValue = 0.3 + (math.Random().nextDouble() * 0.6); 
                 simulatedMeterValue *= state.volume;
               }
@@ -1579,11 +1540,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             onChanged: (v) {
                               setMixerState(() => state.volume = v);
                               if (key == 'master' || key == 'original') {
-                                masterPlayer.setVolume(v);
+                                if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v);
                               } else if (key == 'synth') {
-                                synthPlayer.setVolume(v);
-                              } else if (stemPlayers.containsKey(key)) {
-                                stemPlayers[key]!.setVolume(v);
+                                if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, v);
+                              } else if (stemHandles.containsKey(key)) {
+                                SoLoud.instance.setVolume(stemHandles[key]!, v);
                               }
                             }
                           ),
@@ -1750,7 +1711,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                 onPressed: rawNotes.isEmpty ? null : () async {
                   Navigator.pop(context);
                   await _togglePlaybackSource('synth', true);
-                  if (!masterPlayer.playing) await _playAllPlayers();
+                  if (!isPlaying) playAllPlayers();
                 },
               ),
             ],
@@ -1987,7 +1948,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       int semitoneShift = note['semitone_shift'] ?? 0;
       baseMidi += semitoneShift; 
       
-      if (baseMidi.round() == 36) continue;
+      if (baseMidi.round() == 36) continue; // Skip silence blocks
 
       if (note['isMuted'] == true) mutedCount++;
       totalNotes++;
@@ -2194,7 +2155,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             ? SnackBarAction(
                 label: 'Play',
                 textColor: Colors.deepPurpleAccent,
-                onPressed: () => masterPlayer.play(),
+                onPressed: () => playAllPlayers(),
               )
             : null,
       ),
@@ -2467,7 +2428,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           onPressed: _showStudioMixer,
                         ),
                         IconButton(
-                          icon: Icon(masterPlayer.playing ? Icons.pause : Icons.play_arrow, size: 26), 
+                          icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 26), 
                           onPressed: _toggleMasterTransport
                         ),
                         
@@ -2632,14 +2593,4 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       ),
     );
   }
-}
-
-class MyCustomBytesSource extends StreamAudioSource {
-  final List<int> bytes;
-  final String contentType;
-  MyCustomBytesSource(this.bytes, {required this.contentType});
-  @override Future<StreamAudioResponse> request([int? start, int? end]) async => StreamAudioResponse(
-    sourceLength: bytes.length, contentLength: (end ?? bytes.length) - (start ?? 0), offset: start ?? 0,
-    stream: Stream.value(bytes.sublist(start ?? 0, end ?? bytes.length)), contentType: contentType,
-  );
 }
