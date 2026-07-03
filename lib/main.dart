@@ -418,6 +418,35 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   // ============================================================
+  // CONTEXT ENRICHMENT FOR POLYPHONIC SEPARATION
+  // ============================================================
+  List<Map<String, dynamic>> _enrichManifestWithPolyphonicContext(List<dynamic> targetNotesList) {
+    List<Map<String, dynamic>> enrichedList = [];
+    
+    for (var entry in targetNotesList) {
+      Map<String, dynamic> note = Map<String, dynamic>.from(entry);
+      double start = (note['start_time'] ?? 0.0).toDouble();
+      double end = (note['end_time'] ?? 0.0).toDouble();
+      double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      
+      // Calculate active vertical block overlaps inside timeline
+      var overlaps = targetNotesList.where((alt) {
+        if (alt['isDeleted'] == true) return false;
+        double altStart = (alt['start_time'] ?? 0.0).toDouble();
+        double altEnd = (alt['end_time'] ?? 0.0).toDouble();
+        return (start < altEnd && end > altStart);
+      }).toList();
+      
+      note['is_poly'] = overlaps.length > 1;
+      note['target_freq'] = 440.0 * math.pow(2.0, (actualMidi - 69.0) / 12.0);
+      note['component_count'] = overlaps.length;
+      
+      enrichedList.add(note);
+    }
+    return enrichedList;
+  }
+
+  // ============================================================
   // CORE API WORKFLOWS
   // ============================================================
 
@@ -737,7 +766,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
-        ..fields['notes_manifest'] = jsonEncode(rawNotes); 
+        ..fields['notes_manifest'] = jsonEncode(_enrichManifestWithPolyphonicContext(rawNotes)); 
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
@@ -775,7 +804,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
-        ..fields['notes_manifest'] = jsonEncode(rawNotes);
+        ..fields['notes_manifest'] = jsonEncode(_enrichManifestWithPolyphonicContext(rawNotes));
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
@@ -796,7 +825,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       debugPrint("XRAY error: $e");
       setState(() => isXrayMode = false);
     } finally {
-      setState(() => isXrayProcessing = false);
+      setState(() { isXrayProcessing = false; });
     }
   }
 
@@ -816,7 +845,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
       ..fields['edit_manifest'] = jsonEncode({
         'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-        'edits': allStemsNotes[stemName] ?? [],
+        'edits': _enrichManifestWithPolyphonicContext(allStemsNotes[stemName] ?? []),
         'solo_stem': stemName, 
       })
       ..fields['task_id'] = currentTaskId!
@@ -974,7 +1003,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['edit_manifest'] = jsonEncode({
           'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-          'edits': rawNotes,
+          'edits': _enrichManifestWithPolyphonicContext(rawNotes),
           'solo_stem': activeEditableStem,
         })
         ..fields['task_id'] = currentTaskId ?? ''  
@@ -1079,11 +1108,17 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (originalAudioBytes == null) return;
     setState(() { isExporting = true; exportMessage = "Rendering $format Master..."; });
 
+    // Map through track map matrix keys to bundle individual parameters safely
+    Map<String, dynamic> enrichedStemsNotesMap = {};
+    allStemsNotes.forEach((stemKey, notesList) {
+      enrichedStemsNotesMap[stemKey] = _enrichManifestWithPolyphonicContext(notesList);
+    });
+
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['edit_manifest'] = json.encode({
           "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
-          "all_stems_notes": allStemsNotes,
+          "all_stems_notes": enrichedStemsNotesMap,
         })
         ..fields['task_id'] = currentTaskId ?? '' 
         ..fields['export_format'] = format 
@@ -1144,7 +1179,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'))
         ..fields['task_id'] = currentTaskId ?? ''
-        ..fields['notes_manifest'] = jsonEncode(rawNotes)
+        ..fields['notes_manifest'] = jsonEncode(_enrichManifestWithPolyphonicContext(rawNotes))
         ..fields['session_meta'] = jsonEncode({
           'filename': originalFileName,
           'duration': songDuration,
@@ -1208,7 +1243,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-pitchprint'))
         ..fields['task_id'] = currentTaskId ?? ''
-        ..fields['notes_manifest'] = jsonEncode(rawNotes)
+        ..fields['notes_manifest'] = jsonEncode(_enrichManifestWithPolyphonicContext(rawNotes))
         ..fields['full_song'] = fullSong.toString()
         ..fields['visible_start'] = visibleStart.toString()
         ..fields['visible_end'] = visibleEnd.toString()
@@ -1431,171 +1466,175 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setMixerState) {
-            
-            Widget buildChannelStrip(String title, String key, Color highlight, {bool isMaster = false}) {
-              ChannelState state = getChannelState(key);
-              bool isAudible = activePlaybackSources.contains(key) || (isMaster && activePlaybackSources.isNotEmpty);
+        return SafeArea(
+          // Safety barrier mapping layout edges against Android native system navigation handles
+          child: StatefulBuilder(
+            builder: (context, setMixerState) {
               
-              double simulatedMeterValue = 0.0;
-              if (isPlaying && isAudible) {
-                simulatedMeterValue = 0.3 + (math.Random().nextDouble() * 0.6); 
-                simulatedMeterValue *= state.volume;
-              }
+              Widget buildChannelStrip(String title, String key, Color highlight, {bool isMaster = false}) {
+                ChannelState state = getChannelState(key);
+                bool isAudible = activePlaybackSources.contains(key) || (isMaster && activePlaybackSources.isNotEmpty);
+                
+                double simulatedMeterValue = 0.0;
+                if (isPlaying && isAudible) {
+                  simulatedMeterValue = 0.3 + (math.Random().nextDouble() * 0.6); 
+                  simulatedMeterValue *= state.volume;
+                }
 
-              return Container(
-                width: 90,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  color: isMaster ? Colors.redAccent.withOpacity(0.1) : Colors.black87,
-                  border: Border.all(color: isMaster ? Colors.redAccent : Colors.white24),
-                  borderRadius: BorderRadius.circular(8)
-                ),
-                child: Column(
-                  children: [
-                    // Title & HQ Toggle Header
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(child: Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis)),
-                          if (!isMaster)
-                            GestureDetector(
-                              onTap: () {
-                                setMixerState(() => state.isHQ = !state.isHQ);
-                                // Purge cached client stem to force re-fetch or re-render based on new HQ state
-                                if (cachedStemBytes.containsKey(key)) cachedStemBytes.remove(key);
-                                if (isAudible) _loadStemPlayerSource(key); // Refresh layer
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: state.isHQ ? Colors.green[800] : Colors.grey[800],
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: state.isHQ ? Colors.greenAccent : Colors.white24)
+                return Container(
+                  width: 68, // Compressed width scale to maximize scannability
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: BoxDecoration(
+                    color: isMaster ? Colors.redAccent.withOpacity(0.1) : Colors.black87,
+                    border: Border.all(color: isMaster ? Colors.redAccent : Colors.white24),
+                    borderRadius: BorderRadius.circular(6)
+                  ),
+                  child: Column(
+                    children: [
+                      // Title & HQ Toggle Header
+                      Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 10), overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 2),
+                            if (!isMaster)
+                              GestureDetector(
+                                onTap: () {
+                                  setMixerState(() => state.isHQ = !state.isHQ);
+                                  if (cachedStemBytes.containsKey(key)) cachedStemBytes.remove(key);
+                                  if (isAudible) _loadStemPlayerSource(key);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: state.isHQ ? Colors.green[800] : Colors.grey[800],
+                                    borderRadius: BorderRadius.circular(3),
+                                    border: Border.all(color: state.isHQ ? Colors.greenAccent : Colors.white24)
+                                  ),
+                                  child: Text("HQ", style: TextStyle(fontSize: 7, color: state.isHQ ? Colors.greenAccent : Colors.white54, fontWeight: FontWeight.bold)),
                                 ),
-                                child: Text("HQ", style: TextStyle(fontSize: 8, color: state.isHQ ? Colors.greenAccent : Colors.white54, fontWeight: FontWeight.bold)),
-                              ),
-                            )
-                        ],
+                              )
+                          ],
+                        ),
                       ),
-                    ),
-                    
-                    // DB Meter Simulation
-                    Container(
-                      height: 8,
-                      width: 60,
-                      decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(4)),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: simulatedMeterValue.clamp(0.0, 1.0),
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              gradient: LinearGradient(colors: [Colors.green, Colors.yellow, Colors.red])
+                      
+                      // DB Meter Simulation
+                      Container(
+                        height: 6,
+                        width: 48,
+                        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(3)),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: simulatedMeterValue.clamp(0.0, 1.0),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(colors: [Colors.green, Colors.yellow, Colors.red])
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 8),
 
-                    // Plugins
-                    _pluginDropdown(state.plugin1, highlight, (val) => setMixerState(() => state.plugin1 = val!)),
-                    _pluginDropdown(state.plugin2, highlight, (val) => setMixerState(() => state.plugin2 = val!)),
-                    _pluginDropdown(state.plugin3, highlight, (val) => setMixerState(() => state.plugin3 = val!)),
-                    _pluginDropdown(state.plugin4, highlight, (val) => setMixerState(() => state.plugin4 = val!)),
-                    
-                    const SizedBox(height: 12),
+                      // Plugins
+                      _pluginDropdown(state.plugin1, highlight, (val) => setMixerState(() => state.plugin1 = val!)),
+                      _pluginDropdown(state.plugin2, highlight, (val) => setMixerState(() => state.plugin2 = val!)),
+                      _pluginDropdown(state.plugin3, highlight, (val) => setMixerState(() => state.plugin3 = val!)),
+                      _pluginDropdown(state.plugin4, highlight, (val) => setMixerState(() => state.plugin4 = val!)),
+                      
+                      const SizedBox(height: 4),
 
-                    // Active Toggle
-                    if (!isMaster)
-                      IconButton(
-                        icon: Icon(isAudible ? Icons.volume_up : Icons.volume_off, color: isAudible ? highlight : Colors.white38),
-                        onPressed: () {
-                          setMixerState(() {}); 
-                          _togglePlaybackSource(key, !isAudible);
-                        },
-                      ),
-                    
-                    // Vertical Fader
-                    Expanded(
-                      child: RotatedBox(
-                        quarterTurns: 3,
-                        child: SliderTheme(
-                          data: SliderThemeData(
-                            trackHeight: 6,
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
-                            overlayShape: SliderComponentShape.noOverlay,
-                            activeTrackColor: highlight,
-                            inactiveTrackColor: Colors.white10,
-                          ),
-                          child: Slider(
-                            value: state.volume, 
-                            min: 0.0, 
-                            max: 1.5, 
-                            onChanged: (v) {
-                              setMixerState(() => state.volume = v);
-                              if (key == 'master' || key == 'original') {
-                                if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v);
-                              } else if (key == 'synth') {
-                                if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, v);
-                              } else if (stemHandles.containsKey(key)) {
-                                SoLoud.instance.setVolume(stemHandles[key]!, v);
+                      // Active Toggle
+                      if (!isMaster)
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: Icon(isAudible ? Icons.volume_up : Icons.volume_off, color: isAudible ? highlight : Colors.white38, size: 18),
+                          onPressed: () {
+                            setMixerState(() {}); 
+                            _togglePlaybackSource(key, !isAudible);
+                          },
+                        ),
+                      
+                      // Vertical Fader
+                      Expanded(
+                        child: RotatedBox(
+                          quarterTurns: 3,
+                          child: SliderTheme(
+                            data: SliderThemeData(
+                              trackHeight: 4,
+                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                              overlayShape: SliderComponentShape.noOverlay,
+                              activeTrackColor: highlight,
+                              inactiveTrackColor: Colors.white10,
+                            ),
+                            child: Slider(
+                              value: state.volume, 
+                              min: 0.0, 
+                              max: 1.5, 
+                              onChanged: (v) {
+                                setMixerState(() => state.volume = v);
+                                if (key == 'master' || key == 'original') {
+                                  if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v);
+                                } else if (key == 'synth') {
+                                  if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, v);
+                                } else if (stemHandles.containsKey(key)) {
+                                  SoLoud.instance.setVolume(stemHandles[key]!, v);
+                                }
                               }
-                            }
+                            ),
                           ),
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Text("${(state.volume * 100).round()}%", style: const TextStyle(fontSize: 9, color: Colors.white54)),
+                      const SizedBox(height: 6),
+                    ],
+                  ),
+                );
+              }
+
+              return Container(
+                height: MediaQuery.of(context).size.height * 0.52,
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  border: const Border(top: BorderSide(color: Colors.white24))
+                ),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("STUDIO MIXER", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                          IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context))
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Text("${(state.volume * 100).round()}%", style: const TextStyle(fontSize: 10, color: Colors.white54)),
-                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        children: [
+                          if (isOriginalMixAvailable) buildChannelStrip("MIX", "original", Colors.blueGrey),
+                          buildChannelStrip("SYNTH", "synth", Colors.purpleAccent),
+                          ...targetStemsSelection.map((stem) => buildChannelStrip(stem.toUpperCase(), stem, Colors.tealAccent)),
+                          const SizedBox(width: 12),
+                          buildChannelStrip("MASTER", "master", Colors.redAccent, isMaster: true),
+                        ],
+                      ),
+                    )
                   ],
                 ),
               );
             }
-
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.65,
-              decoration: BoxDecoration(
-                color: Colors.grey[900],
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                border: const Border(top: BorderSide(color: Colors.white24))
-              ),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text("STUDIO MIXER", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
-                        const Text("Client Volume Preview / Server Export FX", style: TextStyle(color: Colors.white38, fontSize: 10)),
-                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      children: [
-                        if (isOriginalMixAvailable) buildChannelStrip("ORIGINAL", "original", Colors.blueGrey),
-                        buildChannelStrip("SYNTH", "synth", Colors.purpleAccent),
-                        ...targetStemsSelection.map((stem) => buildChannelStrip(stem.toUpperCase(), stem, Colors.tealAccent)),
-                        const SizedBox(width: 20),
-                        buildChannelStrip("MASTER", "master", Colors.redAccent, isMaster: true),
-                      ],
-                    ),
-                  )
-                ],
-              ),
-            );
-          }
+          ),
         );
       }
     );
@@ -1603,17 +1642,17 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   Widget _pluginDropdown(String currentValue, Color highlightColor, ValueChanged<String?> onChanged) {
     return Container(
-      height: 24,
-      width: 76,
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(4)),
+      height: 20,
+      width: 62,
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      decoration: BoxDecoration(color: Colors.black, border: Border.all(color: Colors.white12), borderRadius: BorderRadius.circular(3)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           isExpanded: true,
           dropdownColor: Colors.grey[850],
-          iconSize: 12,
-          style: TextStyle(fontSize: 9, color: currentValue == 'None' ? Colors.white38 : highlightColor),
+          iconSize: 10,
+          style: TextStyle(fontSize: 8, color: currentValue == 'None' ? Colors.white38 : highlightColor),
           value: currentValue,
           items: ['None', 'Compressor', 'EQ', 'Reverb', 'De-esser'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
           onChanged: onChanged,
