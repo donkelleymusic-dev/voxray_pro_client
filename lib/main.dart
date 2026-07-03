@@ -801,7 +801,29 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     throw Exception("Stem fetch error ${stemRes.statusCode}");
   }
 
-  void _applyClientSideFilters(String stemName) {
+
+void _applyClientSideFilters(String stemName) {
+  if (!stemSources.containsKey(stemName) || !stemHandles.containsKey(stemName)) return;
+  ChannelState state = getChannelState(stemName);
+  SoundHandle handle = stemHandles[stemName]!;
+
+  // Apply Biquad (EQ)
+  if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ') {
+    SoLoud.instance.filters.setFilterActive(handle, FilterType.biquad, true);
+  } else {
+    SoLoud.instance.filters.setFilterActive(handle, FilterType.biquad, false);
+  }
+
+  // Apply Freeverb
+  if (state.plugin1 == 'Reverb' || state.plugin2 == 'Reverb') {
+    SoLoud.instance.filters.setFilterActive(handle, FilterType.freeverb, true);
+    SoLoud.instance.filters.setFilterParameter(handle, FilterType.freeverb, 0, 0.5); // 0 is room size
+  } else {
+    SoLoud.instance.filters.setFilterActive(handle, FilterType.freeverb, false);
+  }
+}
+
+  void _applyClientSideFilters_old(String stemName) {
     if (!stemSources.containsKey(stemName) || !stemHandles.containsKey(stemName)) return;
     ChannelState state = getChannelState(stemName);
     
