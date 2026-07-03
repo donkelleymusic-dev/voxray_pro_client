@@ -803,6 +803,36 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
 
 void _applyClientSideFilters(String stemName) {
+  if (!stemHandles.containsKey(stemName)) return;
+  ChannelState state = getChannelState(stemName);
+  SoundHandle handle = stemHandles[stemName]!;
+
+  // 1. Manage Biquad Filter (EQ)
+  if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ' || state.plugin3 == 'EQ' || state.plugin4 == 'EQ') {
+    SoLoud.instance.filters.biquadResonantFilter.setParams(handle, BiquadResonantFilterType.bandPass, 440, 1.0);
+    SoLoud.instance.filters.biquadResonantFilter.isActive = true;
+  } else {
+    SoLoud.instance.filters.biquadResonantFilter.isActive = false;
+  }
+
+  // 2. Manage Freeverb Filter
+  if (state.plugin1 == 'Reverb' || state.plugin2 == 'Reverb' || state.plugin3 == 'Reverb' || state.plugin4 == 'Reverb') {
+    SoLoud.instance.filters.freeverbFilter.roomSize = 0.5;
+    SoLoud.instance.filters.freeverbFilter.isActive = true;
+  } else {
+    SoLoud.instance.filters.freeverbFilter.isActive = false;
+  }
+
+  // 3. Manage Compressor Filter
+  if (state.plugin1 == 'Compressor' || state.plugin2 == 'Compressor' || state.plugin3 == 'Compressor' || state.plugin4 == 'Compressor') {
+    SoLoud.instance.filters.compressorFilter.isActive = true;
+  } else {
+    SoLoud.instance.filters.compressorFilter.isActive = false;
+  }
+}
+
+
+void _applyClientSideFilters_old2(String stemName) {
   if (!stemSources.containsKey(stemName) || !stemHandles.containsKey(stemName)) return;
   ChannelState state = getChannelState(stemName);
   SoundHandle handle = stemHandles[stemName]!;
