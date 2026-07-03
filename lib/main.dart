@@ -24,13 +24,7 @@
 //
 // By accessing this codebase, you acknowledge and agree to respect the 
 // proprietary nature of this software.
-// 
-// prototype with client side pitch editing
-// Note: Ensure you have 
-// archive: ^3.6.1 
-// in your pubspec.yaml
-// 
-==============================================================================
+// ==============================================================================
 
 import 'dart:io';
 import 'package:flutter/foundation.dart'; 
@@ -2103,6 +2097,24 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 
+  void _showSaveConfirmation(String message, {bool isPreview = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isPreview ? Colors.deepPurple[800] : Colors.grey[800],
+        duration: Duration(seconds: isPreview ? 6 : 4),
+        action: isPreview
+            ? SnackBarAction(
+                label: 'Play',
+                textColor: Colors.deepPurpleAccent,
+                onPressed: () => playAllPlayers(),
+              )
+            : null,
+      ),
+    );
+  }
+
   void _showStemSelectorTreeDialog() {
     showDialog(
       context: context,
@@ -2535,4 +2547,3 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 }
-
