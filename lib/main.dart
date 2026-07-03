@@ -38,7 +38,6 @@ import 'dart:math' as math;
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'dart:typed_data';
-import 'package:archive/archive.dart';
 
 import 'ui/timeline_canvas.dart';
 import 'pedagogy/live_analyzer.dart';
@@ -298,7 +297,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
         if (verticalScrollController.hasClients && rawNotes.isNotEmpty) {
           var activeNotes = rawNotes.where((n) {
-            if (n['isDeleted'] == true || n['actual_midi']?.round() == 36) return false;
+            if (n['isDeleted'] == true) return false;
             double start = (n['start_time'] ?? 0).toDouble();
             double end = (n['end_time'] ?? 0).toDouble();
             return start <= currentT && end >= currentT;
@@ -346,6 +345,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     setState(() {
       undoStack.add(json.encode(allStemsNotes));
       redoStack.clear();
+      cachedStemBytes.remove(activeEditableStem);
     });
   }
 
@@ -373,6 +373,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
     });
   }
+
+  // ============================================================
+  // MULTI-SOURCE NATIVE PLAYBACK MIXER (SoLoud)
+  // ============================================================
 
   void seekAllPlayers(double seconds) {
     final time = Duration(milliseconds: (seconds * 1000).round());
@@ -412,6 +416,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       playAllPlayers();
     }
   }
+
+  // ============================================================
+  // CORE API WORKFLOWS
+  // ============================================================
 
   Future<Map<String, String>?> _showUploadTypeDialog() async {
     return showDialog<Map<String, String>>(
@@ -795,42 +803,37 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<Uint8List> _fetchStemBytes(String stemName) async {
     if (currentTaskId == null) throw Exception("No active session");
 
-    // Fetch baseline HQ stem from API (prior to local processing)
-    final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName'));
-    if (stemRes.statusCode == 200) return stemRes.bodyBytes;
-    throw Exception("Stem fetch error ${stemRes.statusCode}");
+    ChannelState state = getChannelState(stemName);
+
+    // If local mode is forced, just fetch the raw stem and apply volume locally.
+    if (!state.isHQ) {
+      final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName'));
+      if (stemRes.statusCode == 200) return stemRes.bodyBytes;
+      if (stemRes.statusCode != 404) throw Exception("Stem fetch error ${stemRes.statusCode}");
+    }
+
+    // Otherwise (or if raw fetch fails), batch render it with server-side plugins
+    var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+      ..fields['edit_manifest'] = jsonEncode({
+        'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
+        'edits': allStemsNotes[stemName] ?? [],
+        'solo_stem': stemName, 
+      })
+      ..fields['task_id'] = currentTaskId!
+      ..fields['export_format'] = 'wav' 
+      ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+
+    var response = await request.send();
+    var responseData = await http.Response.fromStream(response);
+    if (responseData.statusCode != 200) {
+      throw Exception("Server error ${responseData.statusCode}");
+    }
+    var result = jsonDecode(responseData.body);
+    if (result['status'] != 'success') {
+      throw Exception(result['message'] ?? 'Unknown error');
+    }
+    return base64Decode(result['master_mix_b64']);
   }
-
-
-void _applyClientSideFilters(String stemName) {
-  if (!stemHandles.containsKey(stemName)) return;
-  ChannelState state = getChannelState(stemName);
-
-  // 1. Manage Biquad Filter (EQ)
-  if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ' || state.plugin3 == 'EQ' || state.plugin4 == 'EQ') {
-    SoLoud.instance.filters.biquadResonantFilter.activate();
-    SoLoud.instance.filters.biquadResonantFilter.type.value = 2; // 2 = BandPass
-    SoLoud.instance.filters.biquadResonantFilter.frequency.value = 440.0;
-    SoLoud.instance.filters.biquadResonantFilter.resonance.value = 1.0;
-  } else {
-    SoLoud.instance.filters.biquadResonantFilter.deactivate();
-  }
-
-  // 2. Manage Freeverb Filter
-  if (state.plugin1 == 'Reverb' || state.plugin2 == 'Reverb' || state.plugin3 == 'Reverb' || state.plugin4 == 'Reverb') {
-    SoLoud.instance.filters.freeverbFilter.activate();
-    SoLoud.instance.filters.freeverbFilter.roomSize.value = 0.5;
-  } else {
-    SoLoud.instance.filters.freeverbFilter.deactivate();
-  }
-
-  // 3. Manage Compressor Filter
-  if (state.plugin1 == 'Compressor' || state.plugin2 == 'Compressor' || state.plugin3 == 'Compressor' || state.plugin4 == 'Compressor') {
-    SoLoud.instance.filters.compressorFilter.activate();
-  } else {
-    SoLoud.instance.filters.compressorFilter.deactivate();
-  }
-}
 
   Future<void> _loadStemPlayerSource(String stemName) async {
     if (originalAudioBytes == null) return;
@@ -849,9 +852,11 @@ void _applyClientSideFilters(String stemName) {
 
       ChannelState state = getChannelState(stemName);
       double effectiveVolume = state.volume;
+      if (!state.isHQ) {
+        if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ') effectiveVolume *= 0.85; 
+      }
       
       SoLoud.instance.setVolume(stemHandles[stemName]!, effectiveVolume);
-      _applyClientSideFilters(stemName);
       SoLoud.instance.seek(stemHandles[stemName]!, Duration(milliseconds: (currentPosition * 1000).round()));
       
       if (isPlaying) SoLoud.instance.setPause(stemHandles[stemName]!, false);
@@ -934,6 +939,10 @@ void _applyClientSideFilters(String stemName) {
     }
   }
 
+  // ============================================================
+  // PROJECT SAVING & EXPORTS
+  // ============================================================
+
   void _undo() {
     if (undoStack.isNotEmpty) {
       setState(() {
@@ -952,54 +961,68 @@ void _applyClientSideFilters(String stemName) {
     }
   }
 
-  // CORE DSP CHANGE: Client-Side Audio Modification
   Future<void> _renderStemEdits() async {
-    if (originalAudioBytes == null || !cachedStemBytes.containsKey(activeEditableStem)) return;
+    if (originalAudioBytes == null) return;
     
     bool wasPlaying = isPlaying;
     double resumePosition = currentPosition;
     if (wasPlaying) pauseAllPlayers();
     
-    setState(() { isPreviewing = true; exportMessage = "Applying client-side pitch shifts and crossfades..."; });
+    setState(() { isPreviewing = true; exportMessage = "Rendering stem edits via Server..."; });
 
     try {
-      Uint8List originalStemBytes = cachedStemBytes[activeEditableStem]!;
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
+        ..fields['edit_manifest'] = jsonEncode({
+          'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
+          'edits': rawNotes,
+          'solo_stem': activeEditableStem,
+        })
+        ..fields['task_id'] = currentTaskId ?? ''  
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+
+      var response = await request.send();
+      var responseData = await http.Response.fromStream(response);
       
-      // Native Dart processing block handling Granular Synthesis overlapping
-      Uint8List processedBytes = await ClientSideDSP.applyPitchEditsAndCrossfades(
-        audioBytes: originalStemBytes,
-        notes: rawNotes,
-        sampleRate: 44100
-      );
-
-      cachedStemBytes[activeEditableStem] = processedBytes;
-
-      if (stemHandles.containsKey(activeEditableStem)) {
-        SoLoud.instance.stop(stemHandles[activeEditableStem]!);
+      if (responseData.statusCode != 200) {
+        throw Exception("Server error ${responseData.statusCode}: ${responseData.body}");
       }
 
-      stemSources[activeEditableStem] = await SoLoud.instance.loadMem("stem_${activeEditableStem}_edited", processedBytes);
-      stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
-      
-      SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
-      _applyClientSideFilters(activeEditableStem);
-      
-      seekAllPlayers(resumePosition);
-      
-      if (!activePlaybackSources.contains(activeEditableStem)) {
-         setState(() { activePlaybackSources.add(activeEditableStem); });
-      }
+      var result = jsonDecode(responseData.body);
 
-      if (wasPlaying) {
-        playAllPlayers();
-        _showSaveConfirmation('Edits applied to ${activeEditableStem.toUpperCase()} stem.', isPreview: true);
+      if (result['status'] == 'success') {
+        Uint8List previewBytes = base64Decode(result['master_mix_b64']);
+
+        cachedStemBytes[activeEditableStem] = previewBytes;
+
+        if (stemHandles.containsKey(activeEditableStem)) {
+          SoLoud.instance.stop(stemHandles[activeEditableStem]!);
+        }
+
+        stemSources[activeEditableStem] = await SoLoud.instance.loadMem("stem_${activeEditableStem}_edited", previewBytes);
+        stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
+        
+        SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
+        
+        seekAllPlayers(resumePosition);
+        
+        if (!activePlaybackSources.contains(activeEditableStem)) {
+           setState(() { activePlaybackSources.add(activeEditableStem); });
+        }
+
+        if (wasPlaying) {
+          playAllPlayers();
+          _showSaveConfirmation('Edits applied to ${activeEditableStem.toUpperCase()} stem.', isPreview: true);
+        } else {
+          _showSaveConfirmation('Stem updated — tap Play to hear edits.', isPreview: true);
+        }
       } else {
-        _showSaveConfirmation('Stem updated locally — tap Play to hear edits.', isPreview: true);
+        if (wasPlaying) playAllPlayers();
+        _showSaveConfirmation('Render failed: ${result['message'] ?? 'unknown error'}');
       }
     } catch (e) {
       if (wasPlaying) playAllPlayers();
-      debugPrint("Client stem render failed: $e");
-      _showSaveConfirmation('Local Render failed: $e');
+      debugPrint("Stem render failed: $e");
+      _showSaveConfirmation('Render failed: $e');
     } finally {
       setState(() { isPreviewing = false; exportMessage = ''; });
     }
@@ -1053,7 +1076,6 @@ void _applyClientSideFilters(String stemName) {
   }
 
   Future<void> _exportFinalMaster(String format) async {
-    // Currently relying on backend for mastering mixdown
     if (originalAudioBytes == null) return;
     setState(() { isExporting = true; exportMessage = "Rendering $format Master..."; });
 
@@ -1233,12 +1255,12 @@ void _applyClientSideFilters(String stemName) {
     }
   }
   
-  // CORE SAVE CHANGE: Bundled Zipped Archive format (.vxr)
   Future<void> _saveVoxrayProject() async {
     Map<String, dynamic> projectData = {
         "voxray_version": "1.4.0",
         "project_name": projectName,
         "original_file": originalFileName, 
+        "original_file_path": originalFilePath, 
         "is_original_mix_available": isOriginalMixAvailable,
         "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
         "target_stems_selection": targetStemsSelection.toList(),
@@ -1246,26 +1268,10 @@ void _applyClientSideFilters(String stemName) {
         "all_stems_notes": allStemsNotes,
         "active_editable_stem": activeEditableStem,
         "history": {"undo_stack": undoStack, "redo_stack": redoStack}
-    };
+      };
 
     String jsonString = json.encode(projectData);
-    var archive = Archive();
-    
-    var jsonFile = ArchiveFile('project.json', utf8.encode(jsonString).length, utf8.encode(jsonString));
-    archive.addFile(jsonFile);
-
-    cachedStemBytes.forEach((stemName, bytes) {
-      var audioFile = ArchiveFile('$stemName.ogg', bytes.length, bytes);
-      archive.addFile(audioFile);
-    });
-
-    if (originalAudioBytes != null) {
-      var originalFile = ArchiveFile('original.ogg', originalAudioBytes!.length, originalAudioBytes!);
-      archive.addFile(originalFile);
-    }
-
-    var zipEncoder = ZipEncoder();
-    Uint8List zipBytes = Uint8List.fromList(zipEncoder.encode(archive)!);
+    Uint8List bytes = Uint8List.fromList(utf8.encode(jsonString));
 
     String defaultSaveName = originalFileName.contains('.')
         ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
@@ -1274,14 +1280,14 @@ void _applyClientSideFilters(String stemName) {
     try {
       String? path = await FileSaver.instance.saveAs(
         name: defaultSaveName,
-        bytes: zipBytes,
+        bytes: bytes,
         fileExtension: 'vxr',
         mimeType: MimeType.custom,
-        customMimeType: 'application/zip'
+        customMimeType: 'application/json'
       );
       
       if (path != null && path.isNotEmpty) {
-        _showSaveConfirmation('Project bundled successfully (.vxr).');
+        _showSaveConfirmation('Project saved successfully.');
       } else {
         _showSaveConfirmation('Save cancelled.');
       }
@@ -1291,43 +1297,28 @@ void _applyClientSideFilters(String stemName) {
     }
   }
 
-  // CORE LOAD CHANGE: Bundled Zipped Archive format (.vxr)
   Future<void> _loadVoxrayProject() async {
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom, 
       allowedExtensions: ['vxr'],
       withData: true,
     );
-    if (result == null || result.files.single.bytes == null) return;
+    if (result == null) return;
 
-    var archive = ZipDecoder().decodeBytes(result.files.single.bytes!);
-    Map<String, dynamic> projectData = {};
-    cachedStemBytes.clear();
-
-    for (var file in archive) {
-      if (file.isFile) {
-        if (file.name == 'project.json') {
-          String jsonString = utf8.decode(file.content as List<int>);
-          projectData = json.decode(jsonString);
-        } else if (file.name.endsWith('.ogg') || file.name.endsWith('.wav')) {
-          String stemName = file.name.split('.').first;
-          if (stemName == 'original') {
-            originalAudioBytes = file.content as Uint8List;
-          } else {
-            cachedStemBytes[stemName] = file.content as Uint8List;
-          }
-        }
-      }
-    }
-
-    if (projectData.isEmpty) {
-      _showSaveConfirmation("Invalid .vxr bundle.");
+    String jsonString;
+    if (result.files.single.bytes != null) {
+      jsonString = utf8.decode(result.files.single.bytes!);
+    } else if (result.files.single.path != null) {
+      jsonString = await File(result.files.single.path!).readAsString();
+    } else {
       return;
     }
+    Map<String, dynamic> projectData = json.decode(jsonString);
     
     setState(() {
       projectName = projectData['project_name'] ?? "Voxray_Session";
       originalFileName = projectData['original_file'] ?? "Unknown File";
+      originalFilePath = projectData['original_file_path'] ?? "";
       isOriginalMixAvailable = projectData['is_original_mix_available'] ?? true;
       
       if (projectData['mixer_state'] != null) {
@@ -1355,8 +1346,49 @@ void _applyClientSideFilters(String stemName) {
       }
     });
 
-    _showSaveConfirmation("Local bundle loaded successfully.");
+    if (originalFilePath.isNotEmpty) {
+      File file = File(originalFilePath);
+      if (file.existsSync()) {
+        originalAudioBytes = await file.readAsBytes();
+        setState(() {
+          isLoading = true;
+          processingMessage = "Re-establishing server session...";
+        });
+
+        try {
+          var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+            ..fields['instruments_json'] = jsonEncode(targetStemsSelection.toList())
+            ..fields['upload_type'] = isOriginalMixAvailable ? 'mix' : 'stem'
+            ..fields['stem_target'] = isOriginalMixAvailable ? 'none' : activeEditableStem
+            ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: originalFileName));
+          
+          var response = await request.send();
+          if (response.statusCode == 200) {
+            var data = json.decode(await response.stream.bytesToString());
+            setState(() => currentTaskId = data['task_id']);
+            
+            if (isOriginalMixAvailable) {
+              activePlaybackSources.add('original');
+              if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
+              masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
+              masterHandle = SoLoud.instance.play(masterSource!, paused: true);
+            }
+            _showSaveConfirmation("Session re-established successfully.");
+          } else {
+            _showSaveConfirmation("Server rejected resume connection.");
+          }
+        } catch(e) {
+          _showSaveConfirmation("Connection error during resume: $e");
+        } finally {
+          setState(() { isLoading = false; processingMessage = ""; });
+        }
+      } else {
+        _showSaveConfirmation("Original audio file missing at path: $originalFilePath. Features will be limited.");
+      }
+    }
   }
+
+  // --- TIMELINE & MARKER UTILS ---
 
   void addMarkerAtCurrentPlayhead() {
     double visualPlayheadTime = (horizontalScrollController.hasClients
@@ -1422,16 +1454,36 @@ void _applyClientSideFilters(String stemName) {
                 ),
                 child: Column(
                   children: [
+                    // Title & HQ Toggle Header
                     Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(child: Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 11), overflow: TextOverflow.ellipsis)),
+                          if (!isMaster)
+                            GestureDetector(
+                              onTap: () {
+                                setMixerState(() => state.isHQ = !state.isHQ);
+                                // Purge cached client stem to force re-fetch or re-render based on new HQ state
+                                if (cachedStemBytes.containsKey(key)) cachedStemBytes.remove(key);
+                                if (isAudible) _loadStemPlayerSource(key); // Refresh layer
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: state.isHQ ? Colors.green[800] : Colors.grey[800],
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: state.isHQ ? Colors.greenAccent : Colors.white24)
+                                ),
+                                child: Text("HQ", style: TextStyle(fontSize: 8, color: state.isHQ ? Colors.greenAccent : Colors.white54, fontWeight: FontWeight.bold)),
+                              ),
+                            )
                         ],
                       ),
                     ),
                     
+                    // DB Meter Simulation
                     Container(
                       height: 8,
                       width: 60,
@@ -1451,26 +1503,15 @@ void _applyClientSideFilters(String stemName) {
                     ),
                     const SizedBox(height: 12),
 
-                    // Plugins - These now control real-time SoLoud filters when applied locally
-                    _pluginDropdown(state.plugin1, highlight, (val) {
-                       setMixerState(() => state.plugin1 = val!);
-                       _applyClientSideFilters(key);
-                    }),
-                    _pluginDropdown(state.plugin2, highlight, (val) { 
-                      setMixerState(() => state.plugin2 = val!);
-                      _applyClientSideFilters(key);
-                    }),
-                    _pluginDropdown(state.plugin3, highlight, (val) { 
-                      setMixerState(() => state.plugin3 = val!);
-                      _applyClientSideFilters(key);
-                    }),
-                    _pluginDropdown(state.plugin4, highlight, (val) { 
-                      setMixerState(() => state.plugin4 = val!);
-                      _applyClientSideFilters(key);
-                    }),
+                    // Plugins
+                    _pluginDropdown(state.plugin1, highlight, (val) => setMixerState(() => state.plugin1 = val!)),
+                    _pluginDropdown(state.plugin2, highlight, (val) => setMixerState(() => state.plugin2 = val!)),
+                    _pluginDropdown(state.plugin3, highlight, (val) => setMixerState(() => state.plugin3 = val!)),
+                    _pluginDropdown(state.plugin4, highlight, (val) => setMixerState(() => state.plugin4 = val!)),
                     
                     const SizedBox(height: 12),
 
+                    // Active Toggle
                     if (!isMaster)
                       IconButton(
                         icon: Icon(isAudible ? Icons.volume_up : Icons.volume_off, color: isAudible ? highlight : Colors.white38),
@@ -1480,6 +1521,7 @@ void _applyClientSideFilters(String stemName) {
                         },
                       ),
                     
+                    // Vertical Fader
                     Expanded(
                       child: RotatedBox(
                         quarterTurns: 3,
@@ -1532,7 +1574,7 @@ void _applyClientSideFilters(String stemName) {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text("STUDIO MIXER", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
-                        const Text("Client Volume & DSP Filter Preview", style: TextStyle(color: Colors.white38, fontSize: 10)),
+                        const Text("Client Volume Preview / Server Export FX", style: TextStyle(color: Colors.white38, fontSize: 10)),
                         IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))
                       ],
                     ),
@@ -1573,7 +1615,7 @@ void _applyClientSideFilters(String stemName) {
           iconSize: 12,
           style: TextStyle(fontSize: 9, color: currentValue == 'None' ? Colors.white38 : highlightColor),
           value: currentValue,
-          items: ['None', 'Compressor', 'EQ', 'Reverb'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+          items: ['None', 'Compressor', 'EQ', 'Reverb', 'De-esser'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
           onChanged: onChanged,
         ),
       ),
