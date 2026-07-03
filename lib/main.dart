@@ -805,79 +805,32 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 void _applyClientSideFilters(String stemName) {
   if (!stemHandles.containsKey(stemName)) return;
   ChannelState state = getChannelState(stemName);
-  SoundHandle handle = stemHandles[stemName]!;
 
   // 1. Manage Biquad Filter (EQ)
   if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ' || state.plugin3 == 'EQ' || state.plugin4 == 'EQ') {
-    SoLoud.instance.filters.biquadResonantFilter.setParams(handle, BiquadResonantFilterType.bandPass, 440, 1.0);
-    SoLoud.instance.filters.biquadResonantFilter.isActive = true;
+    SoLoud.instance.filters.biquadResonantFilter.activate();
+    SoLoud.instance.filters.biquadResonantFilter.type.value = 2; // 2 = BandPass
+    SoLoud.instance.filters.biquadResonantFilter.frequency.value = 440.0;
+    SoLoud.instance.filters.biquadResonantFilter.resonance.value = 1.0;
   } else {
-    SoLoud.instance.filters.biquadResonantFilter.isActive = false;
+    SoLoud.instance.filters.biquadResonantFilter.deactivate();
   }
 
   // 2. Manage Freeverb Filter
   if (state.plugin1 == 'Reverb' || state.plugin2 == 'Reverb' || state.plugin3 == 'Reverb' || state.plugin4 == 'Reverb') {
-    SoLoud.instance.filters.freeverbFilter.roomSize = 0.5;
-    SoLoud.instance.filters.freeverbFilter.isActive = true;
+    SoLoud.instance.filters.freeverbFilter.activate();
+    SoLoud.instance.filters.freeverbFilter.roomSize.value = 0.5;
   } else {
-    SoLoud.instance.filters.freeverbFilter.isActive = false;
+    SoLoud.instance.filters.freeverbFilter.deactivate();
   }
 
   // 3. Manage Compressor Filter
   if (state.plugin1 == 'Compressor' || state.plugin2 == 'Compressor' || state.plugin3 == 'Compressor' || state.plugin4 == 'Compressor') {
-    SoLoud.instance.filters.compressorFilter.isActive = true;
+    SoLoud.instance.filters.compressorFilter.activate();
   } else {
-    SoLoud.instance.filters.compressorFilter.isActive = false;
+    SoLoud.instance.filters.compressorFilter.deactivate();
   }
 }
-
-
-void _applyClientSideFilters_old2(String stemName) {
-  if (!stemSources.containsKey(stemName) || !stemHandles.containsKey(stemName)) return;
-  ChannelState state = getChannelState(stemName);
-  SoundHandle handle = stemHandles[stemName]!;
-
-  // Apply Biquad (EQ)
-  if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ') {
-    SoLoud.instance.filters.setFilterActive(handle, FilterType.biquad, true);
-  } else {
-    SoLoud.instance.filters.setFilterActive(handle, FilterType.biquad, false);
-  }
-
-  // Apply Freeverb
-  if (state.plugin1 == 'Reverb' || state.plugin2 == 'Reverb') {
-    SoLoud.instance.filters.setFilterActive(handle, FilterType.freeverb, true);
-    SoLoud.instance.filters.setFilterParameter(handle, FilterType.freeverb, 0, 0.5); // 0 is room size
-  } else {
-    SoLoud.instance.filters.setFilterActive(handle, FilterType.freeverb, false);
-  }
-}
-
-  void _applyClientSideFilters_old(String stemName) {
-    if (!stemSources.containsKey(stemName) || !stemHandles.containsKey(stemName)) return;
-    ChannelState state = getChannelState(stemName);
-    
-    // Manage real-time SoLoud Client-Side Filters
-    if (state.plugin1 == 'EQ' || state.plugin2 == 'EQ' || state.plugin3 == 'EQ' || state.plugin4 == 'EQ') {
-      SoLoud.instance.filters.biquadResonantFilter.isActive = true;
-      SoLoud.instance.filters.biquadResonantFilter.type = BiquadResonantFilterType.bandPass;
-    } else {
-      SoLoud.instance.filters.biquadResonantFilter.isActive = false;
-    }
-
-    if (state.plugin1 == 'Reverb' || state.plugin2 == 'Reverb' || state.plugin3 == 'Reverb' || state.plugin4 == 'Reverb') {
-      SoLoud.instance.filters.freeverbFilter.isActive = true;
-      SoLoud.instance.filters.freeverbFilter.roomSize = 0.5;
-    } else {
-      SoLoud.instance.filters.freeverbFilter.isActive = false;
-    }
-
-    if (state.plugin1 == 'Compressor' || state.plugin2 == 'Compressor' || state.plugin3 == 'Compressor' || state.plugin4 == 'Compressor') {
-      SoLoud.instance.filters.compressorFilter.isActive = true;
-    } else {
-      SoLoud.instance.filters.compressorFilter.isActive = false;
-    }
-  }
 
   Future<void> _loadStemPlayerSource(String stemName) async {
     if (originalAudioBytes == null) return;
