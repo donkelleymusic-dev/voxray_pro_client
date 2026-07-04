@@ -131,6 +131,8 @@ class ChannelState {
   }
 }
 
+enum DragMode { off, semitone, microTuning }
+
 class VoxrayDAW extends StatefulWidget {
   const VoxrayDAW({Key? key}) : super(key: key);
   @override
@@ -158,7 +160,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   SynthSettings synthSettings = const SynthSettings();
   bool isSynthRendering = false;
   String synthMessage = '';
-  String processingMode = 'classic';
+  String processingMode = 'advanced'; // Default to advanced
   
   // Mixer State
   Map<String, ChannelState> mixerState = {
@@ -222,7 +224,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   final int maxMidi = 84;
 
   bool isScrubMode = true;
-  bool isDragMode = false;
+  DragMode currentDragMode = DragMode.off;
   
   String projectName = "Voxray_Session";
   Uint8List? originalAudioBytes;
@@ -370,6 +372,33 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
   }
 
+  // Centered Zoom Modifiers
+  void setZoomX(double newZoom) {
+    if (!horizontalScrollController.hasClients) {
+      setState(() => zoomX = newZoom);
+      return;
+    }
+    double centerTime = (horizontalScrollController.position.pixels + (horizontalScrollController.position.viewportDimension / 2)) / zoomX;
+    setState(() => zoomX = newZoom);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      double newScroll = (centerTime * zoomX) - (horizontalScrollController.position.viewportDimension / 2);
+      horizontalScrollController.jumpTo(newScroll.clamp(0.0, horizontalScrollController.position.maxScrollExtent));
+    });
+  }
+
+  void setZoomY(double newZoom) {
+    if (!verticalScrollController.hasClients) {
+      setState(() => zoomY = newZoom);
+      return;
+    }
+    double centerMidi = 84 - ((verticalScrollController.position.pixels + (verticalScrollController.position.viewportDimension / 2)) / zoomY);
+    setState(() => zoomY = newZoom);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      double newScroll = ((84 - centerMidi) * zoomY) - (verticalScrollController.position.viewportDimension / 2);
+      verticalScrollController.jumpTo(newScroll.clamp(0.0, verticalScrollController.position.maxScrollExtent));
+    });
+  }
+
   // ============================================================
   // MULTI-SOURCE NATIVE PLAYBACK MIXER (SoLoud)
   // ============================================================
@@ -403,6 +432,22 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   void setSynthVolume(double vol) {
     if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, vol);
+  }
+
+  Future<void> playPreviewTone(double freq) async {
+    try {
+      final dummyNote = [{
+        'start_time': 0.0, 'end_time': 0.5,
+        'actual_midi': 69.0 + (12 * math.log(freq / 440.0) / math.ln2),
+        'cents_shift': 0, 'volume': 1.0, 'isMuted': false, 'isDeleted': false,
+        'time_ratio': 1.0, 'vibrato_scale': 1.0, 'drift_scale': 1.0, 'amplitude': 1.0,
+      }];
+      final wavBytes = renderNotesToWavBytes(notes: dummyNote, duration: 0.5, settings: synthSettings);
+      final previewSrc = await SoLoud.instance.loadMem("preview", wavBytes);
+      SoLoud.instance.play(previewSrc, volume: 0.7);
+    } catch (e) {
+      debugPrint("Preview error: $e");
+    }
   }
 
   void _toggleMasterTransport() {
@@ -1460,11 +1505,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (originalFilePath.isNotEmpty) {
       File file = File(originalFilePath);
       
-      // 1. Check if Android wiped the cached file
       if (!file.existsSync()) {
         _showSaveConfirmation("Cached audio cleared by OS. Please re-select $originalFileName.");
         
-        // 2. Prompt user to re-link the original file
         FilePickerResult? missingFileResult = await FilePicker.pickFiles(
           type: FileType.audio,
           dialogTitle: 'Please locate $originalFileName'
@@ -1474,7 +1517,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           if (missingFileResult.files.single.bytes != null) {
             originalAudioBytes = missingFileResult.files.single.bytes!;
           } else if (missingFileResult.files.single.path != null) {
-            originalFilePath = missingFileResult.files.single.path!; // Update with new path
+            originalFilePath = missingFileResult.files.single.path!; 
             originalAudioBytes = await File(originalFilePath).readAsBytes();
           }
         } else {
@@ -1485,7 +1528,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         originalAudioBytes = await file.readAsBytes();
       }
 
-      // 3. Proceed with server resume only if we have the bytes
       if (originalAudioBytes != null) {
         setState(() {
           isLoading = true;
@@ -2396,10 +2438,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       PopupMenuItem(value: 'redo', enabled: redoStack.isNotEmpty, child: const ListTile(leading: Icon(Icons.redo), title: Text('Redo'))),
       const PopupMenuDivider(),
       PopupMenuItem(
-        value: 'drag_pitch', 
+        value: 'processing_mode', 
         child: ListTile(
-          leading: Icon(Icons.pan_tool, color: isDragMode ? Colors.amberAccent : Colors.white), 
-          title: Text(isDragMode ? 'Disable Drag Pitch' : 'Enable Drag Pitch', style: TextStyle(color: isDragMode ? Colors.amberAccent : Colors.white))
+          leading: Icon(processingMode == 'advanced' ? Icons.auto_awesome : Icons.blur_linear, color: Colors.purpleAccent),
+          title: Text(processingMode == 'advanced' ? 'Mode: ADVANCED' : 'Mode: NORMAL', style: const TextStyle(color: Colors.purpleAccent)),
         )
       ),
       const PopupMenuItem(value: 'synth_settings', child: ListTile(leading: Icon(Icons.piano, color: Colors.purpleAccent), title: Text('Synth Audio Settings'))),
@@ -2439,7 +2481,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       case 'save': _saveVoxrayProject(); break;
       case 'undo': _undo(); break;
       case 'redo': _redo(); break;
-      case 'drag_pitch': setState(() => isDragMode = !isDragMode); break;
+      case 'processing_mode': setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic'); break;
       case 'synth_settings': _showSynthSettingsDialog(); break;
       case 'show_dossier': _showDossier(); break;
       case 'downloads': _showAdvancedDownloadsDialog(); break;
@@ -2455,7 +2497,19 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isLiveModeActive ? 'Voxray: Live Pedagogy' : 'Voxray: Forensic DAW'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('voXRAY ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
+              child: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
+            ),
+            const SizedBox(width: 8),
+            const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
+          ],
+        ),
         actions: [
           if (!isLiveModeActive) ...[
             IconButton(
@@ -2468,10 +2522,15 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               tooltip: 'Redo',
               onPressed: redoStack.isNotEmpty ? _redo : null,
             ),
-            IconButton(
-              icon: Icon(Icons.pan_tool, color: isDragMode ? Colors.amberAccent : Colors.white),
-              tooltip: isDragMode ? 'Disable Drag Pitch' : 'Enable Drag Pitch',
-              onPressed: () => setState(() => isDragMode = !isDragMode),
+            PopupMenuButton<DragMode>(
+              icon: Icon(Icons.pan_tool, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white),
+              tooltip: 'Drag Pitch Mode',
+              onSelected: (val) => setState(() => currentDragMode = val),
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
+                PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
+                PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
+              ],
             ),
             if (targetStemsSelection.isNotEmpty)
               Padding(
@@ -2589,54 +2648,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       alignment: WrapAlignment.start,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.tune, color: Colors.orangeAccent),
-                          tooltip: "Studio Mixer",
-                          onPressed: _showStudioMixer,
-                        ),
-                        IconButton(
-                          icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 26), 
-                          onPressed: _toggleMasterTransport
-                        ),
-                        
+                        IconButton(icon: const Icon(Icons.tune, color: Colors.orangeAccent), onPressed: _showStudioMixer),
+                        IconButton(icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 26), onPressed: _toggleMasterTransport),
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple[700], visualDensity: VisualDensity.compact),
                           icon: const Icon(Icons.play_circle, size: 16), 
                           label: const Text("Render Stem Edits"),
                           onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting ? _renderStemEdits : null,
                         ),
-
-                        IconButton(
-                          icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 22),
-                          tooltip: "Scrub Mode", onPressed: () => setState(() => isScrubMode = !isScrubMode),
-                        ),
+                        IconButton(icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 22), onPressed: () => setState(() => isScrubMode = !isScrubMode)),
                         isXrayProcessing 
-                          ? const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 12.0),
-                              child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)),
-                            )
-                          : IconButton(
-                              icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 22),
-                              tooltip: "X-ray Pitch Analysis", 
-                              onPressed: isCurrentStemGenerated ? _toggleXrayMode : null,
-                            ),
-
-                        IconButton(
-                          icon: Icon(processingMode == 'advanced' ? Icons.auto_awesome : Icons.blur_linear, color: Colors.purpleAccent, size: 22),
-                          tooltip: "Processing Mode: ${processingMode.toUpperCase()}", 
-                          onPressed: () => setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic'),
-                        ),
-
-                        IconButton(
-                          icon: Icon(Icons.loop, color: isLoopModeActive ? Colors.tealAccent : Colors.white38, size: 22),
-                          tooltip: "Loop Mode", onPressed: () => setState(() => isLoopModeActive = !isLoopModeActive)
-                        ),
-
-                        IconButton(
-                          icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), 
-                          tooltip: "Add Marker", onPressed: addMarkerAtCurrentPlayhead
-                        ),
-                        
+                          ? const Padding(padding: EdgeInsets.symmetric(horizontal: 12.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)))
+                          : IconButton(icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 22), onPressed: isCurrentStemGenerated ? _toggleXrayMode : null),
+                        IconButton(icon: Icon(Icons.loop, color: isLoopModeActive ? Colors.tealAccent : Colors.white38, size: 22), onPressed: () => setState(() => isLoopModeActive = !isLoopModeActive)),
+                        IconButton(icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), onPressed: addMarkerAtCurrentPlayhead),
                         if (markers.isNotEmpty)
                           PopupMenuButton<double>(
                             icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
@@ -2656,7 +2681,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             }).toList(),
                             onSelected: (time) => jumpToTimelinePosition(time),
                           ),
-
                         if (markers.length >= 2) ...[
                           PopupMenuButton<String>(
                             icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
@@ -2691,7 +2715,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                         overlayShape: SliderComponentShape.noOverlay,
                       ),
-                      child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: (v) => setState(() => zoomX = v)),
+                      child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: setZoomX),
                     ),
                   ),
 
@@ -2713,17 +2737,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         Expanded(
                           child: Row(
                             children: [
-                              SizedBox(
-                                width: 16,
-                                child: RotatedBox(
-                                  quarterTurns: 3,
-                                  child: SliderTheme(
-                                    data: SliderThemeData(
-                                      trackHeight: 2,
-                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                      overlayShape: SliderComponentShape.noOverlay,
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8.0),
+                                child: SizedBox(
+                                  width: 24,
+                                  child: RotatedBox(
+                                    quarterTurns: 3,
+                                    child: SliderTheme(
+                                      data: SliderThemeData(
+                                        trackHeight: 2,
+                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                        overlayShape: SliderComponentShape.noOverlay,
+                                      ),
+                                      child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: setZoomY),
                                     ),
-                                    child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: (v) => setState(() => zoomY = v)),
                                   ),
                                 ),
                               ),
@@ -2764,4 +2791,3 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 }
-
