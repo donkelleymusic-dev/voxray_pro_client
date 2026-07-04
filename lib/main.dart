@@ -635,7 +635,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             setState(() {
               allStemsNotes[targetStem] = stemNotes;
               generatedStems.add(targetStem);
-              activePlaybackSources.add(targetStem); // Auto-enable to ensure audio is requested and heard immediately
+              activePlaybackSources.add(targetStem); 
               
               double newDuration = (result['duration'] ?? songDuration).toDouble();
               if (newDuration > 0) {
@@ -648,7 +648,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               processingMessage = '';
             });
 
-            _loadStemPlayerSource(targetStem); // Execute the request unconditionally now that it's generated
+            _loadStemPlayerSource(targetStem);
           } else if (statusData['status'] == 'error') {
             timer.cancel();
             setState(() { 
@@ -823,7 +823,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  // Requests the stem audio directly in smaller compressed format
   Future<Uint8List> _fetchStemBytes(String stemName) async {
     if (currentTaskId == null) throw Exception("No active session");
     final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName?format=ogg'));
@@ -954,11 +953,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  // Extracted polling logic to handle heavy backend processing asynchronously
   Future<Uint8List?> _pollRenderJob(String jobId) async {
     bool isComplete = false;
     int retryCount = 0;
-    const int maxRetries = 100; // 5 mins max
+    const int maxRetries = 100; 
     
     while (!isComplete && retryCount < maxRetries) {
       try {
@@ -1592,7 +1590,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       
                       const SizedBox(height: 4),
 
-                      // Active Toggle (Mute Logic is fixed here)
                       if (!isMaster)
                         IconButton(
                           padding: EdgeInsets.zero,
@@ -1633,7 +1630,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 if (state.isMuted) return;
                                 
                                 if (key == 'master') {
-                                  // Separating Master volume specifically for the global engine output
                                   SoLoud.instance.setGlobalVolume(v);
                                 } else if (key == 'original') {
                                   if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v);
@@ -2044,7 +2040,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       int semitoneShift = note['semitone_shift'] ?? 0;
       baseMidi += semitoneShift; 
       
-      if (baseMidi.round() == 36) continue; // Skip silence blocks
+      if (baseMidi.round() == 36) continue; 
 
       if (note['isMuted'] == true) mutedCount++;
       totalNotes++;
@@ -2127,8 +2123,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     Icon(Icons.info_outline, color: Colors.white38, size: 14),
                     SizedBox(width: 8),
                     Flexible(child: Text(
-                      'Enable X-Ray mode for detailed pitch contour analysis. '
-                      'Basic MIDI deviation shown below.',
+                      'Enable X-Ray mode for detailed pitch contour analysis. Basic MIDI deviation shown below.',
                       style: TextStyle(color: Colors.white38, fontSize: 11),
                     )),
                   ]),
@@ -2447,7 +2442,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           activeEditableStem = newSelection;
                         });
                         
-                        // Check if stem exists before grabbing it, otherwise queue it
                         if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
                           _generateStemOnDemand(newSelection);
                         } else if (generatedStems.contains(newSelection)) {
@@ -2621,7 +2615,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     )
                   ),
 
-                  // Horizontal Zoom Slider (Full width)
                   SizedBox(
                     height: 16,
                     child: SliderTheme(
@@ -2639,7 +2632,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       children: [
                         Row(
                           children: [
-                            Container(width: 46, height: 45, color: Colors.grey[900]), // Width offset for the new vertical slider and resized piano
+                            Container(width: 46, height: 45, color: Colors.grey[900]), 
                             Expanded(
                               child: SingleChildScrollView(
                                 controller: rulerScrollController,
@@ -2652,7 +2645,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         Expanded(
                           child: Row(
                             children: [
-                              // Vertical Zoom Slider (Left of the piano key stack)
                               SizedBox(
                                 width: 16,
                                 child: RotatedBox(
@@ -2667,7 +2659,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                   ),
                                 ),
                               ),
-                              // Primary Canvas
                               Expanded(
                                 child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
                                   ? Center(
