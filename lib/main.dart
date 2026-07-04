@@ -424,7 +424,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       double end = (note['end_time'] ?? 0.0).toDouble();
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
       
-      // Calculate active vertical block overlaps inside timeline
       var overlaps = targetNotesList.where((alt) {
         if (alt['isDeleted'] == true) return false;
         double altStart = (alt['start_time'] ?? 0.0).toDouble();
@@ -636,6 +635,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             setState(() {
               allStemsNotes[targetStem] = stemNotes;
               generatedStems.add(targetStem);
+              activePlaybackSources.add(targetStem); // Auto-enable to ensure audio is requested and heard immediately
               
               double newDuration = (result['duration'] ?? songDuration).toDouble();
               if (newDuration > 0) {
@@ -648,9 +648,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               processingMessage = '';
             });
 
-            if (activePlaybackSources.contains(targetStem)) {
-              _loadStemPlayerSource(targetStem);
-            }
+            _loadStemPlayerSource(targetStem); // Execute the request unconditionally now that it's generated
           } else if (statusData['status'] == 'error') {
             timer.cancel();
             setState(() { 
@@ -825,10 +823,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  // Raw stem pull. For applying effects/edits, rendering endpoints will update the cache directly.
+  // Requests the stem audio directly in smaller compressed format
   Future<Uint8List> _fetchStemBytes(String stemName) async {
     if (currentTaskId == null) throw Exception("No active session");
-    final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName'));
+    final stemRes = await http.get(Uri.parse('$apiBase/api/stem/$currentTaskId/$stemName?format=ogg'));
     if (stemRes.statusCode == 200) return stemRes.bodyBytes;
     throw Exception("Stem fetch error ${stemRes.statusCode}");
   }
@@ -911,7 +909,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     if (key == 'original') {
       if (masterHandle != null) {
-        SoLoud.instance.setVolume(masterHandle!, enabled ? getChannelState('master').volume : 0.0);
+        SoLoud.instance.setVolume(masterHandle!, enabled ? getChannelState('original').volume : 0.0);
       }
     } else if (key == 'synth') {
       if (enabled) {
@@ -1518,7 +1516,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       backgroundColor: Colors.transparent,
       builder: (context) {
         return SafeArea(
-          // Safety barrier mapping layout edges against Android native system navigation handles
           child: StatefulBuilder(
             builder: (context, setMixerState) {
               
@@ -1533,7 +1530,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                 }
 
                 return Container(
-                  width: 68, // Compressed width scale to maximize scannability
+                  width: 68, 
                   margin: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: BoxDecoration(
                     color: isMaster ? Colors.redAccent.withOpacity(0.1) : Colors.black87,
@@ -1567,7 +1564,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       ),
                       const SizedBox(height: 8),
 
-                      // Plugins (Sends async call to backend when changed)
+                      // Plugins
                       _pluginDropdown(state.plugin1, highlight, (val) {
                          if(state.plugin1 != val) {
                              setMixerState(() => state.plugin1 = val!);
@@ -1595,18 +1592,22 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       
                       const SizedBox(height: 4),
 
-                      // Active Toggle
+                      // Active Toggle (Mute Logic is fixed here)
                       if (!isMaster)
                         IconButton(
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                           icon: Icon(state.isMuted ? Icons.volume_off : Icons.volume_up, color: !state.isMuted ? highlight : Colors.white38, size: 18),
                           onPressed: () {
-                            setMixerState(() => state.isMuted = !state.isMuted); 
-                            if (key == 'synth') {
-                               if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, state.isMuted ? 0.0 : state.volume);
+                            setMixerState(() => state.isMuted = !state.isMuted);
+                            
+                            double targetVol = state.isMuted ? 0.0 : state.volume;
+                            if (key == 'original') {
+                               if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, targetVol);
+                            } else if (key == 'synth') {
+                               if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, targetVol);
                             } else if (stemHandles.containsKey(key)) {
-                               SoLoud.instance.setVolume(stemHandles[key]!, state.isMuted ? 0.0 : state.volume);
+                               SoLoud.instance.setVolume(stemHandles[key]!, targetVol);
                             }
                           },
                         ),
@@ -1631,7 +1632,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 setMixerState(() => state.volume = v);
                                 if (state.isMuted) return;
                                 
-                                if (key == 'master' || key == 'original') {
+                                if (key == 'master') {
+                                  // Separating Master volume specifically for the global engine output
+                                  SoLoud.instance.setGlobalVolume(v);
+                                } else if (key == 'original') {
                                   if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v);
                                 } else if (key == 'synth') {
                                   if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, v);
@@ -2442,8 +2446,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         setState(() {
                           activeEditableStem = newSelection;
                         });
+                        
+                        // Check if stem exists before grabbing it, otherwise queue it
                         if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
                           _generateStemOnDemand(newSelection);
+                        } else if (generatedStems.contains(newSelection)) {
+                          if (!activePlaybackSources.contains(newSelection)) {
+                             _togglePlaybackSource(newSelection, true);
+                          }
                         }
                       }
                     },
