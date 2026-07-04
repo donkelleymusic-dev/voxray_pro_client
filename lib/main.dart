@@ -2791,7 +2791,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                         ],
                                       ),
                                     )
-                                  : TimelineCanvasWidget(dawState: this), // Displays the actual timeline if generated
+                                  : TimelineCanvasWidget(
+                                      dawState: this,
+                                      horizontalScrollController: horizontalScrollController,
+                                      verticalScrollController: verticalScrollController,
+                                    ), // Displays the actual timeline if generated
                               ),
                             ],
                           ),
