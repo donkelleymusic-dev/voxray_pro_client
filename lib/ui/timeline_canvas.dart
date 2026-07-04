@@ -172,13 +172,27 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                       } : null,
                       onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
                       onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
-                      child: CustomPaint(
-                        size: Size(timelineWidth, totalHeight),
-                        painter: AdvancedPianoRollPainter(
-                          notes: processedNotes, zoomX: widget.dawState.zoomX, zoomY: widget.dawState.zoomY,
-                          minMidi: minMidi, maxMidi: maxMidi, isXrayMode: widget.dawState.isXrayMode,
-                          draggingNoteIndex: draggingNoteIndex, initialSemitoneShift: initialSemitoneShift,
-                        ),
+                      child: Stack(
+                        children: [
+                          CustomPaint(
+                            size: Size(timelineWidth, totalHeight),
+                            painter: AdvancedPianoRollPainter(
+                              notes: processedNotes, zoomX: widget.dawState.zoomX, zoomY: widget.dawState.zoomY,
+                              minMidi: minMidi, maxMidi: maxMidi, isXrayMode: widget.dawState.isXrayMode,
+                              draggingNoteIndex: draggingNoteIndex, initialSemitoneShift: initialSemitoneShift,
+                            ),
+                          ),
+                          // Insert Cursor / Vertical Playhead
+                          Positioned(
+                            left: widget.dawState.currentPosition * widget.dawState.zoomX,
+                            top: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 2,
+                              color: Colors.redAccent.withOpacity(0.8),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
