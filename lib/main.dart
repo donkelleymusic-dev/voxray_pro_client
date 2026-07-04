@@ -37,6 +37,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:archive/archive.dart'; 
 import 'dart:typed_data';
 
 import 'ui/timeline_canvas.dart';
@@ -378,11 +379,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => zoomX = newZoom);
       return;
     }
-    double centerTime = (horizontalScrollController.position.pixels + (horizontalScrollController.position.viewportDimension / 2)) / zoomX;
+    double viewportCenterX = horizontalScrollController.position.pixels + (horizontalScrollController.position.viewportDimension / 2);
+    double centerTime = viewportCenterX / zoomX;
+    
     setState(() => zoomX = newZoom);
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      double newScroll = (centerTime * zoomX) - (horizontalScrollController.position.viewportDimension / 2);
-      horizontalScrollController.jumpTo(newScroll.clamp(0.0, horizontalScrollController.position.maxScrollExtent));
+      double newScrollX = (centerTime * zoomX) - (horizontalScrollController.position.viewportDimension / 2);
+      horizontalScrollController.jumpTo(newScrollX.clamp(0.0, horizontalScrollController.position.maxScrollExtent));
     });
   }
 
@@ -391,11 +395,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => zoomY = newZoom);
       return;
     }
-    double centerMidi = 84 - ((verticalScrollController.position.pixels + (verticalScrollController.position.viewportDimension / 2)) / zoomY);
+    double viewportCenterY = verticalScrollController.position.pixels + (verticalScrollController.position.viewportDimension / 2);
+    double centerMidi = maxMidi - (viewportCenterY / zoomY);
+    
     setState(() => zoomY = newZoom);
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      double newScroll = ((84 - centerMidi) * zoomY) - (verticalScrollController.position.viewportDimension / 2);
-      verticalScrollController.jumpTo(newScroll.clamp(0.0, verticalScrollController.position.maxScrollExtent));
+      double newScrollY = ((maxMidi - centerMidi) * zoomY) - (verticalScrollController.position.viewportDimension / 2);
+      verticalScrollController.jumpTo(newScrollY.clamp(0.0, verticalScrollController.position.maxScrollExtent));
     });
   }
 
@@ -905,6 +912,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (originalAudioBytes == null) return;
     setState(() { isFetchingStems = true; });
 
+    bool wasPlaying = isPlaying;
+    if (wasPlaying) pauseAllPlayers(); // Force pause to prevent sync drift
+
     try {
       final Uint8List bytes = cachedStemBytes[stemName] ?? await _fetchStemBytes(stemName);
       cachedStemBytes[stemName] = bytes;
@@ -920,22 +930,23 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       double effectiveVolume = state.isMuted ? 0.0 : state.volume;
       
       SoLoud.instance.setVolume(stemHandles[stemName]!, effectiveVolume);
-      SoLoud.instance.seek(stemHandles[stemName]!, Duration(milliseconds: (currentPosition * 1000).round()));
-      
-      if (isPlaying) SoLoud.instance.setPause(stemHandles[stemName]!, false);
-
     } catch (e) {
       debugPrint("Stem track layer $stemName build failed: $e");
       _showSaveConfirmation('Stem layer $stemName unavailable: $e');
       setState(() => activePlaybackSources.remove(stemName));
     } finally {
       setState(() { isFetchingStems = false; });
+      seekAllPlayers(currentPosition); // Seek all tracks precisely together
+      if (wasPlaying) playAllPlayers(); // Resume exactly in sync
     }
   }
 
   Future<void> _loadSynthSource() async {
     if (rawNotes.isEmpty) return;
     setState(() { isSynthRendering = true; synthMessage = "Synthesizing note data..."; });
+
+    bool wasPlaying = isPlaying;
+    if (wasPlaying) pauseAllPlayers();
 
     try {
       final Uint8List wavBytes = renderNotesToWavBytes(
@@ -949,16 +960,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       synthHandle = SoLoud.instance.play(synthSource!, paused: true);
       
       SoLoud.instance.setVolume(synthHandle!, getChannelState('synth').volume);
-      SoLoud.instance.seek(synthHandle!, Duration(milliseconds: (currentPosition * 1000).round()));
-      
-      if (isPlaying) SoLoud.instance.setPause(synthHandle!, false);
-
     } catch (e) {
       debugPrint("Synth layer load failed: $e");
       _showSaveConfirmation('Synth layer failed: $e');
       setState(() => activePlaybackSources.remove('synth'));
     } finally {
       setState(() { isSynthRendering = false; synthMessage = ''; });
+      seekAllPlayers(currentPosition);
+      if (wasPlaying) playAllPlayers();
     }
   }
 
@@ -1413,21 +1422,39 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   
   Future<void> _saveVoxrayProject() async {
     Map<String, dynamic> projectData = {
-        "voxray_version": "1.4.0",
-        "project_name": projectName,
-        "original_file": originalFileName, 
-        "original_file_path": originalFilePath, 
-        "is_original_mix_available": isOriginalMixAvailable,
-        "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
-        "target_stems_selection": targetStemsSelection.toList(),
-        "generated_stems": generatedStems.toList(),
-        "all_stems_notes": allStemsNotes,
-        "active_editable_stem": activeEditableStem,
-        "history": {"undo_stack": undoStack, "redo_stack": redoStack}
-      };
+      "voxray_version": "1.4.0",
+      "project_name": projectName,
+      "original_file": originalFileName, 
+      "original_file_path": originalFilePath, 
+      "is_original_mix_available": isOriginalMixAvailable,
+      "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
+      "target_stems_selection": targetStemsSelection.toList(),
+      "generated_stems": generatedStems.toList(),
+      "all_stems_notes": allStemsNotes,
+      "active_editable_stem": activeEditableStem,
+      "history": {"undo_stack": undoStack, "redo_stack": redoStack}
+    };
 
     String jsonString = json.encode(projectData);
-    Uint8List bytes = Uint8List.fromList(utf8.encode(jsonString));
+    List<int> jsonBytes = utf8.encode(jsonString);
+
+    Archive archive = Archive();
+    archive.addFile(ArchiveFile('project.json', jsonBytes.length, jsonBytes));
+
+    if (originalAudioBytes != null) {
+      archive.addFile(ArchiveFile('original_audio.dat', originalAudioBytes!.length, originalAudioBytes));
+    }
+
+    for (var entry in cachedStemBytes.entries) {
+      archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
+    }
+
+    List<int>? zipData = ZipEncoder().encode(archive);
+    if (zipData == null) {
+      _showSaveConfirmation('Archive encoding failed.');
+      return;
+    }
+    Uint8List vxpBytes = Uint8List.fromList(zipData);
 
     String defaultSaveName = originalFileName.contains('.')
         ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
@@ -1436,14 +1463,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     try {
       String? path = await FileSaver.instance.saveAs(
         name: defaultSaveName,
-        bytes: bytes,
-        fileExtension: 'vxr',
-        mimeType: MimeType.custom,
-        customMimeType: 'application/json'
+        bytes: vxpBytes,
+        fileExtension: 'vxp',
+        mimeType: MimeType.zip,
       );
       
       if (path != null && path.isNotEmpty) {
-        _showSaveConfirmation('Project saved successfully.');
+        _showSaveConfirmation('Project saved successfully as offline .vxp archive.');
       } else {
         _showSaveConfirmation('Save cancelled.');
       }
@@ -1456,20 +1482,62 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<void> _loadVoxrayProject() async {
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom, 
-      allowedExtensions: ['vxr'],
+      allowedExtensions: ['vxp'],
       withData: true,
     );
     if (result == null) return;
 
-    String jsonString;
+    Uint8List vxpBytes;
     if (result.files.single.bytes != null) {
-      jsonString = utf8.decode(result.files.single.bytes!);
+      vxpBytes = result.files.single.bytes!;
     } else if (result.files.single.path != null) {
-      jsonString = await File(result.files.single.path!).readAsString();
+      vxpBytes = await File(result.files.single.path!).readAsBytes();
     } else {
       return;
     }
-    Map<String, dynamic> projectData = json.decode(jsonString);
+
+    setState(() {
+      isLoading = true;
+      processingMessage = "Unpacking .vxp archive and loading offline files...";
+      
+      // Memory cleanup
+      cachedStemBytes.clear();
+      for(var h in stemHandles.values) SoLoud.instance.stop(h);
+      stemHandles.clear();
+      stemSources.clear();
+      activePlaybackSources.clear();
+      allStemsNotes.clear();
+      generatedStems.clear();
+      if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
+      if (synthHandle != null) SoLoud.instance.stop(synthHandle!);
+    });
+
+    Archive archive;
+    try {
+      archive = ZipDecoder().decodeBytes(vxpBytes);
+    } catch (e) {
+      setState(() { isLoading = false; processingMessage = ""; });
+      _showSaveConfirmation("Failed to parse .vxp archive.");
+      return;
+    }
+
+    Map<String, dynamic> projectData = {};
+    for (ArchiveFile file in archive) {
+      if (file.name == 'project.json') {
+        projectData = json.decode(utf8.decode(file.content as List<int>));
+      } else if (file.name == 'original_audio.dat') {
+        originalAudioBytes = file.content as Uint8List;
+      } else if (file.name.endsWith('.ogg')) {
+        String stemName = file.name.replaceAll('.ogg', '');
+        cachedStemBytes[stemName] = file.content as Uint8List;
+      }
+    }
+
+    if (projectData.isEmpty) {
+      setState(() { isLoading = false; processingMessage = ""; });
+      _showSaveConfirmation("Invalid project format: missing JSON configuration.");
+      return;
+    }
     
     setState(() {
       projectName = projectData['project_name'] ?? "Voxray_Session";
@@ -1502,76 +1570,25 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
     });
 
-    if (originalFilePath.isNotEmpty) {
-      File file = File(originalFilePath);
-      
-      if (!file.existsSync()) {
-        _showSaveConfirmation("Cached audio cleared by OS. Please re-select $originalFileName.");
-        
-        FilePickerResult? missingFileResult = await FilePicker.pickFiles(
-          type: FileType.audio,
-          dialogTitle: 'Please locate $originalFileName'
-        );
-        
-        if (missingFileResult != null) {
-          if (missingFileResult.files.single.bytes != null) {
-            originalAudioBytes = missingFileResult.files.single.bytes!;
-          } else if (missingFileResult.files.single.path != null) {
-            originalFilePath = missingFileResult.files.single.path!; 
-            originalAudioBytes = await File(originalFilePath).readAsBytes();
-          }
-        } else {
-           _showSaveConfirmation("Audio file not provided. Session resume aborted.");
-           return; 
-        }
-      } else {
-        originalAudioBytes = await file.readAsBytes();
-      }
-
-      if (originalAudioBytes != null) {
-        setState(() {
-          isLoading = true;
-          processingMessage = "Re-establishing server session...";
-        });
-
-        try {
-          var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
-            ..fields['instruments_json'] = jsonEncode(targetStemsSelection.toList())
-            ..fields['upload_type'] = isOriginalMixAvailable ? 'mix' : 'stem'
-            ..fields['stem_target'] = isOriginalMixAvailable ? 'none' : activeEditableStem
-            ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: originalFileName));
-          
-          var response = await request.send();
-          if (response.statusCode == 200) {
-            var data = json.decode(await response.stream.bytesToString());
-            setState(() => currentTaskId = data['task_id']);
-            
-            if (isOriginalMixAvailable) {
-              activePlaybackSources.add('original');
-              if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
-              masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
-              masterHandle = SoLoud.instance.play(masterSource!, paused: true);
-            }
-            
-            for (String stem in generatedStems) {
-                await _loadStemPlayerSource(stem);
-            }
-            
-            if (rawNotes.isNotEmpty && rawNotes.first.containsKey('contour')) {
-                await _loadSynthSource();
-            }
-
-            _showSaveConfirmation("Session re-established successfully.");
-          } else {
-            _showSaveConfirmation("Server rejected resume connection.");
-          }
-        } catch(e) {
-          _showSaveConfirmation("Connection error during resume: $e");
-        } finally {
-          setState(() { isLoading = false; processingMessage = ""; });
-        }
-      }
+    // Directly reconstruct tracks from the offline embedded files
+    if (originalAudioBytes != null && isOriginalMixAvailable) {
+       activePlaybackSources.add('original');
+       masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
+       masterHandle = SoLoud.instance.play(masterSource!, paused: true);
     }
+
+    for (String stem in generatedStems) {
+       if (cachedStemBytes.containsKey(stem)) {
+          await _loadStemPlayerSource(stem);
+       }
+    }
+
+    if (rawNotes.isNotEmpty && rawNotes.first.containsKey('contour')) {
+       await _loadSynthSource();
+    }
+
+    setState(() { isLoading = false; processingMessage = ""; });
+    _showSaveConfirmation("Project fully restored from offline archive.");
   }
 
   // --- TIMELINE & MARKER UTILS ---
@@ -2434,9 +2451,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       const PopupMenuItem(value: 'load', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))),
       const PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save), title: Text('Save Project'))),
       const PopupMenuDivider(),
-      PopupMenuItem(value: 'undo', enabled: undoStack.isNotEmpty, child: const ListTile(leading: Icon(Icons.undo), title: Text('Undo'))),
-      PopupMenuItem(value: 'redo', enabled: redoStack.isNotEmpty, child: const ListTile(leading: Icon(Icons.redo), title: Text('Redo'))),
-      const PopupMenuDivider(),
       PopupMenuItem(
         value: 'processing_mode', 
         child: ListTile(
@@ -2479,8 +2493,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       case 'stem_tree': _showStemSelectorTreeDialog(); break;
       case 'load': _loadVoxrayProject(); break;
       case 'save': _saveVoxrayProject(); break;
-      case 'undo': _undo(); break;
-      case 'redo': _redo(); break;
       case 'processing_mode': setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic'); break;
       case 'synth_settings': _showSynthSettingsDialog(); break;
       case 'show_dossier': _showDossier(); break;
@@ -2511,77 +2523,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           ],
         ),
         actions: [
-          if (!isLiveModeActive) ...[
-            IconButton(
-              icon: const Icon(Icons.undo),
-              tooltip: 'Undo',
-              onPressed: undoStack.isNotEmpty ? _undo : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.redo),
-              tooltip: 'Redo',
-              onPressed: redoStack.isNotEmpty ? _redo : null,
-            ),
-            PopupMenuButton<DragMode>(
-              icon: Icon(Icons.pan_tool, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white),
-              tooltip: 'Drag Pitch Mode',
-              onSelected: (val) => setState(() => currentDragMode = val),
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
-                PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
-                PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
-              ],
-            ),
-            if (targetStemsSelection.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Center(
-                  child: DropdownButton<String>(
-                    value: targetStemsSelection.contains(activeEditableStem) ? activeEditableStem : null,
-                    dropdownColor: Colors.grey[900],
-                    underline: const SizedBox(),
-                    icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
-                    style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                    items: targetStemsSelection.map((String stemKey) {
-                      bool isSuggested = suggestedStems.contains(stemKey);
-                      return DropdownMenuItem<String>(
-                        value: stemKey,
-                        child: Row(
-                          children: [
-                            Text(stemKey.toUpperCase(), style: TextStyle(color: isSuggested ? Colors.yellowAccent : Colors.white)),
-                            if (isSuggested) 
-                               const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
-                            if (!generatedStems.contains(stemKey)) 
-                               const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38))
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (String? newSelection) {
-                      if (newSelection != null && newSelection != activeEditableStem) {
-                        setState(() {
-                          activeEditableStem = newSelection;
-                        });
-                        
-                        if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
-                          _generateStemOnDemand(newSelection);
-                        } else if (generatedStems.contains(newSelection)) {
-                          if (!activePlaybackSources.contains(newSelection)) {
-                             _togglePlaybackSource(newSelection, true);
-                          }
-                        }
-                      }
-                    },
-                  ),
-                ),
-              ),
+          if (!isLiveModeActive)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
               tooltip: "Main Menu",
               onSelected: _handleMenuSelection,
               itemBuilder: (context) => _buildMainMenu(),
             ),
-          ]
         ],
       ),
       body: SafeArea(
@@ -2638,6 +2586,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     )
                   ),
 
+                  // Integrated Tool Strip
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -2648,20 +2597,78 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       alignment: WrapAlignment.start,
                       children: [
-                        IconButton(icon: const Icon(Icons.tune, color: Colors.orangeAccent), onPressed: _showStudioMixer),
-                        IconButton(icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 26), onPressed: _toggleMasterTransport),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple[700], visualDensity: VisualDensity.compact),
-                          icon: const Icon(Icons.play_circle, size: 16), 
-                          label: const Text("Render Stem Edits"),
-                          onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting ? _renderStemEdits : null,
+                        IconButton(icon: const Icon(Icons.undo), tooltip: 'Undo', onPressed: undoStack.isNotEmpty ? _undo : null),
+                        IconButton(icon: const Icon(Icons.redo), tooltip: 'Redo', onPressed: redoStack.isNotEmpty ? _redo : null),
+                        
+                        Tooltip(
+                          message: "Render stem edits",
+                          child: IconButton(
+                            icon: const Icon(Icons.movie_creation, color: Colors.deepPurpleAccent, size: 24),
+                            onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting ? _renderStemEdits : null,
+                          ),
                         ),
+
+                        const SizedBox(width: 8),
+                        IconButton(icon: const Icon(Icons.tune, color: Colors.orangeAccent), tooltip: 'Studio Mixer', onPressed: _showStudioMixer),
+                        IconButton(icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 26), onPressed: _toggleMasterTransport),
+                        
+                        if (targetStemsSelection.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                            child: DropdownButton<String>(
+                              value: targetStemsSelection.contains(activeEditableStem) ? activeEditableStem : null,
+                              dropdownColor: Colors.grey[900],
+                              underline: const SizedBox(),
+                              icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
+                              style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                              items: targetStemsSelection.map((String stemKey) {
+                                bool isSuggested = suggestedStems.contains(stemKey);
+                                return DropdownMenuItem<String>(
+                                  value: stemKey,
+                                  child: Row(
+                                    children: [
+                                      Text(stemKey.toUpperCase(), style: TextStyle(color: isSuggested ? Colors.yellowAccent : Colors.white)),
+                                      if (isSuggested) 
+                                         const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
+                                      if (!generatedStems.contains(stemKey)) 
+                                         const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38))
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (String? newSelection) {
+                                if (newSelection != null && newSelection != activeEditableStem) {
+                                  setState(() => activeEditableStem = newSelection);
+                                  if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
+                                    _generateStemOnDemand(newSelection);
+                                  } else if (generatedStems.contains(newSelection)) {
+                                    if (!activePlaybackSources.contains(newSelection)) {
+                                       _togglePlaybackSource(newSelection, true);
+                                    }
+                                  }
+                                }
+                              },
+                            ),
+                          ),
+
+                        PopupMenuButton<DragMode>(
+                          icon: Icon(Icons.pan_tool, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
+                          tooltip: 'Drag Pitch Mode',
+                          onSelected: (val) => setState(() => currentDragMode = val),
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
+                            PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
+                            PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
+                          ],
+                        ),
+
                         IconButton(icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 22), onPressed: () => setState(() => isScrubMode = !isScrubMode)),
                         isXrayProcessing 
                           ? const Padding(padding: EdgeInsets.symmetric(horizontal: 12.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)))
                           : IconButton(icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 22), onPressed: isCurrentStemGenerated ? _toggleXrayMode : null),
                         IconButton(icon: Icon(Icons.loop, color: isLoopModeActive ? Colors.tealAccent : Colors.white38, size: 22), onPressed: () => setState(() => isLoopModeActive = !isLoopModeActive)),
                         IconButton(icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), onPressed: addMarkerAtCurrentPlayhead),
+                        
                         if (markers.isNotEmpty)
                           PopupMenuButton<double>(
                             icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
@@ -2703,10 +2710,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             },
                           ),
                         ],
-                      ]
-                    )
+                      ],
+                    ),
                   ),
-
+                  
                   SizedBox(
                     height: 16,
                     child: SliderTheme(
@@ -2719,6 +2726,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     ),
                   ),
 
+                  // Main Timeline Display Area
                   Expanded(
                     child: Column(
                       children: [
@@ -2773,10 +2781,32 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                         ],
                                       ),
                                     )
-                                  : TimelineCanvasWidget(
-                                      dawState: this,
-                                      horizontalScrollController: horizontalScrollController,
-                                      verticalScrollController: verticalScrollController,
+                                  : Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: TimelineCanvasWidget(
+                                            dawState: this,
+                                            horizontalScrollController: horizontalScrollController,
+                                            verticalScrollController: verticalScrollController,
+                                          ),
+                                        ),
+                                        // Stationary Playhead
+                                        Positioned(
+                                          left: 150.0,
+                                          top: 0,
+                                          bottom: 0,
+                                          child: IgnorePointer(
+                                            child: Container(
+                                              width: 2,
+                                              color: Colors.redAccent.withOpacity(0.85),
+                                              child: const Align(
+                                                alignment: Alignment.topCenter,
+                                                child: Icon(Icons.arrow_drop_down, color: Colors.redAccent, size: 20),
+                                              )
+                                            ),
+                                          ),
+                                        )
+                                      ],
                                     ),
                               ),
                             ],
@@ -2784,7 +2814,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         ),
                       ],
                     ),
-                  ),
+                  )
                 ],
               ),
       ),
