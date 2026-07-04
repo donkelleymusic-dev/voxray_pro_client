@@ -1530,6 +1530,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         }
       }
     }
+  }
 
   // --- TIMELINE & MARKER UTILS ---
 
