@@ -182,7 +182,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                               draggingNoteIndex: draggingNoteIndex, initialSemitoneShift: initialSemitoneShift,
                             ),
                           ),
-                          // Insert Cursor / Vertical Playhead
+                          // Moving Vertical Playhead
                           Positioned(
                             left: widget.dawState.currentPosition * widget.dawState.zoomX,
                             top: 0,
