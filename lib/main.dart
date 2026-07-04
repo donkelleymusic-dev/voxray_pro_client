@@ -2788,4 +2788,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                             label: Text("Generate & Analyze ${activeEditableStem.toUpperCase()}"),
                                             onPressed: isLoading ? null : () => _generateStemOnDemand(activeEditableStem),
                                           )
-                               I seem to be encountering an error. Can I try something else for you?
+                                        ],
+                                      ),
+                                    )
+                                  : TimelineCanvasWidget(dawState: this), // Displays the actual timeline if generated
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
