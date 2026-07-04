@@ -65,7 +65,6 @@ class ChannelState {
   String plugin3;
   String plugin4;
 
-  // Real-time Effect Parameters (Frontend proxies for local playback)
   double reverbMix;
   double compressionThreshold; 
   double compressionRatio;
@@ -161,9 +160,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   SynthSettings synthSettings = const SynthSettings();
   bool isSynthRendering = false;
   String synthMessage = '';
-  String processingMode = 'advanced'; // Default to advanced
+  String processingMode = 'advanced'; 
   
-  // Mixer State
   Map<String, ChannelState> mixerState = {
     'master': ChannelState(),
     'synth': ChannelState(),
@@ -184,7 +182,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Set<String> generatedStems = {}; 
   List<String> suggestedStems = []; 
   bool isOriginalMixAvailable = false; 
-  bool isTestModeActive = false; // Dev bypass flag
+  bool isTestModeActive = false; 
 
   List<dynamic> get rawNotes => allStemsNotes[activeEditableStem] ?? [];
   set rawNotes(List<dynamic> updatedNotes) {
@@ -373,7 +371,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
   }
 
-  // Centered Zoom Modifiers
   void setZoomX(double newZoom) {
     if (!horizontalScrollController.hasClients) {
       setState(() => zoomX = newZoom);
@@ -913,7 +910,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     setState(() { isFetchingStems = true; });
 
     bool wasPlaying = isPlaying;
-    if (wasPlaying) pauseAllPlayers(); // Force pause to prevent sync drift
+    if (wasPlaying) pauseAllPlayers(); 
 
     try {
       final Uint8List bytes = cachedStemBytes[stemName] ?? await _fetchStemBytes(stemName);
@@ -936,8 +933,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => activePlaybackSources.remove(stemName));
     } finally {
       setState(() { isFetchingStems = false; });
-      seekAllPlayers(currentPosition); // Seek all tracks precisely together
-      if (wasPlaying) playAllPlayers(); // Resume exactly in sync
+      seekAllPlayers(currentPosition); 
+      if (wasPlaying) {
+        // slight delay allows memory buffers to settle
+        await Future.delayed(const Duration(milliseconds: 50));
+        playAllPlayers();
+      }
     }
   }
 
@@ -1359,7 +1360,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  Future<void> _downloadPitchPrint({required bool fullSong}) async {
+  Future<void> _downloadPitchPrint({required bool fullSong, required String format}) async {
     if (rawNotes.isEmpty) return;
     setState(() { isExporting = true; exportMessage = "Generating PitchPrint™..."; });
 
@@ -1422,10 +1423,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   
   Future<void> _saveVoxrayProject() async {
     Map<String, dynamic> projectData = {
-      "voxray_version": "1.4.0",
+      "voxray_version": "1.4.1", // Bumped slightly for tracking
       "project_name": projectName,
       "original_file": originalFileName, 
       "original_file_path": originalFilePath, 
+      "song_duration": songDuration, // <-- ADDED THIS LINE
       "is_original_mix_available": isOriginalMixAvailable,
       "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
       "target_stems_selection": targetStemsSelection.toList(),
@@ -1434,6 +1436,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       "active_editable_stem": activeEditableStem,
       "history": {"undo_stack": undoStack, "redo_stack": redoStack}
     };
+
+    // ... rest of the method remains identical
 
     String jsonString = json.encode(projectData);
     List<int> jsonBytes = utf8.encode(jsonString);
@@ -1500,7 +1504,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       isLoading = true;
       processingMessage = "Unpacking .vxp archive and loading offline files...";
       
-      // Memory cleanup
       cachedStemBytes.clear();
       for(var h in stemHandles.values) SoLoud.instance.stop(h);
       stemHandles.clear();
@@ -1544,6 +1547,29 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       originalFileName = projectData['original_file'] ?? "Unknown File";
       originalFilePath = projectData['original_file_path'] ?? "";
       isOriginalMixAvailable = projectData['is_original_mix_available'] ?? true;
+
+      // Restore or calculate Song Duration
+      if (projectData.containsKey('song_duration')) {
+        songDuration = (projectData['song_duration'] as num).toDouble();
+      } else {
+        // Fallback for older .vxp saves: Find the furthest note end_time
+        double maxTime = 30.0;
+        if (projectData['all_stems_notes'] != null) {
+          Map<String, dynamic> savedNotes = projectData['all_stems_notes'];
+          savedNotes.forEach((stem, notesList) {
+            for (var note in notesList) {
+              double endTime = (note['end_time'] ?? 0.0).toDouble();
+              if (endTime > maxTime) maxTime = endTime;
+            }
+          });
+        }
+        songDuration = maxTime;
+      }
+      
+      // Sync the loop bounds and end marker to the correct duration
+      loopEndBoundary = songDuration;
+      int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
+      if (endIdx != -1) markers[endIdx]['time'] = songDuration;
       
       if (projectData['mixer_state'] != null) {
         Map<String, dynamic> ms = projectData['mixer_state'];
@@ -1570,7 +1596,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
     });
 
-    // Directly reconstruct tracks from the offline embedded files
     if (originalAudioBytes != null && isOriginalMixAvailable) {
        activePlaybackSources.add('original');
        masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
@@ -2051,7 +2076,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           title: const Row(children: [
             Icon(Icons.fingerprint, color: Colors.amberAccent, size: 20),
             SizedBox(width: 8),
-            Text('PitchPrint™', style: TextStyle(color: Colors.white)),
+            Text('Export PitchPrint™', style: TextStyle(color: Colors.white)),
           ]),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2087,51 +2112,34 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text('Format', style: TextStyle(color: Colors.white54, fontSize: 11)),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _formatChip('SVG', 'Vector', Colors.tealAccent),
-                  _formatChip('PNG', 'High-Res', Colors.amberAccent),
-                  _formatChip('PDF', 'Print', Colors.blueAccent),
-                ],
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.image, color: Colors.tealAccent, size: 30),
+                title: const Text("SVG Vector", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Scalable Vector Graphics", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _downloadPitchPrint(fullSong: fullSong, format: 'svg'); },
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.photo, color: Colors.amberAccent, size: 30),
+                title: const Text("PNG Image", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("High-Resolution Image", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _downloadPitchPrint(fullSong: fullSong, format: 'png'); },
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf, color: Colors.blueAccent, size: 30),
+                title: const Text("PDF Print", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Print-ready Document", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _downloadPitchPrint(fullSong: fullSong, format: 'pdf'); },
               ),
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.amberAccent.withOpacity(0.2)),
-              icon: const Icon(Icons.fingerprint, color: Colors.amberAccent, size: 16),
-              label: const Text('Generate', style: TextStyle(color: Colors.amberAccent)),
-              onPressed: () {
-                Navigator.pop(context);
-                _downloadPitchPrint(fullSong: fullSong);
-              },
-            ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _formatChip(String format, String label, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withOpacity(0.4)),
-          ),
-          child: Text(format, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-        ),
-        const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
-      ],
     );
   }
 
@@ -2318,18 +2326,19 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: avgError < 15 ? Colors.tealAccent.withOpacity(0.4) : Colors.redAccent.withOpacity(0.4)),
                 ),
-                child: Text(
-                  avgError < 10
-                    ? "VERDICT: Exceptional intonation. Studio-ready performance."
-                    : avgError < 15
-                      ? "VERDICT: Highly accurate. Minor touch-ups may be desired."
-                      : avgError < 25
-                        ? "VERDICT: Moderate variance detected. Pitch correction recommended on flagged notes."
-                        : "VERDICT: Significant tuning issues. Review red-flagged notes in the piano roll.",
-                  style: TextStyle(
-                    color: avgError < 15 ? Colors.tealAccent : Colors.redAccent,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    children: avgError < 10
+                        ? [const TextSpan(text: "VERDICT: Exceptional intonation. Studio-ready performance.", style: TextStyle(color: Colors.tealAccent))]
+                        : avgError < 15
+                            ? [const TextSpan(text: "VERDICT: Highly accurate. Minor touch-ups may be desired.", style: TextStyle(color: Colors.tealAccent))]
+                            : avgError < 25
+                                ? [
+                                    const TextSpan(text: "VERDICT: Moderate variance detected. Pitch correction and autotune don't appear to have been used! ", style: TextStyle(color: Colors.tealAccent)),
+                                    const TextSpan(text: "On flagged notes, the tuning could be improved audibly.", style: TextStyle(color: Colors.redAccent))
+                                  ]
+                                : [const TextSpan(text: "VERDICT: Significant tuning issues. Review red-flagged notes in the piano roll.", style: TextStyle(color: Colors.redAccent))],
                   ),
                 ),
               ),
@@ -2639,12 +2648,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               onChanged: (String? newSelection) {
                                 if (newSelection != null && newSelection != activeEditableStem) {
                                   setState(() => activeEditableStem = newSelection);
-                                  if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
+                                  
+                                  // Only generate it if it hasn't been extracted yet.
+                                  // We NO LONGER auto-toggle playback here!
+                                  if (!generatedStems.contains(newSelection) && 
+                                      originalAudioBytes != null && 
+                                      currentTaskId != null && 
+                                      !isLoading) {
                                     _generateStemOnDemand(newSelection);
-                                  } else if (generatedStems.contains(newSelection)) {
-                                    if (!activePlaybackSources.contains(newSelection)) {
-                                       _togglePlaybackSource(newSelection, true);
-                                    }
                                   }
                                 }
                               },
@@ -2726,7 +2737,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                     ),
                   ),
 
-                  // Main Timeline Display Area
                   Expanded(
                     child: Column(
                       children: [
@@ -2778,46 +2788,4 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                             label: Text("Generate & Analyze ${activeEditableStem.toUpperCase()}"),
                                             onPressed: isLoading ? null : () => _generateStemOnDemand(activeEditableStem),
                                           )
-                                        ],
-                                      ),
-                                    )
-                                  : Stack(
-                                      children: [
-                                        Positioned.fill(
-                                          child: TimelineCanvasWidget(
-                                            dawState: this,
-                                            horizontalScrollController: horizontalScrollController,
-                                            verticalScrollController: verticalScrollController,
-                                          ),
-                                        ),
-                                        // Stationary Playhead
-                                        Positioned(
-                                          left: 150.0,
-                                          top: 0,
-                                          bottom: 0,
-                                          child: IgnorePointer(
-                                            child: Container(
-                                              width: 2,
-                                              color: Colors.redAccent.withOpacity(0.85),
-                                              child: const Align(
-                                                alignment: Alignment.topCenter,
-                                                child: Icon(Icons.arrow_drop_down, color: Colors.redAccent, size: 20),
-                                              )
-                                            ),
-                                          ),
-                                        )
-                                      ],
-                                    ),
-                              ),
-                            ],
-                          )
-                        ),
-                      ],
-                    ),
-                  )
-                ],
-              ),
-      ),
-    );
-  }
-}
+                               I seem to be encountering an error. Can I try something else for you?
