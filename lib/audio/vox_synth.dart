@@ -12,24 +12,15 @@ import 'dart:math';
 import 'dart:typed_data';
 
 /// Oscillator waveform shapes available to the synth engine.
-enum Waveform {
-  sine,
-  square,
-  triangle,
-  saw,
-}
+enum Waveform { sine, square, triangle, saw }
 
 extension WaveformLabel on Waveform {
   String get label {
-    switch (this) {
-      case Waveform.sine:
-        return 'Sine';
-      case Waveform.square:
-        return 'Square';
-      case Waveform.triangle:
-        return 'Triangle';
-      case Waveform.saw:
-        return 'Saw';
+    switch (this) { 
+      case Waveform.sine: return 'Sine'; 
+      case Waveform.square: return 'Square'; 
+      case Waveform.triangle: return 'Triangle'; 
+      case Waveform.saw: return 'Saw'; 
     }
   }
 }
@@ -37,327 +28,192 @@ extension WaveformLabel on Waveform {
 /// Attack / Decay / Sustain / Release envelope, all times in seconds
 /// (except sustain, which is a 0..1 level).
 class ADSR {
-  final double attack;
-  final double decay;
-  final double sustain;
+  final double attack; 
+  final double decay; 
+  final double sustain; 
   final double release;
-
+  
   const ADSR({
-    this.attack = 0.01,
-    this.decay = 0.05,
-    this.sustain = 0.8,
-    this.release = 0.08,
+    this.attack = 0.01, 
+    this.decay = 0.05, 
+    this.sustain = 0.8, 
+    this.release = 0.15
   });
-
-  ADSR copyWith({
-    double? attack,
-    double? decay,
-    double? sustain,
-    double? release,
-  }) {
+  
+  ADSR copyWith({double? attack, double? decay, double? sustain, double? release}) { 
     return ADSR(
-      attack: attack ?? this.attack,
-      decay: decay ?? this.decay,
-      sustain: sustain ?? this.sustain,
-      release: release ?? this.release,
-    );
+      attack: attack ?? this.attack, 
+      decay: decay ?? this.decay, 
+      sustain: sustain ?? this.sustain, 
+      release: release ?? this.release
+    ); 
   }
 }
 
 /// Bundles every adjustable parameter of the synth engine so it can be
 /// passed around and persisted as a single value.
 class SynthSettings {
-  final Waveform waveform;
-  final ADSR adsr;
-  final int sampleRate;
-
-  /// Linear gain applied to every voice before mixdown. Polyphony sums
-  /// voices, so this is kept conservative by default; final normalization
-  /// only ever turns the mix *down* to avoid clipping, never boosts it.
-  final double masterGain;
-
-  /// When true and a note has X-Ray `contour` data, the synth follows the
-  /// real extracted pitch contour (including any vibrato/cents edits the
-  /// user has applied) instead of the static note pitch.
+  final Waveform waveform; 
+  final ADSR adsr; 
+  final int sampleRate; 
+  final double masterGain; 
   final bool useXrayContour;
-
+  final double vibratoRate; 
+  final double vibratoDepth; 
+  final double lpfCutoffMultiplier;
+  
   const SynthSettings({
-    this.waveform = Waveform.sine,
-    this.adsr = const ADSR(),
-    this.sampleRate = 44100,
-    this.masterGain = 0.3,
+    this.waveform = Waveform.saw, 
+    this.adsr = const ADSR(), 
+    this.sampleRate = 44100, 
+    this.masterGain = 0.25, 
     this.useXrayContour = true,
+    this.vibratoRate = 5.0, 
+    this.vibratoDepth = 0.0, 
+    this.lpfCutoffMultiplier = 4.0,
   });
 
-  SynthSettings copyWith({
-    Waveform? waveform,
-    ADSR? adsr,
-    int? sampleRate,
-    double? masterGain,
-    bool? useXrayContour,
-  }) {
+  SynthSettings copyWith({Waveform? waveform, ADSR? adsr, int? sampleRate, double? masterGain, bool? useXrayContour}) {
     return SynthSettings(
-      waveform: waveform ?? this.waveform,
-      adsr: adsr ?? this.adsr,
-      sampleRate: sampleRate ?? this.sampleRate,
-      masterGain: masterGain ?? this.masterGain,
-      useXrayContour: useXrayContour ?? this.useXrayContour,
+      waveform: waveform ?? this.waveform, 
+      adsr: adsr ?? this.adsr, 
+      sampleRate: sampleRate ?? this.sampleRate, 
+      masterGain: masterGain ?? this.masterGain, 
+      useXrayContour: useXrayContour ?? this.useXrayContour
     );
   }
 }
 
 /// Evaluates a single oscillator cycle at the given phase (radians).
-/// Square/triangle/saw are derived from a sine-equivalent phase so that
-/// all waveforms line up at zero-crossings.
 double oscillator(Waveform waveform, double phase) {
   switch (waveform) {
-    case Waveform.square:
-      return sin(phase) >= 0 ? 1.0 : -1.0;
-
-    case Waveform.triangle:
-      return (2 / pi) * asin(sin(phase));
-
-    case Waveform.saw:
-      final normalized = phase / (2 * pi);
-      return 2 * (normalized - normalized.floor()) - 1;
-
-    case Waveform.sine:
-      return sin(phase);
+    case Waveform.square: return sin(phase) >= 0 ? 1.0 : -1.0;
+    case Waveform.triangle: return (2 / pi) * asin(sin(phase));
+    case Waveform.saw: final normalized = phase / (2 * pi); return 2 * (normalized - normalized.floor()) - 1;
+    case Waveform.sine: return sin(phase);
   }
 }
 
 /// Converts a (possibly fractional) MIDI note number to frequency in Hz.
-double midiToHz(double midi) {
-  return 440.0 * pow(2, (midi - 69) / 12);
-}
+double midiToHz(double midi) => 440.0 * pow(2, (midi - 69) / 12);
 
-/// Evaluates the ADSR envelope at time [t] seconds into a note of total
-/// duration [noteDuration] seconds.
+/// Evaluates the ADSR envelope at time [t] seconds into a note.
 double adsrEnvelope(ADSR adsr, double t, double noteDuration) {
-  if (noteDuration <= 0) return 0.0;
-
-  // If the note is shorter than attack+decay, compress the envelope so it
-  // still completes within the note rather than clicking or overrunning.
-  final double attack = adsr.attack;
-  final double decay = adsr.decay;
-  final double release = min(adsr.release, noteDuration);
-  final double releaseStart = noteDuration - release;
-
-  if (attack + decay >= releaseStart && releaseStart > 0) {
-    // Squeeze attack/decay proportionally to fit before release begins.
-    final double scale = releaseStart / (attack + decay == 0 ? 1 : attack + decay);
-    final double scaledAttack = attack * scale;
-    final double scaledDecay = decay * scale;
-
-    if (t < scaledAttack) {
-      return scaledAttack > 0 ? t / scaledAttack : 1.0;
-    } else if (t < scaledAttack + scaledDecay) {
-      final double x = scaledDecay > 0 ? (t - scaledAttack) / scaledDecay : 1.0;
-      return 1 - (1 - adsr.sustain) * x;
-    }
-  } else {
-    if (t < attack) {
-      return attack > 0 ? t / attack : 1.0;
-    } else if (t < attack + decay) {
-      final double x = decay > 0 ? (t - attack) / decay : 1.0;
-      return 1 - (1 - adsr.sustain) * x;
-    }
-  }
-
-  if (t >= releaseStart) {
-    if (release <= 0) return 0.0;
-    final double x = ((t - releaseStart) / release).clamp(0.0, 1.0);
-    return adsr.sustain * (1 - x);
-  }
-
+  if (t < adsr.attack) return adsr.attack > 0 ? t / adsr.attack : 1.0;
+  else if (t < adsr.attack + adsr.decay) return 1 - (1 - adsr.sustain) * (adsr.decay > 0 ? (t - adsr.attack) / adsr.decay : 1.0);
+  if (t >= noteDuration) return max(0.0, adsr.sustain * (1 - ((t - noteDuration) / adsr.release)));
   return adsr.sustain;
 }
 
-/// Computes the MIDI pitch of [note] at sample offset [i] of [noteSamples]
-/// total samples, honoring cents_shift / vibrato_scale, and (optionally)
-/// the real X-Ray contour data if present and enabled.
-double _pitchForSample({
-  required Map note,
-  required int i,
-  required int noteSamples,
-  required bool useXrayContour,
-}) {
-  final double displayMidi =
-      (note['display_midi'] ?? note['actual_midi'] ?? 60.0).toDouble();
+/// Computes the MIDI pitch of [note] at sample offset [i], honoring cents_shift / 
+/// vibrato_scale, real X-Ray contour data, and synthesized vibrato settings.
+double _pitchForSample({required Map note, required int i, required int noteSamples, required bool useXrayContour, required double t, required SynthSettings settings}) {
+  final double displayMidi = (note['display_midi'] ?? note['actual_midi'] ?? 60.0).toDouble();
   final double actualMidi = (note['actual_midi'] ?? displayMidi).toDouble();
   final double centsShift = (note['cents_shift'] ?? 0).toDouble();
   final double vibrato = (note['vibrato_scale'] ?? 1.0).toDouble();
-
   final List? contour = useXrayContour ? note['contour'] as List? : null;
 
+  double midi = actualMidi + centsShift / 100.0;
   if (contour != null && contour.isNotEmpty) {
-    final double posF = contour.length > 1
-        ? (i / noteSamples) * (contour.length - 1)
-        : 0.0;
+    final double posF = contour.length > 1 ? (i / noteSamples) * (contour.length - 1) : 0.0;
     final int j0 = posF.floor().clamp(0, contour.length - 1);
     final int j1 = (j0 + 1).clamp(0, contour.length - 1);
-    final double frac = posF - j0;
-    final double rawCents = (contour[j0] as num).toDouble() * (1 - frac) +
-        (contour[j1] as num).toDouble() * frac;
-    final double manipulatedCents = (rawCents * vibrato) + centsShift;
-    return displayMidi + manipulatedCents / 100.0;
+    final double rawCents = (contour[j0] as num).toDouble() * (1 - (posF - j0)) + (contour[j1] as num).toDouble() * (posF - j0);
+    midi = displayMidi + ((rawCents * vibrato) + centsShift) / 100.0;
   }
-
-  return actualMidi + centsShift / 100.0;
+  
+  if (settings.vibratoDepth > 0) midi += (sin(2 * pi * settings.vibratoRate * t) * settings.vibratoDepth) / 100.0;
+  return midi;
 }
 
-/// Renders [notes] (the app's `rawNotes` list of maps) into a mono
-/// Float32List of raw, *unnormalized* PCM samples spanning [duration]
-/// seconds at the sample rate configured in [settings].
-///
-/// Respects `isDeleted`, `isMuted`, `time_ratio` (stretches note length),
-/// `cents_shift`, `vibrato_scale`, and X-Ray `contour` data exactly as the
-/// piano-roll grid visualizes them.
-Float32List renderNotes({
-  required List notes,
-  required double duration,
-  SynthSettings settings = const SynthSettings(),
-}) {
-  final int sampleRate = settings.sampleRate;
-  final int totalSamples = (duration * sampleRate).ceil();
+/// Renders notes into a mono Float32List of raw, unnormalized PCM samples.
+Float32List renderNotes({required List notes, required double duration, SynthSettings settings = const SynthSettings()}) {
+  final int totalSamples = (duration * settings.sampleRate).ceil();
   final Float32List output = Float32List(max(totalSamples, 0));
 
   for (final note in notes) {
-    if (note['isDeleted'] == true) continue;
-    if (note['isMuted'] == true) continue;
-
+    if (note['isDeleted'] == true || note['isMuted'] == true) continue;
     final double startTime = (note['start_time'] ?? 0.0).toDouble();
-    final double endTime = (note['end_time'] ?? startTime).toDouble();
-    final double timeRatio = (note['time_ratio'] ?? 1.0).toDouble();
-    final double effectiveEnd =
-        startTime + (endTime - startTime) * timeRatio;
-
-    final int start = (startTime * sampleRate).round();
-    final int end = (effectiveEnd * sampleRate).round();
-    final int noteSamples = end - start;
-    if (noteSamples <= 0) continue;
+    final double noteDuration = ((note['end_time'] ?? startTime).toDouble() - startTime) * (note['time_ratio'] ?? 1.0).toDouble();
+    final double totalLength = noteDuration + settings.adsr.release; 
+    
+    final int start = (startTime * settings.sampleRate).round();
+    final int noteSamples = (noteDuration * settings.sampleRate).round();
+    final int renderSamples = (totalLength * settings.sampleRate).round();
+    if (renderSamples <= 0) continue;
 
     double phase = 0.0;
-
-    for (int i = 0; i < noteSamples; i++) {
+    double lastOut = 0.0; 
+    
+    for (int i = 0; i < renderSamples; i++) {
       final int sampleIndex = start + i;
       if (sampleIndex < 0 || sampleIndex >= totalSamples) continue;
 
-      final double midi = _pitchForSample(
-        note: note,
-        i: i,
-        noteSamples: noteSamples,
-        useXrayContour: settings.useXrayContour,
-      );
+      final double t = i / settings.sampleRate;
+      final double env = adsrEnvelope(settings.adsr, t, noteDuration);
+      if (env <= 0) continue;
+
+      final double midi = _pitchForSample(note: note, i: i, noteSamples: noteSamples, useXrayContour: settings.useXrayContour, t: t, settings: settings);
       final double freq = midiToHz(midi);
 
-      final double t = i / sampleRate;
-      final double noteDuration = noteSamples / sampleRate;
-      final double env = adsrEnvelope(settings.adsr, t, noteDuration);
+      phase += 2 * pi * freq / settings.sampleRate;
+      if (phase > 2 * pi) phase -= 2 * pi;
 
-      phase += 2 * pi * freq / sampleRate;
-      if (phase > 2 * pi) {
-        phase -= 2 * pi * (phase / (2 * pi)).floorToDouble();
-      }
+      double rawOsc = oscillator(settings.waveform, phase) * env;
+      
+      // Pitch-tracking Low Pass Filter tied to envelope
+      double cutoffFreq = freq * settings.lpfCutoffMultiplier * env; 
+      double alpha = (2 * pi * cutoffFreq) / (2 * pi * cutoffFreq + settings.sampleRate);
+      double filteredOut = lastOut + alpha * (rawOsc - lastOut);
+      lastOut = filteredOut;
 
-      output[sampleIndex] +=
-          oscillator(settings.waveform, phase) * env * settings.masterGain;
+      output[sampleIndex] += filteredOut * settings.masterGain;
     }
   }
-
   return output;
 }
 
-/// Normalizes [audio] in place, but only ever turns the signal *down*
-/// (never boosts quiet passages), to prevent clipping from polyphonic
-/// summing while preserving the synth's natural dynamics.
+/// Normalizes audio in place to prevent clipping from polyphonic summing.
 void preventClipping(Float32List audio) {
   double peak = 0;
-  for (final s in audio) {
-    final a = s.abs();
-    if (a > peak) peak = a;
-  }
-  if (peak > 1.0) {
-    for (int i = 0; i < audio.length; i++) {
-      audio[i] /= peak;
-    }
-  }
+  for (final s in audio) { if (s.abs() > peak) peak = s.abs(); }
+  if (peak > 1.0) { for (int i = 0; i < audio.length; i++) audio[i] /= peak; }
 }
 
-/// Converts floating point samples in [-1, 1] into little-endian 16-bit
-/// signed PCM bytes.
+/// Converts floating point samples into little-endian 16-bit signed PCM bytes.
 Uint8List floatToPCM16(Float32List input) {
   final bytes = BytesBuilder();
   for (final sample in input) {
     final int s = (sample * 32767).clamp(-32768, 32767).round();
-    bytes.addByte(s & 0xFF);
-    bytes.addByte((s >> 8) & 0xFF);
+    bytes.addByte(s & 0xFF); bytes.addByte((s >> 8) & 0xFF);
   }
   return bytes.toBytes();
 }
 
-/// Wraps mono 16-bit PCM [audio] in a standard 44-byte WAV header.
-Uint8List encodeWav(
-  Float32List audio, {
-  int sampleRate = 44100,
-  int numChannels = 1,
-}) {
-  final Uint8List pcm = floatToPCM16(audio);
-  const int bitsPerSample = 16;
-  final int byteRate = sampleRate * numChannels * (bitsPerSample ~/ 8);
-  final int blockAlign = numChannels * (bitsPerSample ~/ 8);
-  final int dataSize = pcm.length;
-
+/// Wraps mono 16-bit PCM audio in a standard WAV header.
+Uint8List encodeWav(Float32List audio, {int sampleRate = 44100, int numChannels = 1}) {
+  final pcm = floatToPCM16(audio);
   final header = BytesBuilder();
-
-  void writeAscii(String s) => header.add(s.codeUnits);
-  void writeUint32(int v) => header.add([
-        v & 0xFF,
-        (v >> 8) & 0xFF,
-        (v >> 16) & 0xFF,
-        (v >> 24) & 0xFF,
-      ]);
-  void writeUint16(int v) => header.add([v & 0xFF, (v >> 8) & 0xFF]);
-
-  writeAscii('RIFF');
-  writeUint32(36 + dataSize);
-  writeAscii('WAVE');
-
-  writeAscii('fmt ');
-  writeUint32(16); // PCM fmt chunk size
-  writeUint16(1); // PCM format
-  writeUint16(numChannels);
-  writeUint32(sampleRate);
-  writeUint32(byteRate);
-  writeUint16(blockAlign);
-  writeUint16(bitsPerSample);
-
-  writeAscii('data');
-  writeUint32(dataSize);
-
-  final result = BytesBuilder();
-  result.add(header.toBytes());
-  result.add(pcm);
-  return result.toBytes();
+  header.add('RIFF'.codeUnits);
+  header.add([ (36 + pcm.length) & 0xFF, ((36 + pcm.length) >> 8) & 0xFF, ((36 + pcm.length) >> 16) & 0xFF, ((36 + pcm.length) >> 24) & 0xFF ]);
+  header.add('WAVEfmt '.codeUnits);
+  header.add([ 16, 0, 0, 0, 1, 0, numChannels, 0 ]);
+  header.add([ sampleRate & 0xFF, (sampleRate >> 8) & 0xFF, (sampleRate >> 16) & 0xFF, (sampleRate >> 24) & 0xFF ]);
+  int byteRate = sampleRate * numChannels * 2;
+  header.add([ byteRate & 0xFF, (byteRate >> 8) & 0xFF, (byteRate >> 16) & 0xFF, (byteRate >> 24) & 0xFF ]);
+  header.add([ numChannels * 2, 0, 16, 0 ]);
+  header.add('data'.codeUnits);
+  header.add([ pcm.length & 0xFF, (pcm.length >> 8) & 0xFF, (pcm.length >> 16) & 0xFF, (pcm.length >> 24) & 0xFF ]);
+  return (BytesBuilder()..add(header.toBytes())..add(pcm)).toBytes();
 }
 
-/// One-shot convenience: renders [notes] to a normalized, ready-to-play or
-/// ready-to-save mono WAV byte buffer.
-Uint8List renderNotesToWavBytes({
-  required List notes,
-  required double duration,
-  SynthSettings settings = const SynthSettings(),
-}) {
-  final Float32List audio = renderNotes(
-    notes: notes,
-    duration: duration,
-    settings: settings,
-  );
+/// One-shot convenience: renders notes to a normalized, ready-to-play WAV byte buffer.
+Uint8List renderNotesToWavBytes({required List notes, required double duration, SynthSettings settings = const SynthSettings()}) {
+  final audio = renderNotes(notes: notes, duration: duration, settings: settings);
   preventClipping(audio);
   return encodeWav(audio, sampleRate: settings.sampleRate);
 }
-
-
 
 /// Client-Side DSP Processing Engine for Pitch Shifting and Crossfading
 class ClientSideDSP {
