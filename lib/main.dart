@@ -1459,8 +1459,34 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     if (originalFilePath.isNotEmpty) {
       File file = File(originalFilePath);
-      if (file.existsSync()) {
+      
+      // 1. Check if Android wiped the cached file
+      if (!file.existsSync()) {
+        _showSaveConfirmation("Cached audio cleared by OS. Please re-select $originalFileName.");
+        
+        // 2. Prompt user to re-link the original file
+        FilePickerResult? missingFileResult = await FilePicker.pickFiles(
+          type: FileType.audio,
+          dialogTitle: 'Please locate $originalFileName'
+        );
+        
+        if (missingFileResult != null) {
+          if (missingFileResult.files.single.bytes != null) {
+            originalAudioBytes = missingFileResult.files.single.bytes!;
+          } else if (missingFileResult.files.single.path != null) {
+            originalFilePath = missingFileResult.files.single.path!; // Update with new path
+            originalAudioBytes = await File(originalFilePath).readAsBytes();
+          }
+        } else {
+           _showSaveConfirmation("Audio file not provided. Session resume aborted.");
+           return; 
+        }
+      } else {
         originalAudioBytes = await file.readAsBytes();
+      }
+
+      // 3. Proceed with server resume only if we have the bytes
+      if (originalAudioBytes != null) {
         setState(() {
           isLoading = true;
           processingMessage = "Re-establishing server session...";
@@ -1502,11 +1528,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         } finally {
           setState(() { isLoading = false; processingMessage = ""; });
         }
-      } else {
-        _showSaveConfirmation("Original audio file missing at path: $originalFilePath. Features will be limited.");
       }
     }
-  }
 
   // --- TIMELINE & MARKER UTILS ---
 
@@ -2740,3 +2763,4 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 }
+
