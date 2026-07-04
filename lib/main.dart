@@ -158,6 +158,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   SynthSettings synthSettings = const SynthSettings();
   bool isSynthRendering = false;
   String synthMessage = '';
+  String processingMode = 'classic';
   
   // Mixer State
   Map<String, ChannelState> mixerState = {
@@ -443,6 +444,31 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   // ============================================================
   // CORE API WORKFLOWS
   // ============================================================
+
+  Future<void> _requestSnippetSplice(Map<String, dynamic> modifiedNote) async {
+    try {
+      modifiedNote['processing_mode'] = processingMode;
+      var response = await http.post(
+        Uri.parse('$apiBase/render-snippet'),
+        body: {
+          'task_id': currentTaskId!,
+          'stem_name': activeEditableStem,
+          'edit_data': jsonEncode(modifiedNote)
+        }
+      );
+      
+      if (response.statusCode == 200) {
+        var data = jsonDecode(response.body);
+        setState(() {
+            modifiedNote['type'] = 'splice';
+            modifiedNote['snippet_b64'] = data['snippet_b64'];
+            modifiedNote['splice_mode'] = 'replace'; 
+        });
+      }
+    } catch (e) {
+      debugPrint("Splice generation failed: $e");
+    }
+  }
 
   Future<Map<String, String>?> _showUploadTypeDialog() async {
     return showDialog<Map<String, String>>(
@@ -1002,6 +1028,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
           'edits': _enrichManifestWithPolyphonicContext(rawNotes),
           'solo_stem': activeEditableStem,
+          'processing_mode': processingMode
         })
         ..fields['task_id'] = currentTaskId ?? ''
         ..fields['is_test_mode'] = isTestModeActive.toString()
@@ -1068,6 +1095,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
           'edits': _enrichManifestWithPolyphonicContext(allStemsNotes[stem] ?? []),
           'solo_stem': stem,
+          'processing_mode': processingMode
         })
         ..fields['task_id'] = currentTaskId ?? ''
         ..fields['is_test_mode'] = isTestModeActive.toString()
@@ -1164,6 +1192,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         ..fields['edit_manifest'] = json.encode({
           "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
           "all_stems_notes": enrichedStemsNotesMap,
+          "processing_mode": processingMode
         })
         ..fields['task_id'] = currentTaskId ?? '' 
         ..fields['export_format'] = format 
@@ -1455,6 +1484,15 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
               masterHandle = SoLoud.instance.play(masterSource!, paused: true);
             }
+            
+            for (String stem in generatedStems) {
+                await _loadStemPlayerSource(stem);
+            }
+            
+            if (rawNotes.isNotEmpty && rawNotes.first.containsKey('contour')) {
+                await _loadSynthSource();
+            }
+
             _showSaveConfirmation("Session re-established successfully.");
           } else {
             _showSaveConfirmation("Server rejected resume connection.");
@@ -2558,6 +2596,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               tooltip: "X-ray Pitch Analysis", 
                               onPressed: isCurrentStemGenerated ? _toggleXrayMode : null,
                             ),
+
+                        IconButton(
+                          icon: Icon(processingMode == 'advanced' ? Icons.auto_awesome : Icons.blur_linear, color: Colors.purpleAccent, size: 22),
+                          tooltip: "Processing Mode: ${processingMode.toUpperCase()}", 
+                          onPressed: () => setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic'),
+                        ),
 
                         IconButton(
                           icon: Icon(Icons.loop, color: isLoopModeActive ? Colors.tealAccent : Colors.white38, size: 22),
