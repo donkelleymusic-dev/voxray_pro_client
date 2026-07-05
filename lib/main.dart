@@ -1708,12 +1708,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         fileExtension: 'vxp',
         mimeType: MimeType.zip,
       );
-      
-      if (path != null && path.isNotEmpty) {
-        setState(() => currentProjectPath = path);
+	  if (path != null && path.isNotEmpty) {
+        setState(() {
+          currentProjectPath = path;
           hasBeenSaved = true;
           dirtyStems.clear(); 
-	  currentProjectPath = path;
         });
         _showSaveConfirmation('Project saved successfully as offline .vxp archive.');
       } else {
