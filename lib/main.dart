@@ -1733,9 +1733,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         }
       } 
       if (plugins.contains('EQ')) {
-        if (!SoLoud.instance.filters.eqFilter.isActive) {
-          SoLoud.instance.filters.eqFilter.activate();
-        }
+        //if (!SoLoud.instance.filters.eqFilter.isActive) {
+          //SoLoud.instance.filters.eqFilter.activate();
+        //}
       }
       if (plugins.contains('Compressor')) {
         if (!SoLoud.instance.filters.compressorFilter.isActive) {
