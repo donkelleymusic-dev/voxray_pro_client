@@ -657,7 +657,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   Future<void> _importIndividualStem() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.audio, withData: true);
+    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
     if (result == null) return;
     
     Uint8List bytes = result.files.single.bytes ?? await File(result.files.single.path!).readAsBytes();
