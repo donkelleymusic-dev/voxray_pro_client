@@ -179,12 +179,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   final ScrollController verticalScrollController = ScrollController();
   final ScrollController rulerScrollController = ScrollController();
   
-  Map<String, List<dynamic>> allStemsNotes = {
-    'vocals': []
-  };
-  String activeEditableStem = 'vocals'; 
+  Map<String, List<dynamic>> allStemsNotes = {};
+  String activeEditableStem = ''; 
 
-  Set<String> targetStemsSelection = {'vocals', 'instrumental'};
+  Set<String> targetStemsSelection = {};
   Set<String> generatedStems = {}; 
   List<String> suggestedStems = []; 
   
@@ -193,12 +191,19 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   bool isTestModeActive = false; 
   bool isProjectLoaded = false;
   bool hasBeenSaved = false;
+  String? currentProjectPath;
   Set<String> dirtyStems = {}; 
 
-  List<dynamic> get rawNotes => allStemsNotes[activeEditableStem] ?? [];
+  List<dynamic> get rawNotes => activeEditableStem.isNotEmpty && allStemsNotes.containsKey(activeEditableStem) 
+      ? allStemsNotes[activeEditableStem]! 
+      : [];
+
   set rawNotes(List<dynamic> updatedNotes) {
-    allStemsNotes[activeEditableStem] = updatedNotes;
+    if (activeEditableStem.isNotEmpty) {
+      allStemsNotes[activeEditableStem] = updatedNotes;
+    }
   }
+
 
   final List<String> popStems = ['vocals', 'instrumental', 'drums', 'bass', 'guitar', 'piano', 'other'];
   final List<String> orchStems = ['violin', 'cello', 'contrabass', 'flute', 'oboe', 'bassoon', 'trumpet', 'trombone', 'tuba', 'percussion', 'orchestral'];
@@ -248,6 +253,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   bool isExporting = false;
   bool isPreviewing = false;
   String exportMessage = '';
+  String selectedEngineProfile = 'studio';
 
   final String apiBase = 'https://donkelleymusic--voxray-pro-api-api.modal.run';
 
@@ -319,7 +325,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             int medianMidi = midiValues[midiValues.length ~/ 2];
 
             double viewportHeight = verticalScrollController.position.viewportDimension;
-            double targetY = ((maxMidi - medianMidi) * zoomY) - (viewportHeight / 2);
+            double targetY = ((maxMidi - medianMidi) * zoomY) + (zoomY / 2) - (viewportHeight / 2);
             targetY = targetY.clamp(0.0, verticalScrollController.position.maxScrollExtent);
 
             verticalScrollController.animateTo(
@@ -350,12 +356,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   void registerUndoSnapshot() {
-    setState(() {
-      undoStack.add(json.encode(allStemsNotes));
-      redoStack.clear();
-      cachedStemBytes.remove(activeEditableStem);
+    if (activeEditableStem.isNotEmpty) {
+      setState(() {
+        undoStack.add(json.encode(allStemsNotes));
+        redoStack.clear();
+        cachedStemBytes.remove(activeEditableStem);
       dirtyStems.add(activeEditableStem); 
-    });
+      });
+    }
   }
 
   ChannelState getChannelState(String key) {
@@ -410,7 +418,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     setState(() => zoomY = newZoom);
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      double newScrollY = ((maxMidi - centerMidi) * zoomY) - (verticalScrollController.position.viewportDimension / 2);
+      double newScrollY = ((maxMidi - centerMidi) * zoomY) + (zoomY / 2) - (verticalScrollController.position.viewportDimension / 2);
       verticalScrollController.jumpTo(newScrollY.clamp(0.0, verticalScrollController.position.maxScrollExtent));
     });
   }
@@ -541,6 +549,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   Future<void> _requestSnippetSplice(Map<String, dynamic> modifiedNote) async {
+    if (activeEditableStem.isEmpty) return;
     try {
       modifiedNote['processing_mode'] = processingMode;
       var response = await http.post(
@@ -633,6 +642,124 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
   }
 
+  void _showEngineRecommendationDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Row(children: [Icon(Icons.auto_awesome, color: Colors.tealAccent), SizedBox(width: 8), Text("Ensemble Router Suggestion", style: TextStyle(color: Colors.white))]),
+        content: Text("Acoustic parameters suggest this is a classical or live chamber file. We recommend using the [${selectedEngineProfile.toUpperCase()}] processing engine layout profile to prevent dynamic gating artifacts.", style: const TextStyle(color: Colors.white54)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Accept Profile", style: TextStyle(color: Colors.tealAccent))),
+        ],
+      )
+    );
+  }
+
+  Future<void> _newProject() async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text("Create New Project?", style: TextStyle(color: Colors.white)),
+        content: const Text("Any unsaved edits across your instrument tracks will be permanently lost.", style: TextStyle(color: Colors.white54)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
+          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text("Reset Workspace", style: TextStyle(color: Colors.white))),
+        ],
+      )
+    );
+    if (confirm != true) return;
+    
+    pauseAllPlayers(); 
+    SoLoud.instance.disposeAllSources();
+    
+    setState(() {
+      allStemsNotes.clear(); 
+      generatedStems.clear(); 
+      targetStemsSelection.clear(); 
+      cachedStemBytes.clear();
+      stemHandles.clear(); 
+      stemSources.clear(); 
+      masterHandle = null; 
+      masterSource = null; 
+      synthHandle = null; 
+      synthSource = null;
+      activePlaybackSources.clear(); 
+      activeEditableStem = ''; 
+      currentTaskId = null; 
+      currentJobId = null;
+      currentProjectPath = null; 
+      originalAudioBytes = null; 
+      originalFileName = "Unknown File"; 
+      songDuration = 30.0; 
+      currentPosition = 0.0;
+      markers = [{"id": "mk_start", "time": 0.0, "label": "Start"}, {"id": "mk_end", "time": 30.0, "label": "End"}];
+      undoStack.clear();
+      redoStack.clear();
+    });
+    
+    _showSaveConfirmation("New empty project loaded.");
+  }
+
+  Future<void> _importIndividualStem() async {
+    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
+    if (result == null) return;
+    
+    Uint8List bytes = result.files.single.bytes ?? await File(result.files.single.path!).readAsBytes();
+    
+    String? chosenIdentity = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        String selected = 'vocals';
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Text("Identify Imported Track", style: TextStyle(color: Colors.white)),
+            content: DropdownButton<String>(
+              isExpanded: true,
+              dropdownColor: Colors.grey[850],
+              value: selected,
+              items: [...popStems, ...orchStems].map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase(), style: const TextStyle(color: Colors.white)))).toList(),
+              onChanged: (v) => setDialogState(() => selected = v!),
+            ),
+            actions: [
+               TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
+               ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent), onPressed: () => Navigator.pop(ctx, selected), child: const Text("Import", style: TextStyle(color: Colors.black))),
+            ],
+          );
+        });
+      }
+    );
+    if (chosenIdentity == null) return;
+    
+    setState(() {
+      isLoading = true; processingMessage = "Ingesting stem and generating tracking matrices...";
+      targetStemsSelection.add(chosenIdentity); 
+      activeEditableStem = chosenIdentity;
+      cachedStemBytes[chosenIdentity] = bytes;
+    });
+    
+    try {
+      var req = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+        ..fields['upload_type'] = 'stem'
+        ..fields['stem_target'] = chosenIdentity
+        ..fields['instruments_json'] = jsonEncode([chosenIdentity])
+        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: result.files.single.name));
+      
+      var res = await req.send();
+      var data = jsonDecode(await res.stream.bytesToString());
+      currentTaskId = data['task_id']; 
+      currentJobId = data['job_id'];
+      
+      _pollForStemData(currentJobId!, chosenIdentity);
+    } catch (e) {
+      setState(() { isLoading = false; }); 
+      _showSaveConfirmation("Import matrix generation crashed: $e");
+    }
+  }
+
   _loadFileAndAnalyze() async {
     FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
     if (result == null) return;
@@ -672,7 +799,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (uploadOptions['type'] == 'mix') {
         isOriginalMixAvailable = true;
         activePlaybackSources.add('original');
-        processingMessage = "Caching Full Mix & Extracting Forensic ID...";
+        processingMessage = "Analyzing profile and dynamic parameters...";
       } else {
         isOriginalMixAvailable = false;
         activeEditableStem = uploadOptions['stem']!;
@@ -711,7 +838,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         suggestedStems = List<String>.from(data['detected_instruments']);
       }
 
+      if (data['recommended_engine'] != null) {
+        selectedEngineProfile = data['recommended_engine'];
+      }
+
       if (uploadOptions['type'] == 'mix') {
+        if (selectedEngineProfile != 'studio') {
+          _showEngineRecommendationDialog();
+        }
         setState(() {
           isLoading = false;
           songDuration = (data['duration'] ?? 30.0).toDouble(); 
@@ -749,21 +883,19 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             timer.cancel();
             final result = statusData['result'];
 
+            List<dynamic> stemNotes = [];
             final allStemsMap = result['all_stems_notes'];
-            if (allStemsMap != null) {
-              allStemsMap.forEach((key, value) {
-                allStemsNotes[key] = json.decode(json.encode(value));
-                generatedStems.add(key);
-              });
+            if (allStemsMap != null && allStemsMap[targetStem] != null) {
+              stemNotes = json.decode(json.encode(allStemsMap[targetStem]));
             } else {
-              allStemsNotes[targetStem] = json.decode(json.encode(result['notes'] ?? []));
-              generatedStems.add(targetStem);
+              stemNotes = json.decode(json.encode(result['notes'] ?? []));
+              stemNotes = json.decode(json.encode(result['notes'] ?? []));
             }
 
             setState(() {
-              if (!activePlaybackSources.contains(targetStem)) {
-                activePlaybackSources.add(targetStem); 
-              }
+              allStemsNotes[targetStem] = stemNotes;
+              generatedStems.add(targetStem);
+              activePlaybackSources.add(targetStem); 
               
               double newDuration = (result['duration'] ?? songDuration).toDouble();
               if (newDuration > 0) {
@@ -880,6 +1012,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     if (confirm != true) return;
 
+    bool cachedTransportState = isPlaying;
+    pauseAllPlayers();
+
     setState(() { 
       isXrayProcessing = true; 
       isXrayMode = true; 
@@ -910,17 +1045,21 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       _showSaveConfirmation('Reprocess failed: $e');
     } finally {
       setState(() => isXrayProcessing = false);
+      if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
   }
 
   Future<void> _toggleXrayMode() async {
     if (rawNotes.isEmpty || currentTaskId == null) return;
     
+    bool cachedTransportState = isPlaying;
+    
     if (isXrayMode || rawNotes.any((n) => n.containsKey('contour'))) {
       setState(() => isXrayMode = !isXrayMode);
       return;
     }
 
+    pauseAllPlayers();
     setState(() { isXrayProcessing = true; isXrayMode = true; });
 
     try {
@@ -948,6 +1087,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => isXrayMode = false);
     } finally {
       setState(() { isXrayProcessing = false; });
+      if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
   }
 
@@ -1125,7 +1265,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   Future<void> _renderStemEdits() async {
-    if (originalAudioBytes == null) return;
+    if (originalAudioBytes == null || activeEditableStem.isEmpty) return;
     
     bool wasPlaying = isPlaying;
     double resumePosition = currentPosition;
@@ -1369,6 +1509,25 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+  Future<void> _exportStemsAsZip() async {
+    if (cachedStemBytes.isEmpty) { 
+      _showSaveConfirmation("No extracted audio stems available to export."); 
+      return; 
+    }
+    setState(() { isExporting = true; exportMessage = "Packing unmixed multi-track stems archive..."; });
+    try {
+      Archive arch = Archive();
+      cachedStemBytes.forEach((k, v) => arch.addFile(ArchiveFile('${projectName}_stem_$k.ogg', v.length, v)));
+      Uint8List zip = Uint8List.fromList(ZipEncoder().encode(arch)!);
+      await FileSaver.instance.saveAs(name: "${projectName}_stems", bytes: zip, fileExtension: 'zip', mimeType: MimeType.zip);
+      _showSaveConfirmation("All tracks exported successfully as unmixed multi-track stems.");
+    } catch (e) { 
+      _showSaveConfirmation("Stem tree generation failed: $e"); 
+    } finally {
+      setState(() { isExporting = false; });
+    }
+  }
+
   Future<void> _downloadDossier() async {
     if (rawNotes.isEmpty) return;
     setState(() { isExporting = true; exportMessage = "Generating dossier PDF..."; });
@@ -1382,7 +1541,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           'duration': songDuration,
           'stem_target': activeEditableStem,
           'xray_enabled': rawNotes.any((n) => n.containsKey('contour')),
-          'version': '1.4.0',
+          'version': '1.5.0',
         });
 
       var response = await request.send();
@@ -1486,14 +1645,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() { isExporting = false; exportMessage = ''; });
     }
   }
-  
-  Future<void> _saveVoxrayProject() async {
+
+  Uint8List _packageProjectBytes() {
     Map<String, dynamic> projectData = {
-      "voxray_version": "1.4.1", 
+      "voxray_version": "1.5.0",
       "project_name": projectName,
       "original_file": originalFileName, 
       "original_file_path": originalFilePath, 
-      "song_duration": songDuration, 
+      "song_duration": songDuration,
       "is_original_mix_available": isOriginalMixAvailable,
       "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
       "target_stems_selection": targetStemsSelection.toList(),
@@ -1517,13 +1676,27 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
     }
 
-    List<int>? zipData = ZipEncoder().encode(archive);
-    if (zipData == null) {
-      _showSaveConfirmation('Archive encoding failed.');
+    return Uint8List.fromList(ZipEncoder().encode(archive)!);
+  }
+
+  Future<void> _saveVoxrayProject() async {
+    if (currentProjectPath == null || kIsWeb) {
+      await _saveVoxrayProjectAs();
       return;
     }
-    Uint8List vxpBytes = Uint8List.fromList(zipData);
+    
+    final bytes = _packageProjectBytes();
+    try {
+      await File(currentProjectPath!).writeAsBytes(bytes);
+      _showSaveConfirmation("Project file successfully overwritten on disk.");
+    } catch (e) { 
+      _showSaveConfirmation("Overwrite failed: $e"); 
+    }
+  }
 
+  Future<void> _saveVoxrayProjectAs() async {
+    final bytes = _packageProjectBytes();
+    
     String defaultSaveName = originalFileName.contains('.')
         ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
         : (originalFileName.isNotEmpty ? originalFileName : projectName);
@@ -1531,15 +1704,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     try {
       String? path = await FileSaver.instance.saveAs(
         name: defaultSaveName,
-        bytes: vxpBytes,
+        bytes: bytes,
         fileExtension: 'vxp',
         mimeType: MimeType.zip,
       );
       
       if (path != null && path.isNotEmpty) {
-        setState(() {
+        setState(() => currentProjectPath = path);
           hasBeenSaved = true;
           dirtyStems.clear(); 
+	  currentProjectPath = path;
         });
         _showSaveConfirmation('Project saved successfully as offline .vxp archive.');
       } else {
@@ -1564,6 +1738,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       vxpBytes = result.files.single.bytes!;
     } else if (result.files.single.path != null) {
       vxpBytes = await File(result.files.single.path!).readAsBytes();
+      currentProjectPath = result.files.single.path;
     } else {
       return;
     }
@@ -1654,7 +1829,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (projectData['all_stems_notes'] != null) {
         allStemsNotes = Map<String, List<dynamic>>.from(projectData['all_stems_notes']);
       }
-      activeEditableStem = projectData['active_editable_stem'] ?? 'vocals';
+      activeEditableStem = projectData['active_editable_stem'] ?? '';
       
       if (projectData['history'] != null) {
         undoStack = List<String>.from(projectData['history']['undo_stack']);
@@ -2599,44 +2774,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   List<PopupMenuEntry<String>> _buildMainMenu() {
     return [
-      PopupMenuItem(
-        value: 'new_project', 
-        enabled: isProjectLoaded,
-        child: ListTile(
-          leading: Icon(Icons.create_new_folder, color: isProjectLoaded ? Colors.white : Colors.white38), 
-          title: Text('New Project', style: TextStyle(color: isProjectLoaded ? Colors.white : Colors.white38))
-        )
-      ),
-      const PopupMenuItem(
-        value: 'upload', 
-        child: ListTile(leading: Icon(Icons.cloud_upload, color: Colors.tealAccent), title: Text('Upload Audio'))
-      ),
-      const PopupMenuItem(
-        value: 'load', 
-        child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))
-      ),
+      const PopupMenuItem(value: 'new_project', child: ListTile(leading: Icon(Icons.insert_drive_file, color: Colors.redAccent), title: Text('New Project'))),
       const PopupMenuDivider(),
-      PopupMenuItem(
-        value: 'save', 
-        enabled: isProjectLoaded && hasBeenSaved,
-        child: ListTile(
-          leading: Icon(Icons.save, color: (isProjectLoaded && hasBeenSaved) ? Colors.white : Colors.white38), 
-          title: Text('Save (Overwrite)', style: TextStyle(color: (isProjectLoaded && hasBeenSaved) ? Colors.white : Colors.white38))
-        )
-      ),
-      PopupMenuItem(
-        value: 'save_as', 
-        enabled: isProjectLoaded,
-        child: ListTile(
-          leading: Icon(Icons.save_as, color: isProjectLoaded ? Colors.white : Colors.white38), 
-          title: Text('Save As...', style: TextStyle(color: isProjectLoaded ? Colors.white : Colors.white38))
-        )
-      ),
+      const PopupMenuItem(value: 'upload', child: ListTile(leading: Icon(Icons.cloud_upload, color: Colors.tealAccent), title: Text('Upload Audio Mix'))),
+      const PopupMenuItem(value: 'import_stem', child: ListTile(leading: Icon(Icons.file_open, color: Colors.tealAccent), title: Text('Import Individual Track'))),
+      const PopupMenuItem(value: 'stem_tree', child: ListTile(leading: Icon(Icons.account_tree, color: Colors.purpleAccent), title: Text('Stem Select Tree'))),
       const PopupMenuDivider(),
-      const PopupMenuItem(
-        value: 'stem_tree', 
-        child: ListTile(leading: Icon(Icons.account_tree, color: Colors.purpleAccent), title: Text('Stem Select Tree'))
-      ),
+      const PopupMenuItem(value: 'load', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))),
+      const PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save, color: Colors.blueAccent), title: Text('Save Project (Overwrite)'))),
+      const PopupMenuItem(value: 'save_as', child: ListTile(leading: Icon(Icons.save_as), title: Text('Save Project As...'))),
+      const PopupMenuDivider(),
       PopupMenuItem(
         value: 'processing_mode', 
         child: ListTile(
@@ -2644,19 +2791,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           title: Text(processingMode == 'advanced' ? 'Mode: ADVANCED' : 'Mode: NORMAL', style: const TextStyle(color: Colors.purpleAccent)),
         )
       ),
-      const PopupMenuItem(
-        value: 'synth_settings', 
-        child: ListTile(leading: Icon(Icons.piano, color: Colors.purpleAccent), title: Text('Synth Audio Settings'))
-      ),
-      const PopupMenuItem(
-        value: 'show_dossier', 
-        child: ListTile(leading: Icon(Icons.assessment, color: Colors.greenAccent), title: Text('View GUI Dossier'))
-      ),
+      const PopupMenuItem(value: 'synth_settings', child: ListTile(leading: Icon(Icons.piano, color: Colors.purpleAccent), title: Text('Synth Audio Settings'))),
+      const PopupMenuItem(value: 'show_dossier', child: ListTile(leading: Icon(Icons.assessment, color: Colors.greenAccent), title: Text('View GUI Dossier'))),
       const PopupMenuDivider(),
-      const PopupMenuItem(
-        value: 'downloads', 
-        child: ListTile(leading: Icon(Icons.download, color: Colors.blueAccent), title: Text('Advanced Downloads'))
-      ),
+      const PopupMenuItem(value: 'downloads', child: ListTile(leading: Icon(Icons.download, color: Colors.blueAccent), title: Text('Advanced Downloads'))),
+      const PopupMenuItem(value: 'export_stems', child: ListTile(leading: Icon(Icons.unarchive, color: Colors.amberAccent), title: Text('Export Stems Archive'))),
       PopupMenuItem(
         value: 'live_mode', 
         child: ListTile(
@@ -2686,10 +2825,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     switch (value) {
       case 'new_project': _newProject(); break;
       case 'upload': _loadFileAndAnalyze(); break;
+      case 'import_stem': _importIndividualStem(); break;
       case 'stem_tree': _showStemSelectorTreeDialog(); break;
       case 'load': _loadVoxrayProject(); break;
       case 'save': _saveVoxrayProject(); break;
-      case 'save_as': _saveVoxrayProject(); break;
+      case 'save_as': _saveVoxrayProjectAs(); break;
+      case 'export_stems': _exportStemsAsZip(); break;
       case 'processing_mode': setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic'); break;
       case 'synth_settings': _showSynthSettingsDialog(); break;
       case 'show_dossier': _showDossier(); break;
@@ -2750,7 +2891,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             Expanded(
                               child: Text(
                                 originalFileName != "Unknown File" 
-                                    ? "$originalFileName  [STEM: ${activeEditableStem.toUpperCase()}]" 
+                                    ? "$originalFileName" + (activeEditableStem.isNotEmpty ? "  [STEM: ${activeEditableStem.toUpperCase()}]" : "") 
                                     : "No File Loaded",
                                 style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.bold),
                                 overflow: TextOverflow.ellipsis,
@@ -2811,43 +2952,44 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         IconButton(icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 26), onPressed: _toggleMasterTransport),
                         
                         if (targetStemsSelection.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                            child: DropdownButton<String>(
-                              value: targetStemsSelection.contains(activeEditableStem) ? activeEditableStem : null,
-                              dropdownColor: Colors.grey[900],
-                              underline: const SizedBox(),
-                              icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
-                              style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                              items: targetStemsSelection.map((String stemKey) {
-                                bool isSuggested = suggestedStems.contains(stemKey);
-                                return DropdownMenuItem<String>(
-                                  value: stemKey,
-                                  child: Row(
-                                    children: [
-                                      Text(stemKey.toUpperCase(), style: TextStyle(color: isSuggested ? Colors.yellowAccent : Colors.white)),
-                                      if (isSuggested) 
-                                         const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
-                                      if (!generatedStems.contains(stemKey)) 
-                                         const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38))
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (String? newSelection) {
-                                if (newSelection != null && newSelection != activeEditableStem) {
-                                  setState(() => activeEditableStem = newSelection);
-                                  
-                                  if (!generatedStems.contains(newSelection) && 
-                                      originalAudioBytes != null && 
-                                      currentTaskId != null && 
-                                      !isLoading) {
-                                    _generateStemOnDemand(newSelection);
-                                  }
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: DropdownButton<String>(
+                            value: targetStemsSelection.contains(activeEditableStem) && activeEditableStem.isNotEmpty ? activeEditableStem : null,
+                            dropdownColor: Colors.grey[900],
+                            underline: const SizedBox(),
+                            hint: const Text("No Stems Available", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                            icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
+                            style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                            items: targetStemsSelection.map((String stemKey) {
+                              bool isSuggested = suggestedStems.contains(stemKey);
+                              return DropdownMenuItem<String>(
+                                value: stemKey,
+                                child: Row(
+                                  children: [
+                                    Text(stemKey.toUpperCase(), style: TextStyle(color: isSuggested ? Colors.yellowAccent : Colors.white)),
+                                    if (isSuggested) 
+                                       const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
+                                    if (!generatedStems.contains(stemKey)) 
+                                       const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38))
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (String? newSelection) {
+                              if (newSelection != null && newSelection != activeEditableStem) {
+                                setState(() => activeEditableStem = newSelection);
+                                
+                                if (!generatedStems.contains(newSelection) && 
+                                    originalAudioBytes != null && 
+                                    currentTaskId != null && 
+                                    !isLoading) {
+                                  _generateStemOnDemand(newSelection);
                                 }
-                              },
-                            ),
+                              }
+                            },
                           ),
+                        ),
 
                         PopupMenuButton<DragMode>(
                           icon: Icon(Icons.pan_tool, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
@@ -2967,13 +3109,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                         children: [
                                           const Icon(Icons.music_note, size: 48, color: Colors.white24),
                                           const SizedBox(height: 16),
-                                          Text("The ${activeEditableStem.toUpperCase()} stem has not been extracted yet.", style: const TextStyle(color: Colors.white54)),
+                                          Text("The ${activeEditableStem.isNotEmpty ? activeEditableStem.toUpperCase() : 'selected'} stem has not been extracted yet.", style: const TextStyle(color: Colors.white54)),
                                           const SizedBox(height: 24),
                                           ElevatedButton.icon(
                                             style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
                                             icon: const Icon(Icons.build),
-                                            label: Text("Generate & Analyze ${activeEditableStem.toUpperCase()}"),
-                                            onPressed: isLoading ? null : () => _generateStemOnDemand(activeEditableStem),
+                                            label: Text("Generate & Analyze ${activeEditableStem.isNotEmpty ? activeEditableStem.toUpperCase() : ''}"),
+                                            onPressed: isLoading || activeEditableStem.isEmpty ? null : () => _generateStemOnDemand(activeEditableStem),
                                           )
                                         ],
                                       ),
