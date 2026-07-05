@@ -980,7 +980,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       double effectiveVolume = state.isMuted ? 0.0 : state.volume;
       
       SoLoud.instance.setVolume(stemHandles[stemName]!, effectiveVolume);
-      SoLoud.instance.setPan(stemHandles[stemName]!, state.pan); 
+      SoLoud.instance.setPanAbsolute(stemHandles[stemName]!, state.pan); 
     } catch (e) {
       debugPrint("Stem track layer $stemName build failed: $e");
       _showSaveConfirmation('Stem layer $stemName unavailable: $e');
@@ -1015,7 +1015,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       synthHandle = SoLoud.instance.play(synthSource!, paused: true);
       
       SoLoud.instance.setVolume(synthHandle!, getChannelState('synth').volume);
-      SoLoud.instance.setPan(synthHandle!, getChannelState('synth').pan); 
+      SoLoud.instance.setPanAbsolute(synthHandle!, getChannelState('synth').pan); 
     } catch (e) {
       debugPrint("Synth layer load failed: $e");
       _showSaveConfirmation('Synth layer failed: $e');
@@ -1045,7 +1045,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (key == 'original') {
       if (masterHandle != null) {
         SoLoud.instance.setVolume(masterHandle!, enabled ? getChannelState('original').volume : 0.0);
-        SoLoud.instance.setPan(masterHandle!, getChannelState('original').pan);
+        SoLoud.instance.setPanAbsolute(masterHandle!, getChannelState('original').pan);
       }
     } else if (key == 'synth') {
       if (enabled) {
@@ -1167,7 +1167,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
         
         SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
-        SoLoud.instance.setPan(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
+        SoLoud.instance.setPanAbsolute(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
         seekAllPlayers(resumePosition);
         
         if (!activePlaybackSources.contains(activeEditableStem)) {
@@ -1236,7 +1236,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           stemHandles[stem] = SoLoud.instance.play(stemSources[stem]!, paused: !wasPlaying);
           
           SoLoud.instance.setVolume(stemHandles[stem]!, getChannelState(stem).volume);
-          SoLoud.instance.setPan(stemHandles[stem]!, getChannelState(stem).pan);
+          SoLoud.instance.setPanAbsolute(stemHandles[stem]!, getChannelState(stem).pan);
           seekAllPlayers(resumePosition);
           
           setState(() {
@@ -1918,17 +1918,17 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               
                               if (key == 'master') {
                                 // Pan applied to all active stems when adjusting Master track pan
-                                if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
-                                if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
+                                if (masterHandle != null) SoLoud.instance.setPanAbsolute(masterHandle!, v);
+                                if (synthHandle != null) SoLoud.instance.setPanAbsolute(synthHandle!, v);
                                 for (var handle in stemHandles.values) {
-                                  SoLoud.instance.setPan(handle, v);
+                                  SoLoud.instance.setPanAbsolute(handle, v);
                                 }
                               } else if (key == 'original') {
-                                if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
+                                if (masterHandle != null) SoLoud.instance.setPanAbsolute(masterHandle!, v);
                               } else if (key == 'synth') {
-                                if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
+                                if (synthHandle != null) SoLoud.instance.setPanAbsolute(synthHandle!, v);
                               } else if (stemHandles.containsKey(key)) {
-                                SoLoud.instance.setPan(stemHandles[key]!, v);
+                                SoLoud.instance.setPanAbsolute(stemHandles[key]!, v);
                               }
                             }
                           ),
@@ -2182,14 +2182,817 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               ListTile(
                 leading: const Icon(Icons.audio_file, color: Colors.tealAccent, size: 30),
                 title: const Text("WAV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: const Text("Lossless / Studio Quality", style: TextStyle(color: Colors.white54, fontSize: 11)),
-                onTap: () { Navigator.pop(context); _exportFinalMaster('wav'); }
+                subtitle: const Text("Lossless / Studio Quality", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _exportFinalMaster('wav'); },
               ),
-              // (More formats and methods can follow) ...
-            ]
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.library_music, color: Colors.amberAccent, size: 30),
+                title: const Text("FLAC", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Lossless / Compressed Size", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _exportFinalMaster('flac'); },
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.music_note, color: Colors.blueAccent, size: 30),
+                title: const Text("MP3", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Standard / Web Optimized", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _exportFinalMaster('mp3'); },
+              ),
+            ],
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.white54)))
+          ],
         );
       }
+    );
+  }
+
+  void _showPitchPrintOptions() {
+    bool fullSong = true; 
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Row(children: [
+            Icon(Icons.fingerprint, color: Colors.amberAccent, size: 20),
+            SizedBox(width: 8),
+            Text('Export PitchPrint™', style: TextStyle(color: Colors.white)),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Generate a high-resolution pitch analysis graph.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    RadioListTile<bool>(
+                      value: true,
+                      groupValue: fullSong,
+                      activeColor: Colors.amberAccent,
+                      title: const Text('Full Song', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Complete performance analysis', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      onChanged: (v) => setDialogState(() => fullSong = v!),
+                    ),
+                    RadioListTile<bool>(
+                      value: false,
+                      groupValue: fullSong,
+                      activeColor: Colors.amberAccent,
+                      title: const Text('Visible Region', style: TextStyle(color: Colors.white)),
+                      subtitle: const Text('Current timeline view only', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                      onChanged: (v) => setDialogState(() => fullSong = v!),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.image, color: Colors.tealAccent, size: 30),
+                title: const Text("SVG Vector", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Scalable Vector Graphics", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _downloadPitchPrint(fullSong: fullSong, format: 'svg'); },
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.photo, color: Colors.amberAccent, size: 30),
+                title: const Text("PNG Image", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("High-Resolution Image", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _downloadPitchPrint(fullSong: fullSong, format: 'png'); },
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf, color: Colors.blueAccent, size: 30),
+                title: const Text("PDF Print", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: const Text("Print-ready Document", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () { Navigator.pop(context); _downloadPitchPrint(fullSong: fullSong, format: 'pdf'); },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDossier() {
+    if (rawNotes.isEmpty) return;
+
+    String midiToName(num midi) {
+      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      int m = midi.round();
+      return '${noteNames[m % 12]}${(m ~/ 12) - 1}';
+    }
+
+    int totalNotes = 0;
+    double totalError = 0;
+    int perfectlyTuned = 0;
+    int mutedCount = 0;
+    int deletedCount = 0;
+
+    Map<String, List<double>> noteErrors = {};
+
+    bool hasXray = rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
+
+    for (var note in rawNotes) {
+      if (note['isDeleted'] == true) { deletedCount++; continue; }
+      
+      double baseMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      int semitoneShift = note['semitone_shift'] ?? 0;
+      baseMidi += semitoneShift; 
+      
+      if (baseMidi.round() == 36) continue; 
+
+      if (note['isMuted'] == true) mutedCount++;
+      totalNotes++;
+
+      double effectiveCents;
+
+      if (note['contour'] != null && (note['contour'] as List).isNotEmpty) {
+        List<dynamic> contour = note['contour'];
+        double avgDrift = contour.map((c) => (c as num).toDouble().abs()).reduce((a, b) => a + b) / contour.length;
+        effectiveCents = avgDrift;
+      } else {
+        double rawCents = (baseMidi - baseMidi.round()) * 100;
+        double shiftCents = (note['cents_shift'] ?? 0).toDouble();
+        effectiveCents = (rawCents + shiftCents).abs();
+      }
+
+      totalError += effectiveCents;
+      if (effectiveCents <= 10) perfectlyTuned++;
+
+      String name = midiToName(baseMidi.round());
+      noteErrors.putIfAbsent(name, () => []);
+      noteErrors[name]!.add(effectiveCents);
+    }
+
+    double avgError = totalNotes > 0 ? totalError / totalNotes : 0;
+    double tunedPct = totalNotes > 0 ? (perfectlyTuned / totalNotes) * 100 : 0;
+
+    var worstNotes = noteErrors.entries.toList()
+      ..sort((a, b) {
+        double aAvg = a.value.reduce((x, y) => x + y) / a.value.length;
+        double bAvg = b.value.reduce((x, y) => x + y) / b.value.length;
+        return bAvg.compareTo(aAvg);
+      });
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Row(
+          children: [
+            Text("Dossier: ${activeEditableStem.toUpperCase()}", style: const TextStyle(color: Colors.white)),
+            const Spacer(),
+            if (hasXray)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.amberAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.fingerprint, color: Colors.amberAccent, size: 14),
+                  SizedBox(width: 4),
+                  Text('X-Ray', style: TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                ]),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
+                child: const Text('X-Ray not enabled', style: TextStyle(color: Colors.white38, fontSize: 11)),
+              ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("SUMMARY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              _dossierRow("Notes analyzed", "$totalNotes"),
+              _dossierRow("Muted notes", "$mutedCount"),
+              _dossierRow("Deleted notes", "$deletedCount"),
+              const SizedBox(height: 10),
+
+              const Text("PITCH ACCURACY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              if (!hasXray)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(8)),
+                  child: const Row(children: [
+                    Icon(Icons.info_outline, color: Colors.white38, size: 14),
+                    SizedBox(width: 8),
+                    Flexible(child: Text(
+                      'Enable X-Ray mode for detailed pitch contour analysis. Basic MIDI deviation shown below.',
+                      style: TextStyle(color: Colors.white38, fontSize: 11),
+                    )),
+                  ]),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: Colors.amberAccent.withOpacity(0.07), borderRadius: BorderRadius.circular(8)),
+                  child: const Row(children: [
+                    Icon(Icons.fingerprint, color: Colors.amberAccent, size: 14),
+                    SizedBox(width: 8),
+                    Flexible(child: Text(
+                      'X-Ray pitch contour data active. Variance reflects real pitch drift within each note.',
+                      style: TextStyle(color: Colors.amberAccent, fontSize: 11),
+                    )),
+                  ]),
+                ),
+              const SizedBox(height: 10),
+              _dossierRow("Avg pitch error", "${avgError.toStringAsFixed(1)} ¢"),
+              _dossierRow("Studio-accurate (≤10¢)", "${tunedPct.toStringAsFixed(1)}%"),
+              const SizedBox(height: 10),
+
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: tunedPct / 100,
+                  backgroundColor: Colors.redAccent.withOpacity(0.3),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    tunedPct >= 80 ? Colors.tealAccent
+                    : tunedPct >= 50 ? Colors.amberAccent
+                    : Colors.redAccent,
+                  ),
+                  minHeight: 8,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              if (worstNotes.isNotEmpty) ...[
+                const Text("MOST VARIANCE BY NOTE", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
+                const SizedBox(height: 8),
+                ...worstNotes.take(5).map((entry) {
+                  double avg = entry.value.reduce((a, b) => a + b) / entry.value.length;
+                  Color c = avg <= 10 ? Colors.tealAccent : avg <= 25 ? Colors.amberAccent : Colors.redAccent;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      SizedBox(width: 36, child: Text(entry.key, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                      const SizedBox(width: 8),
+                      Expanded(child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: (avg / 100).clamp(0.0, 1.0),
+                          backgroundColor: Colors.white10,
+                          valueColor: AlwaysStoppedAnimation<Color>(c),
+                          minHeight: 6,
+                        ),
+                      )),
+                      const SizedBox(width: 8),
+                      Text('${avg.toStringAsFixed(1)}¢', style: TextStyle(color: c, fontSize: 11)),
+                      Text(' ×${entry.value.length}', style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                    ]),
+                  );
+                }),
+                const SizedBox(height: 16),
+              ],
+
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: avgError < 15 ? Colors.teal.withOpacity(0.15) : Colors.red.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: avgError < 15 ? Colors.tealAccent.withOpacity(0.4) : Colors.redAccent.withOpacity(0.4)),
+                ),
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    children: avgError < 10
+                        ? [const TextSpan(text: "VERDICT: Exceptional intonation. Studio-ready performance.", style: TextStyle(color: Colors.tealAccent))]
+                        : avgError < 15
+                            ? [const TextSpan(text: "VERDICT: Highly accurate. Minor touch-ups may be desired.", style: TextStyle(color: Colors.tealAccent))]
+                            : avgError < 25
+                                ? [
+                                    const TextSpan(text: "VERDICT: Moderate variance detected. Pitch correction and autotune don't appear to have been used! ", style: TextStyle(color: Colors.tealAccent)),
+                                    const TextSpan(text: "On flagged notes, the tuning could be improved audibly.", style: TextStyle(color: Colors.redAccent))
+                                  ]
+                                : [const TextSpan(text: "VERDICT: Significant tuning issues. Review red-flagged notes in the piano roll.", style: TextStyle(color: Colors.redAccent))],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
+        ],
+      ),
+    );
+  }
+
+  Widget _dossierRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  void _showSaveConfirmation(String message, {bool isPreview = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isPreview ? Colors.deepPurple[800] : Colors.grey[800],
+        duration: Duration(seconds: isPreview ? 6 : 4),
+        action: isPreview
+            ? SnackBarAction(
+                label: 'Play',
+                textColor: Colors.deepPurpleAccent,
+                onPressed: () => playAllPlayers(),
+              )
+            : null,
+      ),
+    );
+  }
+
+  void _showStemSelectorTreeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setTreeState) {
+          Widget buildStemCheckbox(String stem) {
+            bool isSuggested = suggestedStems.contains(stem);
+            return CheckboxListTile(
+              dense: true,
+              title: Row(
+                children: [
+                  Text(stem, style: TextStyle(fontSize: 13, color: isSuggested ? Colors.yellowAccent : Colors.white70)),
+                  if (isSuggested) 
+                    const Padding(
+                      padding: EdgeInsets.only(left: 6.0), 
+                      child: Text("RECOMMENDED", style: TextStyle(fontSize: 9, color: Colors.yellowAccent, fontWeight: FontWeight.bold))
+                    ),
+                ],
+              ),
+              value: targetStemsSelection.contains(stem),
+              activeColor: Colors.tealAccent,
+              onChanged: (bool? checked) {
+                setTreeState(() {
+                  if (checked == true) {
+                    targetStemsSelection.add(stem);
+                  } else {
+                    targetStemsSelection.remove(stem);
+                  }
+                });
+                setState(() {});
+              },
+            );
+          }
+
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Text("Stem Extraction Matrix", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            content: SizedBox(
+              width: 300,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Select which stems will be available in the dropdown to generate later.", style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    const SizedBox(height: 10),
+                    const Text("POP & ROCK MODELS", style: TextStyle(color: Colors.tealAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ...popStems.map((s) => buildStemCheckbox(s)),
+                    const Divider(color: Colors.white24),
+                    const Text("ORCHESTRAL MODELS", style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ...orchStems.map((s) => buildStemCheckbox(s)),
+                    const Divider(color: Colors.white24),
+                    const Text("FORENSIC SUITE", style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ...forensicStems.map((s) => buildStemCheckbox(s)),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: const Text("Confirm Selection", style: TextStyle(color: Colors.tealAccent))
+              )
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  List<PopupMenuEntry<String>> _buildMainMenu() {
+    return [
+      PopupMenuItem(
+        value: 'new_project', 
+        enabled: isProjectLoaded,
+        child: ListTile(
+          leading: Icon(Icons.create_new_folder, color: isProjectLoaded ? Colors.white : Colors.white38), 
+          title: Text('New Project', style: TextStyle(color: isProjectLoaded ? Colors.white : Colors.white38))
+        )
+      ),
+      const PopupMenuItem(
+        value: 'upload', 
+        child: ListTile(leading: Icon(Icons.cloud_upload, color: Colors.tealAccent), title: Text('Upload Audio'))
+      ),
+      const PopupMenuItem(
+        value: 'load', 
+        child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'save', 
+        enabled: isProjectLoaded && hasBeenSaved,
+        child: ListTile(
+          leading: Icon(Icons.save, color: (isProjectLoaded && hasBeenSaved) ? Colors.white : Colors.white38), 
+          title: Text('Save (Overwrite)', style: TextStyle(color: (isProjectLoaded && hasBeenSaved) ? Colors.white : Colors.white38))
+        )
+      ),
+      PopupMenuItem(
+        value: 'save_as', 
+        enabled: isProjectLoaded,
+        child: ListTile(
+          leading: Icon(Icons.save_as, color: isProjectLoaded ? Colors.white : Colors.white38), 
+          title: Text('Save As...', style: TextStyle(color: isProjectLoaded ? Colors.white : Colors.white38))
+        )
+      ),
+      const PopupMenuDivider(),
+      const PopupMenuItem(
+        value: 'stem_tree', 
+        child: ListTile(leading: Icon(Icons.account_tree, color: Colors.purpleAccent), title: Text('Stem Select Tree'))
+      ),
+      PopupMenuItem(
+        value: 'processing_mode', 
+        child: ListTile(
+          leading: Icon(processingMode == 'advanced' ? Icons.auto_awesome : Icons.blur_linear, color: Colors.purpleAccent),
+          title: Text(processingMode == 'advanced' ? 'Mode: ADVANCED' : 'Mode: NORMAL', style: const TextStyle(color: Colors.purpleAccent)),
+        )
+      ),
+      const PopupMenuItem(
+        value: 'synth_settings', 
+        child: ListTile(leading: Icon(Icons.piano, color: Colors.purpleAccent), title: Text('Synth Audio Settings'))
+      ),
+      const PopupMenuItem(
+        value: 'show_dossier', 
+        child: ListTile(leading: Icon(Icons.assessment, color: Colors.greenAccent), title: Text('View GUI Dossier'))
+      ),
+      const PopupMenuDivider(),
+      const PopupMenuItem(
+        value: 'downloads', 
+        child: ListTile(leading: Icon(Icons.download, color: Colors.blueAccent), title: Text('Advanced Downloads'))
+      ),
+      PopupMenuItem(
+        value: 'live_mode', 
+        child: ListTile(
+          leading: Icon(Icons.mic_external_on, color: isLiveModeActive ? Colors.redAccent : Colors.white), 
+          title: Text(isLiveModeActive ? 'Disable Live Pedagogy' : 'Enable Live Pedagogy', style: TextStyle(color: isLiveModeActive ? Colors.redAccent : Colors.white))
+        )
+      ),
+      const PopupMenuItem(
+        value: 'reprocess', 
+        child: ListTile(
+          leading: Icon(Icons.sync_problem, color: Colors.orangeAccent), 
+          title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)),
+        )
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'test_mode', 
+        child: ListTile(
+          leading: Icon(Icons.bug_report, color: isTestModeActive ? Colors.redAccent : Colors.white38), 
+          title: Text(isTestModeActive ? 'Disable MOCK API Mode' : 'Enable MOCK API Mode', style: TextStyle(color: isTestModeActive ? Colors.redAccent : Colors.white))
+        )
+      ),
+    ];
+  }
+
+  void _handleMenuSelection(String value) {
+    switch (value) {
+      case 'new_project': _newProject(); break;
+      case 'upload': _loadFileAndAnalyze(); break;
+      case 'stem_tree': _showStemSelectorTreeDialog(); break;
+      case 'load': _loadVoxrayProject(); break;
+      case 'save': _saveVoxrayProject(); break;
+      case 'save_as': _saveVoxrayProject(); break;
+      case 'processing_mode': setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic'); break;
+      case 'synth_settings': _showSynthSettingsDialog(); break;
+      case 'show_dossier': _showDossier(); break;
+      case 'downloads': _showAdvancedDownloadsDialog(); break;
+      case 'live_mode': setState(() => isLiveModeActive = !isLiveModeActive); break;
+      case 'reprocess': _forceReprocessXray(); break;
+      case 'test_mode': setState(() => isTestModeActive = !isTestModeActive); break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    bool isCurrentStemGenerated = generatedStems.contains(activeEditableStem);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('voXRAY ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
+              child: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
+            ),
+            const SizedBox(width: 8),
+            const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
+          ],
+        ),
+        actions: [
+          if (!isLiveModeActive)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: "Main Menu",
+              onSelected: _handleMenuSelection,
+              itemBuilder: (context) => _buildMainMenu(),
+            ),
+        ],
+      ),
+      body: SafeArea(
+        child: isLiveModeActive
+            ? LivePedagogyView(
+                onExit: () => setState(() => isLiveModeActive = false) 
+              )
+            : Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    color: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.audio_file, size: 14, color: Colors.white54),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                originalFileName != "Unknown File" 
+                                    ? "$originalFileName  [STEM: ${activeEditableStem.toUpperCase()}]" 
+                                    : "No File Loaded",
+                                style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.bold),
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            ),
+                            if (projectName != "Voxray_Session")
+                              Text(' [$projectName]', style: const TextStyle(fontSize: 12, color: Colors.white38)),
+                          ]
+                        ),
+                        if (isLoading) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(child: LinearProgressIndicator(value: processingProgress, color: Colors.tealAccent, backgroundColor: Colors.grey[800])),
+                              const SizedBox(width: 8),
+                              Text(processingMessage, style: const TextStyle(fontSize: 10, color: Colors.tealAccent)),
+                            ],
+                          )
+                        ] else if (isPreviewing || isExporting || isSynthRendering) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(child: LinearProgressIndicator(value: processingProgress, color: Colors.amberAccent, backgroundColor: Colors.grey[800])),
+                              const SizedBox(width: 8),
+                              Text(exportMessage.isNotEmpty ? exportMessage : synthMessage, style: const TextStyle(fontSize: 10, color: Colors.amberAccent)),
+                            ],
+                          )
+                        ]
+                      ],
+                    )
+                  ),
+
+                  // Integrated Tool Strip
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                    color: Colors.black26,
+                    child: Wrap(
+                      spacing: 8.0,
+                      runSpacing: 4.0,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      alignment: WrapAlignment.start,
+                      children: [
+                        IconButton(icon: const Icon(Icons.undo), tooltip: 'Undo', onPressed: undoStack.isNotEmpty ? _undo : null),
+                        IconButton(icon: const Icon(Icons.redo), tooltip: 'Redo', onPressed: redoStack.isNotEmpty ? _redo : null),
+                        
+                        Tooltip(
+                          message: "Preview pitch/DSP edits",
+                          child: IconButton(
+                            icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 24),
+                            // Button only active if there are un-previewed changes on the current active stem
+                            onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem)) ? _renderStemEdits : null,
+                          ),
+                        ),
+
+                        const SizedBox(width: 8),
+                        IconButton(icon: const Icon(Icons.tune, color: Colors.orangeAccent), tooltip: 'Studio Mixer', onPressed: _showStudioMixer),
+                        IconButton(icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 26), onPressed: _toggleMasterTransport),
+                        
+                        if (targetStemsSelection.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                            child: DropdownButton<String>(
+                              value: targetStemsSelection.contains(activeEditableStem) ? activeEditableStem : null,
+                              dropdownColor: Colors.grey[900],
+                              underline: const SizedBox(),
+                              icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
+                              style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                              items: targetStemsSelection.map((String stemKey) {
+                                bool isSuggested = suggestedStems.contains(stemKey);
+                                return DropdownMenuItem<String>(
+                                  value: stemKey,
+                                  child: Row(
+                                    children: [
+                                      Text(stemKey.toUpperCase(), style: TextStyle(color: isSuggested ? Colors.yellowAccent : Colors.white)),
+                                      if (isSuggested) 
+                                         const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
+                                      if (!generatedStems.contains(stemKey)) 
+                                         const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38))
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (String? newSelection) {
+                                if (newSelection != null && newSelection != activeEditableStem) {
+                                  setState(() => activeEditableStem = newSelection);
+                                  
+                                  if (!generatedStems.contains(newSelection) && 
+                                      originalAudioBytes != null && 
+                                      currentTaskId != null && 
+                                      !isLoading) {
+                                    _generateStemOnDemand(newSelection);
+                                  }
+                                }
+                              },
+                            ),
+                          ),
+
+                        PopupMenuButton<DragMode>(
+                          icon: Icon(Icons.pan_tool, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
+                          tooltip: 'Drag Pitch Mode',
+                          onSelected: (val) => setState(() => currentDragMode = val),
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
+                            PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
+                            PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
+                          ],
+                        ),
+
+                        IconButton(icon: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white38, size: 22), onPressed: () => setState(() => isScrubMode = !isScrubMode)),
+                        isXrayProcessing 
+                          ? const Padding(padding: EdgeInsets.symmetric(horizontal: 12.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)))
+                          : IconButton(icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 22), onPressed: isCurrentStemGenerated ? _toggleXrayMode : null),
+                        IconButton(icon: Icon(Icons.loop, color: isLoopModeActive ? Colors.tealAccent : Colors.white38, size: 22), onPressed: () => setState(() => isLoopModeActive = !isLoopModeActive)),
+                        IconButton(icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), onPressed: addMarkerAtCurrentPlayhead),
+                        
+                        if (markers.isNotEmpty)
+                          PopupMenuButton<double>(
+                            icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
+                            tooltip: "Go to Marker",
+                            itemBuilder: (context) => markers.map((marker) {
+                              int totalSeconds = (marker['time'] as double).round();
+                              String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
+                              return PopupMenuItem<double>(
+                                value: marker['time'],
+                                child: Row(children: [
+                                  const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text('${marker['label']}  '),
+                                  Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                ]),
+                              );
+                            }).toList(),
+                            onSelected: (time) => jumpToTimelinePosition(time),
+                          ),
+                        if (markers.length >= 2) ...[
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
+                            tooltip: "Set Loop Region",
+                            itemBuilder: (context) {
+                              List<PopupMenuItem<String>> items = [];
+                              for (int i = 0; i < markers.length; i++) {
+                                for (int j = i + 1; j < markers.length; j++) {
+                                  items.add(PopupMenuItem(
+                                    value: '${markers[i]['time']}_${markers[j]['time']}',
+                                    child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
+                                  ));
+                                }
+                              }
+                              return items;
+                            },
+                            onSelected: (val) {
+                              final parts = val.split('_');
+                              setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  
+                  SizedBox(
+                    height: 16,
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        trackHeight: 2,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        overlayShape: SliderComponentShape.noOverlay,
+                      ),
+                      child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: setZoomX),
+                    ),
+                  ),
+
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Container(width: 46, height: 45, color: Colors.grey[900]), 
+                            Expanded(
+                              child: SingleChildScrollView(
+                                controller: rulerScrollController,
+                                scrollDirection: Axis.horizontal,
+                                child: TimelineRulerWidget(dawState: this),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8.0),
+                                child: SizedBox(
+                                  width: 24,
+                                  child: RotatedBox(
+                                    quarterTurns: 3,
+                                    child: SliderTheme(
+                                      data: SliderThemeData(
+                                        trackHeight: 2,
+                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                        overlayShape: SliderComponentShape.noOverlay,
+                                      ),
+                                      child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: setZoomY),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
+                                  ? Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.music_note, size: 48, color: Colors.white24),
+                                          const SizedBox(height: 16),
+                                          Text("The ${activeEditableStem.toUpperCase()} stem has not been extracted yet.", style: const TextStyle(color: Colors.white54)),
+                                          const SizedBox(height: 24),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
+                                            icon: const Icon(Icons.build),
+                                            label: Text("Generate & Analyze ${activeEditableStem.toUpperCase()}"),
+                                            onPressed: isLoading ? null : () => _generateStemOnDemand(activeEditableStem),
+                                          )
+                                        ],
+                                      ),
+                                    )
+                                  : TimelineCanvasWidget(
+                                      dawState: this,
+                                      horizontalScrollController: horizontalScrollController,
+                                      verticalScrollController: verticalScrollController,
+                                    ), 
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }
