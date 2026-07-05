@@ -57,6 +57,7 @@ void main() async {
 // --- MIXER STATE MODEL ---
 class ChannelState {
   double volume;
+  double pan; 
   bool isMuted;
   bool isSoloed;
 
@@ -74,6 +75,7 @@ class ChannelState {
 
   ChannelState({
     this.volume = 1.0,
+    this.pan = 0.0,
     this.isMuted = false,
     this.isSoloed = false,
     this.plugin1 = 'None',
@@ -90,6 +92,7 @@ class ChannelState {
 
   Map<String, dynamic> toJson() => {
     'volume': volume,
+    'pan': pan,
     'isMuted': isMuted,
     'isSoloed': isSoloed,
     'plugin1': plugin1,
@@ -101,6 +104,7 @@ class ChannelState {
   factory ChannelState.fromJson(Map<String, dynamic> json) {
     return ChannelState(
       volume: json['volume'] ?? 1.0,
+      pan: (json['pan'] ?? 0.0).toDouble(),
       isMuted: json['isMuted'] ?? false,
       isSoloed: json['isSoloed'] ?? false,
       plugin1: json['plugin1'] ?? 'None',
@@ -112,6 +116,7 @@ class ChannelState {
 
   ChannelState copyWith({
     double? volume,
+    double? pan,
     bool? isMuted,
     bool? isSoloed,
     String? plugin1,
@@ -121,6 +126,7 @@ class ChannelState {
   }) {
     return ChannelState(
       volume: volume ?? this.volume,
+      pan: pan ?? this.pan,
       isMuted: isMuted ?? this.isMuted,
       isSoloed: isSoloed ?? this.isSoloed,
       plugin1: plugin1 ?? this.plugin1,
@@ -181,8 +187,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Set<String> targetStemsSelection = {'vocals', 'instrumental'};
   Set<String> generatedStems = {}; 
   List<String> suggestedStems = []; 
+  
+  // State flags for project management
   bool isOriginalMixAvailable = false; 
   bool isTestModeActive = false; 
+  bool isProjectLoaded = false;
+  bool hasBeenSaved = false;
+  Set<String> dirtyStems = {}; 
 
   List<dynamic> get rawNotes => allStemsNotes[activeEditableStem] ?? [];
   set rawNotes(List<dynamic> updatedNotes) {
@@ -343,6 +354,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       undoStack.add(json.encode(allStemsNotes));
       redoStack.clear();
       cachedStemBytes.remove(activeEditableStem);
+      dirtyStems.add(activeEditableStem); 
     });
   }
 
@@ -494,6 +506,40 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   // CORE API WORKFLOWS
   // ============================================================
 
+  void _newProject() {
+    setState(() {
+      isProjectLoaded = false;
+      hasBeenSaved = false;
+      dirtyStems.clear();
+      
+      originalAudioBytes = null;
+      originalFileName = "Unknown File";
+      originalFilePath = "";
+      projectName = "Voxray_Session";
+      
+      cachedStemBytes.clear();
+      for(var h in stemHandles.values) SoLoud.instance.stop(h);
+      stemHandles.clear();
+      stemSources.clear();
+      activePlaybackSources.clear();
+      allStemsNotes.clear();
+      generatedStems.clear();
+      undoStack.clear();
+      redoStack.clear();
+      
+      if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
+      if (synthHandle != null) SoLoud.instance.stop(synthHandle!);
+      masterHandle = null;
+      masterSource = null;
+      synthHandle = null;
+      synthSource = null;
+      
+      currentTaskId = null;
+      currentJobId = null;
+      suggestedStems.clear();
+    });
+  }
+
   Future<void> _requestSnippetSplice(Map<String, dynamic> modifiedNote) async {
     try {
       modifiedNote['processing_mode'] = processingMode;
@@ -608,6 +654,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       originalFileName = result.files.single.name; 
       originalFilePath = result.files.single.path ?? "";
       
+      isProjectLoaded = true;
+      hasBeenSaved = false;
+      dirtyStems.clear();
+
       cachedStemBytes.clear();
       for(var h in stemHandles.values) SoLoud.instance.stop(h);
       stemHandles.clear();
@@ -930,6 +980,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       double effectiveVolume = state.isMuted ? 0.0 : state.volume;
       
       SoLoud.instance.setVolume(stemHandles[stemName]!, effectiveVolume);
+      SoLoud.instance.setPanAbsolute(stemHandles[stemName]!, state.pan); 
     } catch (e) {
       debugPrint("Stem track layer $stemName build failed: $e");
       _showSaveConfirmation('Stem layer $stemName unavailable: $e');
@@ -964,6 +1015,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       synthHandle = SoLoud.instance.play(synthSource!, paused: true);
       
       SoLoud.instance.setVolume(synthHandle!, getChannelState('synth').volume);
+      SoLoud.instance.setPanAbsolute(synthHandle!, getChannelState('synth').pan); 
     } catch (e) {
       debugPrint("Synth layer load failed: $e");
       _showSaveConfirmation('Synth layer failed: $e');
@@ -993,6 +1045,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (key == 'original') {
       if (masterHandle != null) {
         SoLoud.instance.setVolume(masterHandle!, enabled ? getChannelState('original').volume : 0.0);
+        SoLoud.instance.setPanAbsolute(masterHandle!, getChannelState('original').pan);
       }
     } else if (key == 'synth') {
       if (enabled) {
@@ -1114,11 +1167,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
         
         SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
+        SoLoud.instance.setPanAbsolute(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
         seekAllPlayers(resumePosition);
         
         if (!activePlaybackSources.contains(activeEditableStem)) {
            setState(() { activePlaybackSources.add(activeEditableStem); });
         }
+
+        setState(() {
+          dirtyStems.remove(activeEditableStem); 
+        });
 
         if (wasPlaying) {
           playAllPlayers();
@@ -1178,7 +1236,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           stemHandles[stem] = SoLoud.instance.play(stemSources[stem]!, paused: !wasPlaying);
           
           SoLoud.instance.setVolume(stemHandles[stem]!, getChannelState(stem).volume);
+          SoLoud.instance.setPanAbsolute(stemHandles[stem]!, getChannelState(stem).pan);
           seekAllPlayers(resumePosition);
+          
+          setState(() {
+            dirtyStems.remove(stem); 
+          });
         }
       }
     } catch (e) {
@@ -1426,11 +1489,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   
   Future<void> _saveVoxrayProject() async {
     Map<String, dynamic> projectData = {
-      "voxray_version": "1.4.1", // Bumped slightly for tracking
+      "voxray_version": "1.4.1", 
       "project_name": projectName,
       "original_file": originalFileName, 
       "original_file_path": originalFilePath, 
-      "song_duration": songDuration, // <-- ADDED THIS LINE
+      "song_duration": songDuration, 
       "is_original_mix_available": isOriginalMixAvailable,
       "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
       "target_stems_selection": targetStemsSelection.toList(),
@@ -1439,8 +1502,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       "active_editable_stem": activeEditableStem,
       "history": {"undo_stack": undoStack, "redo_stack": redoStack}
     };
-
-    // ... rest of the method remains identical
 
     String jsonString = json.encode(projectData);
     List<int> jsonBytes = utf8.encode(jsonString);
@@ -1476,6 +1537,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       );
       
       if (path != null && path.isNotEmpty) {
+        setState(() {
+          hasBeenSaved = true;
+          dirtyStems.clear(); 
+        });
         _showSaveConfirmation('Project saved successfully as offline .vxp archive.');
       } else {
         _showSaveConfirmation('Save cancelled.');
@@ -1507,6 +1572,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       isLoading = true;
       processingMessage = "Unpacking .vxp archive and loading offline files...";
       
+      isProjectLoaded = true;
+      hasBeenSaved = true;
+      dirtyStems.clear();
+
       cachedStemBytes.clear();
       for(var h in stemHandles.values) SoLoud.instance.stop(h);
       stemHandles.clear();
@@ -1551,11 +1620,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       originalFilePath = projectData['original_file_path'] ?? "";
       isOriginalMixAvailable = projectData['is_original_mix_available'] ?? true;
 
-      // Restore or calculate Song Duration
       if (projectData.containsKey('song_duration')) {
         songDuration = (projectData['song_duration'] as num).toDouble();
       } else {
-        // Fallback for older .vxp saves: Find the furthest note end_time
         double maxTime = 30.0;
         if (projectData['all_stems_notes'] != null) {
           Map<String, dynamic> savedNotes = projectData['all_stems_notes'];
@@ -1569,7 +1636,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         songDuration = maxTime;
       }
       
-      // Sync the loop bounds and end marker to the correct duration
       loopEndBoundary = songDuration;
       int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
       if (endIdx != -1) markers[endIdx]['time'] = songDuration;
@@ -1656,6 +1722,31 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   // --- STUDIO MIXER UI ---
 
+  void _applyMasterPlugins() {
+    ChannelState state = getChannelState('master');
+    List<String> plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
+
+    try {
+      if (plugins.contains('Reverb')) {
+        if (!SoLoud.instance.filters.freeverbFilter.isActive) {
+          SoLoud.instance.filters.freeverbFilter.activate();
+        }
+      } 
+      if (plugins.contains('EQ')) {
+        if (!SoLoud.instance.filters.eqFilter.isActive) {
+          SoLoud.instance.filters.eqFilter.activate();
+        }
+      }
+      if (plugins.contains('Compressor')) {
+        if (!SoLoud.instance.filters.compressorFilter.isActive) {
+          SoLoud.instance.filters.compressorFilter.activate();
+        }
+      }
+    } catch (e) {
+      debugPrint("Master DSP activation failed: $e");
+    }
+  }
+
   void _showStudioMixer() {
     showModalBottomSheet(
       context: context,
@@ -1715,25 +1806,33 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       _pluginDropdown(state.plugin1, highlight, (val) {
                          if(state.plugin1 != val) {
                              setMixerState(() => state.plugin1 = val!);
+                             dirtyStems.add(key); 
                              if (!isMaster) _renderStemPlugins(key);
+                             else _applyMasterPlugins();
                          }
                       }),
                       _pluginDropdown(state.plugin2, highlight, (val) {
                          if(state.plugin2 != val) {
                              setMixerState(() => state.plugin2 = val!);
+                             dirtyStems.add(key);
                              if (!isMaster) _renderStemPlugins(key);
+                             else _applyMasterPlugins();
                          }
                       }),
                       _pluginDropdown(state.plugin3, highlight, (val) {
                          if(state.plugin3 != val) {
                              setMixerState(() => state.plugin3 = val!);
+                             dirtyStems.add(key);
                              if (!isMaster) _renderStemPlugins(key);
+                             else _applyMasterPlugins();
                          }
                       }),
                       _pluginDropdown(state.plugin4, highlight, (val) {
                          if(state.plugin4 != val) {
                              setMixerState(() => state.plugin4 = val!);
+                             dirtyStems.add(key);
                              if (!isMaster) _renderStemPlugins(key);
+                             else _applyMasterPlugins();
                          }
                       }),
                       
@@ -1746,6 +1845,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           icon: Icon(state.isMuted ? Icons.volume_off : Icons.volume_up, color: !state.isMuted ? highlight : Colors.white38, size: 18),
                           onPressed: () {
                             setMixerState(() => state.isMuted = !state.isMuted);
+                            dirtyStems.add(key);
                             
                             double targetVol = state.isMuted ? 0.0 : state.volume;
                             if (key == 'original') {
@@ -1776,6 +1876,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               max: 1.5, 
                               onChanged: (v) {
                                 setMixerState(() => state.volume = v);
+                                dirtyStems.add(key);
                                 if (state.isMuted) return;
                                 
                                 if (key == 'master') {
@@ -1794,6 +1895,46 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       ),
                       const SizedBox(height: 4),
                       Text("${(state.volume * 100).round()}%", style: const TextStyle(fontSize: 9, color: Colors.white54)),
+                      const SizedBox(height: 6),
+
+                      // Pan Slider
+                      SizedBox(
+                        height: 16,
+                        child: SliderTheme(
+                          data: SliderThemeData(
+                            trackHeight: 2,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                            overlayShape: SliderComponentShape.noOverlay,
+                            activeTrackColor: highlight,
+                            inactiveTrackColor: Colors.white10,
+                          ),
+                          child: Slider(
+                            value: state.pan, 
+                            min: -1.0, 
+                            max: 1.0, 
+                            onChanged: (v) {
+                              setMixerState(() => state.pan = v);
+                              dirtyStems.add(key);
+                              
+                              if (key == 'master') {
+                                // Pan applied to all active stems when adjusting Master track pan
+                                if (masterHandle != null) SoLoud.instance.setPanAbsolute(masterHandle!, v);
+                                if (synthHandle != null) SoLoud.instance.setPanAbsolute(synthHandle!, v);
+                                for (var handle in stemHandles.values) {
+                                  SoLoud.instance.setPanAbsolute(handle, v);
+                                }
+                              } else if (key == 'original') {
+                                if (masterHandle != null) SoLoud.instance.setPanAbsolute(masterHandle!, v);
+                              } else if (key == 'synth') {
+                                if (synthHandle != null) SoLoud.instance.setPanAbsolute(synthHandle!, v);
+                              } else if (stemHandles.containsKey(key)) {
+                                SoLoud.instance.setPanAbsolute(stemHandles[key]!, v);
+                              }
+                            }
+                          ),
+                        ),
+                      ),
+                      Text(state.pan == 0 ? "C" : (state.pan < 0 ? "L ${-(state.pan * 100).round()}" : "R ${(state.pan * 100).round()}"), style: const TextStyle(fontSize: 8, color: Colors.white54)),
                       const SizedBox(height: 6),
                     ],
                   ),
@@ -2458,11 +2599,44 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   List<PopupMenuEntry<String>> _buildMainMenu() {
     return [
-      const PopupMenuItem(value: 'upload', child: ListTile(leading: Icon(Icons.cloud_upload, color: Colors.tealAccent), title: Text('Upload Audio'))),
-      const PopupMenuItem(value: 'stem_tree', child: ListTile(leading: Icon(Icons.account_tree, color: Colors.purpleAccent), title: Text('Stem Select Tree'))),
-      const PopupMenuItem(value: 'load', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))),
-      const PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save), title: Text('Save Project'))),
+      PopupMenuItem(
+        value: 'new_project', 
+        enabled: isProjectLoaded,
+        child: ListTile(
+          leading: Icon(Icons.create_new_folder, color: isProjectLoaded ? Colors.white : Colors.white38), 
+          title: Text('New Project', style: TextStyle(color: isProjectLoaded ? Colors.white : Colors.white38))
+        )
+      ),
+      const PopupMenuItem(
+        value: 'upload', 
+        child: ListTile(leading: Icon(Icons.cloud_upload, color: Colors.tealAccent), title: Text('Upload Audio'))
+      ),
+      const PopupMenuItem(
+        value: 'load', 
+        child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))
+      ),
       const PopupMenuDivider(),
+      PopupMenuItem(
+        value: 'save', 
+        enabled: isProjectLoaded && hasBeenSaved,
+        child: ListTile(
+          leading: Icon(Icons.save, color: (isProjectLoaded && hasBeenSaved) ? Colors.white : Colors.white38), 
+          title: Text('Save (Overwrite)', style: TextStyle(color: (isProjectLoaded && hasBeenSaved) ? Colors.white : Colors.white38))
+        )
+      ),
+      PopupMenuItem(
+        value: 'save_as', 
+        enabled: isProjectLoaded,
+        child: ListTile(
+          leading: Icon(Icons.save_as, color: isProjectLoaded ? Colors.white : Colors.white38), 
+          title: Text('Save As...', style: TextStyle(color: isProjectLoaded ? Colors.white : Colors.white38))
+        )
+      ),
+      const PopupMenuDivider(),
+      const PopupMenuItem(
+        value: 'stem_tree', 
+        child: ListTile(leading: Icon(Icons.account_tree, color: Colors.purpleAccent), title: Text('Stem Select Tree'))
+      ),
       PopupMenuItem(
         value: 'processing_mode', 
         child: ListTile(
@@ -2470,10 +2644,19 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           title: Text(processingMode == 'advanced' ? 'Mode: ADVANCED' : 'Mode: NORMAL', style: const TextStyle(color: Colors.purpleAccent)),
         )
       ),
-      const PopupMenuItem(value: 'synth_settings', child: ListTile(leading: Icon(Icons.piano, color: Colors.purpleAccent), title: Text('Synth Audio Settings'))),
-      const PopupMenuItem(value: 'show_dossier', child: ListTile(leading: Icon(Icons.assessment, color: Colors.greenAccent), title: Text('View GUI Dossier'))),
+      const PopupMenuItem(
+        value: 'synth_settings', 
+        child: ListTile(leading: Icon(Icons.piano, color: Colors.purpleAccent), title: Text('Synth Audio Settings'))
+      ),
+      const PopupMenuItem(
+        value: 'show_dossier', 
+        child: ListTile(leading: Icon(Icons.assessment, color: Colors.greenAccent), title: Text('View GUI Dossier'))
+      ),
       const PopupMenuDivider(),
-      const PopupMenuItem(value: 'downloads', child: ListTile(leading: Icon(Icons.download, color: Colors.blueAccent), title: Text('Advanced Downloads'))),
+      const PopupMenuItem(
+        value: 'downloads', 
+        child: ListTile(leading: Icon(Icons.download, color: Colors.blueAccent), title: Text('Advanced Downloads'))
+      ),
       PopupMenuItem(
         value: 'live_mode', 
         child: ListTile(
@@ -2501,10 +2684,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   void _handleMenuSelection(String value) {
     switch (value) {
+      case 'new_project': _newProject(); break;
       case 'upload': _loadFileAndAnalyze(); break;
       case 'stem_tree': _showStemSelectorTreeDialog(); break;
       case 'load': _loadVoxrayProject(); break;
       case 'save': _saveVoxrayProject(); break;
+      case 'save_as': _saveVoxrayProject(); break;
       case 'processing_mode': setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic'); break;
       case 'synth_settings': _showSynthSettingsDialog(); break;
       case 'show_dossier': _showDossier(); break;
@@ -2613,10 +2798,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         IconButton(icon: const Icon(Icons.redo), tooltip: 'Redo', onPressed: redoStack.isNotEmpty ? _redo : null),
                         
                         Tooltip(
-                          message: "Render stem edits",
+                          message: "Preview pitch/DSP edits",
                           child: IconButton(
-                            icon: const Icon(Icons.movie_creation, color: Colors.deepPurpleAccent, size: 24),
-                            onPressed: rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting ? _renderStemEdits : null,
+                            icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 24),
+                            // Button only active if there are un-previewed changes on the current active stem
+                            onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem)) ? _renderStemEdits : null,
                           ),
                         ),
 
@@ -2652,8 +2838,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 if (newSelection != null && newSelection != activeEditableStem) {
                                   setState(() => activeEditableStem = newSelection);
                                   
-                                  // Only generate it if it hasn't been extracted yet.
-                                  // We NO LONGER auto-toggle playback here!
                                   if (!generatedStems.contains(newSelection) && 
                                       originalAudioBytes != null && 
                                       currentTaskId != null && 
@@ -2798,7 +2982,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                       dawState: this,
                                       horizontalScrollController: horizontalScrollController,
                                       verticalScrollController: verticalScrollController,
-                                    ), // Displays the actual timeline if generated
+                                    ), 
                               ),
                             ],
                           ),
