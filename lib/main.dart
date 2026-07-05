@@ -514,40 +514,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   // CORE API WORKFLOWS
   // ============================================================
 
-  void _newProject() {
-    setState(() {
-      isProjectLoaded = false;
-      hasBeenSaved = false;
-      dirtyStems.clear();
-      
-      originalAudioBytes = null;
-      originalFileName = "Unknown File";
-      originalFilePath = "";
-      projectName = "Voxray_Session";
-      
-      cachedStemBytes.clear();
-      for(var h in stemHandles.values) SoLoud.instance.stop(h);
-      stemHandles.clear();
-      stemSources.clear();
-      activePlaybackSources.clear();
-      allStemsNotes.clear();
-      generatedStems.clear();
-      undoStack.clear();
-      redoStack.clear();
-      
-      if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
-      if (synthHandle != null) SoLoud.instance.stop(synthHandle!);
-      masterHandle = null;
-      masterSource = null;
-      synthHandle = null;
-      synthSource = null;
-      
-      currentTaskId = null;
-      currentJobId = null;
-      suggestedStems.clear();
-    });
-  }
-
+  
   Future<void> _requestSnippetSplice(Map<String, dynamic> modifiedNote) async {
     if (activeEditableStem.isEmpty) return;
     try {
@@ -675,6 +642,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     SoLoud.instance.disposeAllSources();
     
     setState(() {
+      isProjectLoaded = false;
+      hasBeenSaved = false;
+      dirtyStems.clear();
       allStemsNotes.clear(); 
       generatedStems.clear(); 
       targetStemsSelection.clear(); 
@@ -1120,7 +1090,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       double effectiveVolume = state.isMuted ? 0.0 : state.volume;
       
       SoLoud.instance.setVolume(stemHandles[stemName]!, effectiveVolume);
-      SoLoud.instance.setPanAbsolute(stemHandles[stemName]!, state.pan); 
+      SoLoud.instance.setPan(stemHandles[stemName]!, state.pan); 
     } catch (e) {
       debugPrint("Stem track layer $stemName build failed: $e");
       _showSaveConfirmation('Stem layer $stemName unavailable: $e');
@@ -1155,7 +1125,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       synthHandle = SoLoud.instance.play(synthSource!, paused: true);
       
       SoLoud.instance.setVolume(synthHandle!, getChannelState('synth').volume);
-      SoLoud.instance.setPanAbsolute(synthHandle!, getChannelState('synth').pan); 
+      SoLoud.instance.setPan(synthHandle!, getChannelState('synth').pan); 
     } catch (e) {
       debugPrint("Synth layer load failed: $e");
       _showSaveConfirmation('Synth layer failed: $e');
@@ -1185,7 +1155,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (key == 'original') {
       if (masterHandle != null) {
         SoLoud.instance.setVolume(masterHandle!, enabled ? getChannelState('original').volume : 0.0);
-        SoLoud.instance.setPanAbsolute(masterHandle!, getChannelState('original').pan);
+        SoLoud.instance.setPan(masterHandle!, getChannelState('original').pan);
       }
     } else if (key == 'synth') {
       if (enabled) {
@@ -1307,7 +1277,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
         
         SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
-        SoLoud.instance.setPanAbsolute(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
+        SoLoud.instance.setPan(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
         seekAllPlayers(resumePosition);
         
         if (!activePlaybackSources.contains(activeEditableStem)) {
@@ -1376,7 +1346,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           stemHandles[stem] = SoLoud.instance.play(stemSources[stem]!, paused: !wasPlaying);
           
           SoLoud.instance.setVolume(stemHandles[stem]!, getChannelState(stem).volume);
-          SoLoud.instance.setPanAbsolute(stemHandles[stem]!, getChannelState(stem).pan);
+          SoLoud.instance.setPan(stemHandles[stem]!, getChannelState(stem).pan);
           seekAllPlayers(resumePosition);
           
           setState(() {
@@ -2092,17 +2062,17 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               
                               if (key == 'master') {
                                 // Pan applied to all active stems when adjusting Master track pan
-                                if (masterHandle != null) SoLoud.instance.setPanAbsolute(masterHandle!, v);
-                                if (synthHandle != null) SoLoud.instance.setPanAbsolute(synthHandle!, v);
+                                if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
+                                if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
                                 for (var handle in stemHandles.values) {
-                                  SoLoud.instance.setPanAbsolute(handle, v);
+                                  SoLoud.instance.setPan(handle, v);
                                 }
                               } else if (key == 'original') {
-                                if (masterHandle != null) SoLoud.instance.setPanAbsolute(masterHandle!, v);
+                                if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
                               } else if (key == 'synth') {
-                                if (synthHandle != null) SoLoud.instance.setPanAbsolute(synthHandle!, v);
+                                if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
                               } else if (stemHandles.containsKey(key)) {
-                                SoLoud.instance.setPanAbsolute(stemHandles[key]!, v);
+                                SoLoud.instance.setPan(stemHandles[key]!, v);
                               }
                             }
                           ),
