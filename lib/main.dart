@@ -976,10 +976,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   Future<void> _forceReprocessXray() async {
     if (rawNotes.isEmpty) return;
-    if (currentTaskId == null) {
-      _showSaveConfirmation('Cannot reprocess X-Ray offline without an active server session.');
-      return;
-    }
 
     bool? confirm = await showDialog<bool>(
       context: context,
@@ -1019,6 +1015,30 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
 
     try {
+      // --- NEW LOGIC: Re-establish server session if offline ---
+      if (currentTaskId == null) {
+        if (!cachedStemBytes.containsKey(activeEditableStem)) {
+           throw Exception("Audio data not found in cache.");
+        }
+        
+        _showSaveConfirmation('Establishing new server session for Reprocess...');
+
+        var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+          ..fields['upload_type'] = 'stem'
+          ..fields['stem_target'] = activeEditableStem
+          ..fields['instruments_json'] = jsonEncode([activeEditableStem])
+          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[activeEditableStem]!, filename: '${activeEditableStem}_offline.ogg'));
+        
+        var sessionRes = await sessionReq.send();
+        if (sessionRes.statusCode == 200) {
+          var sessionData = jsonDecode(await sessionRes.stream.bytesToString());
+          currentTaskId = sessionData['task_id'];
+        } else {
+          throw Exception("Could not establish background server session.");
+        }
+      }
+      // ---------------------------------------------------------
+
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
         ..fields['notes_manifest'] = jsonEncode(_enrichManifestWithPolyphonicContext(rawNotes)); 
@@ -1047,6 +1067,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
+
   Future<void> _toggleXrayMode() async {
     if (rawNotes.isEmpty) return;
     
@@ -1057,15 +1078,37 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       return;
     }
 
-    if (currentTaskId == null) {
-      _showSaveConfirmation('Cannot process X-Ray offline without an active server session.');
-      return;
-    }
-
     pauseAllPlayers();
     setState(() { isXrayProcessing = true; isXrayMode = true; });
 
     try {
+      // --- NEW LOGIC: Re-establish server session if offline ---
+      if (currentTaskId == null) {
+        if (!cachedStemBytes.containsKey(activeEditableStem)) {
+          _showSaveConfirmation('Missing audio data. Cannot process X-Ray.');
+          setState(() { isXrayProcessing = false; isXrayMode = false; });
+          if (cachedTransportState) playAllPlayers();
+          return;
+        }
+
+        _showSaveConfirmation('Establishing new server session for X-Ray...');
+
+        var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+          ..fields['upload_type'] = 'stem'
+          ..fields['stem_target'] = activeEditableStem
+          ..fields['instruments_json'] = jsonEncode([activeEditableStem])
+          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[activeEditableStem]!, filename: '${activeEditableStem}_offline.ogg'));
+        
+        var sessionRes = await sessionReq.send();
+        if (sessionRes.statusCode == 200) {
+          var sessionData = jsonDecode(await sessionRes.stream.bytesToString());
+          currentTaskId = sessionData['task_id'];
+        } else {
+          throw Exception("Could not establish background server session.");
+        }
+      }
+      // ---------------------------------------------------------
+
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
         ..fields['notes_manifest'] = jsonEncode(_enrichManifestWithPolyphonicContext(rawNotes));
@@ -1087,12 +1130,14 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
     } catch (e) {
       debugPrint("XRAY error: $e");
+      _showSaveConfirmation('Connection error: $e');
       setState(() => isXrayMode = false);
     } finally {
       setState(() { isXrayProcessing = false; });
       if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
   }
+
 
   Future<Uint8List> _fetchStemBytes(String stemName) async {
     if (currentTaskId == null) throw Exception("No active session");
@@ -1749,6 +1794,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
     
     if (result == null) return;
+
+    // --- NEW LOGIC: Enforce .vxp extension manually ---
+    String fileName = result.files.single.name.toLowerCase();
+    if (!fileName.endsWith('.vxp')) {
+      _showSaveConfirmation("Invalid format: Please select a valid Voxray (.vxp) project archive.");
+      return;
+    }
     
     pauseAllPlayers();
 
