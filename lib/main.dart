@@ -361,7 +361,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         undoStack.add(json.encode(allStemsNotes));
         redoStack.clear();
         cachedStemBytes.remove(activeEditableStem);
-      dirtyStems.add(activeEditableStem); 
+        dirtyStems.add(activeEditableStem); 
       });
     }
   }
@@ -785,6 +785,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     try {
       masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
       masterHandle = SoLoud.instance.play(masterSource!, paused: true);
+      ChannelState origState = getChannelState('original');
+      SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
+      SoLoud.instance.setPan(masterHandle!, origState.pan);
     } catch (e) {
       debugPrint("Audio preview setup failed (non-fatal): $e");
     }
@@ -1124,8 +1127,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       synthSource = await SoLoud.instance.loadMem("synth_layer", wavBytes);
       synthHandle = SoLoud.instance.play(synthSource!, paused: true);
       
-      SoLoud.instance.setVolume(synthHandle!, getChannelState('synth').volume);
-      SoLoud.instance.setPan(synthHandle!, getChannelState('synth').pan); 
+      ChannelState state = getChannelState('synth');
+      SoLoud.instance.setVolume(synthHandle!, state.isMuted ? 0.0 : state.volume);
+      SoLoud.instance.setPan(synthHandle!, state.pan); 
     } catch (e) {
       debugPrint("Synth layer load failed: $e");
       _showSaveConfirmation('Synth layer failed: $e');
@@ -1154,8 +1158,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     if (key == 'original') {
       if (masterHandle != null) {
-        SoLoud.instance.setVolume(masterHandle!, enabled ? getChannelState('original').volume : 0.0);
-        SoLoud.instance.setPan(masterHandle!, getChannelState('original').pan);
+        ChannelState origState = getChannelState('original');
+        SoLoud.instance.setVolume(masterHandle!, enabled ? (origState.isMuted ? 0.0 : origState.volume) : 0.0);
+        SoLoud.instance.setPan(masterHandle!, origState.pan);
       }
     } else if (key == 'synth') {
       if (enabled) {
@@ -1658,6 +1663,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     final bytes = _packageProjectBytes();
     try {
       await File(currentProjectPath!).writeAsBytes(bytes);
+      setState(() {
+        hasBeenSaved = true;
+        dirtyStems.clear();
+      });
       _showSaveConfirmation("Project file successfully overwritten on disk.");
     } catch (e) { 
       _showSaveConfirmation("Overwrite failed: $e"); 
@@ -1701,6 +1710,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       withData: true,
     );
     if (result == null) return;
+    
+    pauseAllPlayers();
 
     Uint8List vxpBytes;
     if (result.files.single.bytes != null) {
@@ -1713,6 +1724,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
 
     setState(() {
+      isPlaying = false;
       isLoading = true;
       processingMessage = "Unpacking .vxp archive and loading offline files...";
       
@@ -1813,6 +1825,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
        activePlaybackSources.add('original');
        masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
        masterHandle = SoLoud.instance.play(masterSource!, paused: true);
+       
+       ChannelState origState = getChannelState('original');
+       SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
+       SoLoud.instance.setPan(masterHandle!, origState.pan);
     }
 
     for (String stem in generatedStems) {
@@ -1825,7 +1841,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
        await _loadSynthSource();
     }
 
-    setState(() { isLoading = false; processingMessage = ""; });
+    seekAllPlayers(0.0);
+
+    setState(() { 
+      currentPosition = 0.0;
+      isLoading = false; 
+      processingMessage = ""; 
+    });
     _showSaveConfirmation("Project fully restored from offline archive.");
   }
 
@@ -2742,6 +2764,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   List<PopupMenuEntry<String>> _buildMainMenu() {
+    bool canSave = isProjectLoaded && (!hasBeenSaved || dirtyStems.isNotEmpty);
+
     return [
       const PopupMenuItem(value: 'new_project', child: ListTile(leading: Icon(Icons.insert_drive_file, color: Colors.redAccent), title: Text('New Project'))),
       const PopupMenuDivider(),
@@ -2750,8 +2774,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       const PopupMenuItem(value: 'stem_tree', child: ListTile(leading: Icon(Icons.account_tree, color: Colors.purpleAccent), title: Text('Stem Select Tree'))),
       const PopupMenuDivider(),
       const PopupMenuItem(value: 'load', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))),
-      const PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save, color: Colors.blueAccent), title: Text('Save Project (Overwrite)'))),
-      const PopupMenuItem(value: 'save_as', child: ListTile(leading: Icon(Icons.save_as), title: Text('Save Project As...'))),
+      PopupMenuItem(value: 'save', enabled: canSave, child: ListTile(leading: Icon(Icons.save, color: canSave ? Colors.blueAccent : Colors.white38), title: Text('Save Project (Overwrite)', style: TextStyle(color: canSave ? Colors.white : Colors.white38)))),
+      PopupMenuItem(value: 'save_as', enabled: canSave, child: ListTile(leading: Icon(Icons.save_as, color: canSave ? Colors.white : Colors.white38), title: Text('Save Project As...', style: TextStyle(color: canSave ? Colors.white : Colors.white38)))),
       const PopupMenuDivider(),
       PopupMenuItem(
         value: 'processing_mode', 
