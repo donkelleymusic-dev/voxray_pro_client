@@ -360,7 +360,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() {
         undoStack.add(json.encode(allStemsNotes));
         redoStack.clear();
-        cachedStemBytes.remove(activeEditableStem);
+        //cachedStemBytes.remove(activeEditableStem); // remove: don't want to remove ogg audio from the project!
         dirtyStems.add(activeEditableStem); 
         hasBeenSaved = false; 
       });
@@ -1835,6 +1835,26 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   Future<void> _saveVoxrayProject() async {
+    // FIX: Catch Android SAF URIs and route them to Save As (old system didn't know where to save to)
+    if (currentProjectPath == null || kIsWeb || currentProjectPath!.startsWith('content://')) {
+      await _saveVoxrayProjectAs();
+      return;
+    }
+    
+    final bytes = _packageProjectBytes();
+    try {
+      await File(currentProjectPath!).writeAsBytes(bytes);
+      setState(() {
+        hasBeenSaved = true;
+        dirtyStems.clear();
+      });
+      _showSaveConfirmation("Project file successfully overwritten on disk.");
+    } catch (e) { 
+      _showSaveConfirmation("Overwrite failed: $e"); 
+    }
+  }
+	
+  Future<void> _saveVoxrayProject_old() async {
     if (currentProjectPath == null || kIsWeb) {
       await _saveVoxrayProjectAs();
       return;
