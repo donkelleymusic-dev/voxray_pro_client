@@ -49,6 +49,8 @@ import 'models/daw_models.dart';
 import 'api/voxray_api.dart';
 import 'logic/daw_engine.dart';
 
+export 'models/daw_models.dart'; // Safely proxies Enums for UI files
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SoLoud.instance.init();
@@ -75,10 +77,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   // ============================================================
   // PROXIES TO DAW ENGINE 
-  // (Ensures backward compatibility with TimelineCanvasWidget)
+  // (Ensures backward compatibility with external UI widgets)
   // ============================================================
   bool get isPlaying => engine.isPlaying;
   double get currentPosition => engine.currentPosition;
+  set currentPosition(double val) => engine.currentPosition = val;
   double get songDuration => engine.songDuration;
   double get zoomX => engine.zoomX;
   double get zoomY => engine.zoomY;
@@ -127,18 +130,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   bool get isProjectLoaded => engine.isProjectLoaded;
   Set<String> get activePlaybackSources => engine.activePlaybackSources;
 
+  bool get isUserScrolling => engine.isUserScrolling;
+  set isUserScrolling(bool val) => engine.isUserScrolling = val;
+
   ChannelState getChannelState(String key) => engine.getChannelState(key);
   void registerUndoSnapshot() => engine.registerUndoSnapshot();
+  void seekAllPlayers(double seconds) => engine.seekAllPlayers(seconds);
 
   @override
   void initState() {
     super.initState();
     
-    // Initialize MVVM Backend Engine
     engine = DawEngine();
     engine.addListener(_onEngineStateChanged);
     
-    // Bind UI callbacks to engine
     engine.onShowMessage = (msg, {bool isPreview = false}) => _showSaveConfirmation(msg, isPreview: isPreview);
     engine.onEngineRecommendation = () => _showEngineRecommendationDialog();
 
@@ -162,7 +167,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (!mounted) return;
     setState(() {});
 
-    // Sync playhead auto-scrolling logic driven by the engine's internal position timer
     if (!engine.isUserScrolling && engine.isPlaying) {
       double targetX = (engine.currentPosition * engine.zoomX) - 150.0;
       if (targetX < 0) targetX = 0;
@@ -365,8 +369,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                         isExpanded: true,
                         dropdownColor: Colors.grey[850],
                         value: selectedStem,
-                        items: [...engine.popStems, ...engine.orchStems, ...engine.forensicStems].map((s) {
-                          return DropdownMenuItem(value: s, child: Text(s.toUpperCase(), style: const TextStyle(color: Colors.white)));
+                        items: [...engine.popStems, ...engine.orchStems, ...engine.forensicStems].map<DropdownMenuItem<String>>((s) {
+                          return DropdownMenuItem<String>(value: s, child: Text(s.toUpperCase(), style: const TextStyle(color: Colors.white)));
                         }).toList(),
                         onChanged: (val) => setDialogState(() => selectedStem = val!),
                       ),
@@ -470,7 +474,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               isExpanded: true,
               dropdownColor: Colors.grey[850],
               value: selected,
-              items: [...engine.popStems, ...engine.orchStems].map((s) => DropdownMenuItem(value: s, child: Text(s.toUpperCase(), style: const TextStyle(color: Colors.white)))).toList(),
+              items: [...engine.popStems, ...engine.orchStems].map<DropdownMenuItem<String>>((s) => DropdownMenuItem<String>(value: s, child: Text(s.toUpperCase(), style: const TextStyle(color: Colors.white)))).toList(),
               onChanged: (v) => setDialogState(() => selected = v!),
             ),
             actions: [
@@ -1709,7 +1713,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             hint: const Text("No Stems Available", style: TextStyle(color: Colors.white38, fontSize: 12)),
                             icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
                             style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                            items: engine.targetStemsSelection.map((String stemKey) {
+                            items: engine.targetStemsSelection.map<DropdownMenuItem<String>>((String stemKey) {
                               bool isSuggested = engine.suggestedStems.contains(stemKey);
                               return DropdownMenuItem<String>(
                                 value: stemKey,
@@ -1736,8 +1740,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           icon: Icon(Icons.pan_tool, color: engine.currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
                           tooltip: 'Drag Pitch Mode',
                           onSelected: (val) {
-                             engine.currentDragMode = val;
-                             engine.updateChannelState();
+                             engine.setDragMode(val);
                           },
                           itemBuilder: (context) => const [
                             PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),

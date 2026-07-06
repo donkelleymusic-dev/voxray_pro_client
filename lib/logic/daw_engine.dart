@@ -2,8 +2,28 @@
 // COPYRIGHT AND OWNERSHIP DECLARATION
 // ==============================================================================
 // Copyright (c) 2026 Donald Bayard Kelley. All Rights Reserved.
+// 
 // voXRAY Enterprise DSP & Roformer Engine
+// 
 // PROPRIETARY AND CONFIDENTIAL
+// This source code, algorithms, binaries, and related documentation are the 
+// exclusive intellectual property of Donald Bayard Kelley. 
+//
+// Unauthorized copying, reproduction, distribution, modification, reverse 
+// engineering, or use of this file, via any medium, is strictly prohibited 
+// without the express written consent of the copyright holder. This software 
+// contains trade secrets and proprietary methodologies protected by Canadian 
+// and International intellectual property laws.
+// 
+// AUTHOR AND CONTACT INFORMATION:
+// Developer / Owner: Donald Bayard Kelley
+// Jurisdiction: British Columbia, Canada
+// Direct Inquiries: donkelleymusic@gmail.com
+// YouTube: @don-music
+// Instagram: @donmusicyt
+//
+// By accessing this codebase, you acknowledge and agree to respect the 
+// proprietary nature of this software.
 // ==============================================================================
 
 import 'dart:async';
@@ -17,6 +37,7 @@ import 'package:archive/archive.dart';
 import 'package:file_saver/file_saver.dart';
 import '../models/daw_models.dart';
 import '../api/voxray_api.dart';
+import '../audio/vox_synth.dart';
 
 class DawEngine extends ChangeNotifier {
   // --- SoLoud Audio Engine Handles ---
@@ -54,6 +75,10 @@ class DawEngine extends ChangeNotifier {
   Set<String> targetStemsSelection = {};
   Set<String> generatedStems = {}; 
   List<String> suggestedStems = []; 
+
+  final List<String> popStems = ['vocals', 'instrumental', 'drums', 'bass', 'guitar', 'piano', 'other'];
+  final List<String> orchStems = ['violin', 'cello', 'contrabass', 'flute', 'oboe', 'bassoon', 'trumpet', 'trombone', 'tuba', 'percussion', 'orchestral'];
+  final List<String> forensicStems = ['forensic_id'];
   
   // State flags for project management
   bool isOriginalMixAvailable = false; 
@@ -160,7 +185,7 @@ class DawEngine extends ChangeNotifier {
   void updateZoomY(double val) { zoomY = val; notifyListeners(); }
   void toggleScrubMode() { isScrubMode = !isScrubMode; notifyListeners(); }
   void toggleLoopMode() { isLoopModeActive = !isLoopModeActive; notifyListeners(); }
-  void setDragMode(DragMode mode) { currentDragMode = val; notifyListeners(); }
+  void setDragMode(DragMode mode) { currentDragMode = mode; notifyListeners(); }
   void toggleLiveMode() { isLiveModeActive = !isLiveModeActive; notifyListeners(); }
   void toggleProcessingMode() { processingMode = processingMode == 'classic' ? 'advanced' : 'classic'; notifyListeners(); }
   void updateSynthSettings(SynthSettings settings) { synthSettings = settings; notifyListeners(); }
@@ -560,12 +585,40 @@ class DawEngine extends ChangeNotifier {
       if (enabled) await loadSynthSource(); else if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, 0.0);
     } else {
       if (enabled) {
-        if (!generatedStems.contains(key)) await _generateStemOnDemand(key);
-        else await _loadStemPlayerSource(key);
+        if (!generatedStems.contains(key)) await generateStemOnDemand(key);
+        else await loadStemPlayerSource(key);
       } else if (stemHandles.containsKey(key)) {
         SoLoud.instance.setVolume(stemHandles[key]!, 0.0);
       }
     }
+  }
+
+  Future<Uint8List?> pollRenderJob(String jobId) async {
+    bool isComplete = false;
+    int retryCount = 0;
+    const int maxRetries = 100; 
+    
+    while (!isComplete && retryCount < maxRetries) {
+      try {
+        final taskData = await VoxrayApi.getTaskStatus(jobId);
+        final status = taskData['status'];
+        
+        processingProgress = (taskData['progress'] ?? 0).toDouble() / 100.0;
+        if (isPreviewing) exportMessage = taskData['message'] ?? 'Processing...';
+        notifyListeners();
+
+        if (status == 'complete') {
+          return base64Decode(taskData['result']['master_mix_b64']);
+        } else if (status == 'error') {
+          throw Exception(taskData['message']);
+        }
+      } catch (e) {
+        debugPrint('Polling network blink: $e');
+      }
+      await Future.delayed(const Duration(seconds: 3));
+      retryCount++;
+    }
+    throw Exception('Polling timed out after 5 minutes.');
   }
 
   Future<void> renderStemEdits() async {
@@ -597,7 +650,7 @@ class DawEngine extends ChangeNotifier {
       );
 
       if (result['status'] == 'success') {
-        Uint8List previewBytes = await _pollRenderJob(result['job_id']) ?? Uint8List(0);
+        Uint8List previewBytes = await pollRenderJob(result['job_id']) ?? Uint8List(0);
         cachedStemBytes[activeEditableStem] = previewBytes;
         if (stemHandles.containsKey(activeEditableStem)) SoLoud.instance.stop(stemHandles[activeEditableStem]!);
 
@@ -641,7 +694,7 @@ class DawEngine extends ChangeNotifier {
       );
 
       if (result['status'] == 'success') {
-        Uint8List previewBytes = await _pollRenderJob(result['job_id']) ?? Uint8List(0);
+        Uint8List previewBytes = await pollRenderJob(result['job_id']) ?? Uint8List(0);
         cachedStemBytes[stem] = previewBytes;
         if (stemHandles.containsKey(stem)) SoLoud.instance.stop(stemHandles[stem]!);
         stemSources[stem] = await SoLoud.instance.loadMem("stem_${stem}_edited", previewBytes);
@@ -681,7 +734,7 @@ class DawEngine extends ChangeNotifier {
       );
 
       if (data['status'] == 'success') {
-        final Uint8List bytes = await _pollRenderJob(data['job_id']) ?? Uint8List(0);
+        final Uint8List bytes = await pollRenderJob(data['job_id']) ?? Uint8List(0);
         String mimeType = format == 'mp3' ? 'audio/mpeg' : (format == 'flac' ? 'audio/flac' : 'audio/wav');
         String defaultName = '${originalFileName.split('.').first}_voxray_master';
 
@@ -690,6 +743,141 @@ class DawEngine extends ChangeNotifier {
       }
     } catch (e) {
       if (onShowMessage != null) onShowMessage!('Export failed: $e');
+    } finally {
+      isExporting = false; exportMessage = ''; notifyListeners();
+    }
+  }
+
+  Future<void> exportStemsAsZip() async {
+    if (cachedStemBytes.isEmpty) { 
+      if (onShowMessage != null) onShowMessage!("No extracted audio stems available to export."); 
+      return; 
+    }
+    isExporting = true; exportMessage = "Packing unmixed multi-track stems archive..."; notifyListeners();
+    try {
+      Archive arch = Archive();
+      cachedStemBytes.forEach((k, v) => arch.addFile(ArchiveFile('${projectName}_stem_$k.ogg', v.length, v)));
+      Uint8List zip = Uint8List.fromList(ZipEncoder().encode(arch)!);
+      await FileSaver.instance.saveAs(name: "${projectName}_stems", bytes: zip, fileExtension: 'zip', mimeType: MimeType.zip);
+      if (onShowMessage != null) onShowMessage!("All tracks exported successfully as unmixed multi-track stems.");
+    } catch (e) { 
+      if (onShowMessage != null) onShowMessage!("Stem tree generation failed: $e"); 
+    } finally {
+      isExporting = false; notifyListeners();
+    }
+  }
+
+  Future<void> exportSynthAudio() async {
+    if (rawNotes.isEmpty) return;
+    isSynthRendering = true; synthMessage = "Rendering synth audio..."; notifyListeners();
+
+    try {
+      final Uint8List wavBytes = renderNotesToWavBytes(
+        notes: rawNotes,
+        duration: songDuration,
+        settings: synthSettings,
+      );
+
+      String defaultName = originalFileName.contains('.')
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : (originalFileName.isNotEmpty ? originalFileName : projectName);
+      defaultName = '${defaultName}_synth';
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(name: defaultName, bytes: wavBytes, fileExtension: 'wav', mimeType: MimeType.custom, customMimeType: 'audio/wav');
+        if (onShowMessage != null) onShowMessage!('Synth audio exported as WAV.');
+      } else {
+        String? path = await FileSaver.instance.saveAs(name: defaultName, bytes: wavBytes, fileExtension: 'wav', mimeType: MimeType.custom, customMimeType: 'audio/wav');
+        if (path != null && path.isNotEmpty) {
+          if (onShowMessage != null) onShowMessage!('Synth audio exported as WAV.');
+        } else {
+          if (onShowMessage != null) onShowMessage!('Export cancelled.');
+        }
+      }
+    } catch (e) {
+      if (onShowMessage != null) onShowMessage!('Synth export failed: $e');
+    } finally {
+      isSynthRendering = false; synthMessage = ''; notifyListeners();
+    }
+  }
+
+  Future<void> downloadDossier() async {
+    if (rawNotes.isEmpty) return;
+    isExporting = true; exportMessage = "Generating dossier PDF..."; notifyListeners();
+
+    try {
+      var result = await VoxrayApi.generateDossier(
+        taskId: currentTaskId ?? '',
+        enrichedNotes: _enrichManifestWithPolyphonicContext(rawNotes),
+        sessionMeta: {
+          'filename': originalFileName,
+          'duration': songDuration,
+          'stem_target': activeEditableStem,
+          'xray_enabled': rawNotes.any((n) => n.containsKey('contour')),
+          'version': '1.5.0',
+        },
+      );
+
+      if (result['status'] == 'success') {
+        final Uint8List bytes = base64Decode(result['pdf_b64']);
+        String saveName = originalFileName.contains('.')
+            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+            : originalFileName;
+
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(name: '${saveName}_dossier', bytes: bytes, fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
+        } else {
+          String? path = await FileSaver.instance.saveAs(name: '${saveName}_dossier', bytes: bytes, fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
+          if (path != null && path.isNotEmpty) {
+            if (onShowMessage != null) onShowMessage!('Dossier saved successfully.');
+          } else {
+            if (onShowMessage != null) onShowMessage!('Save cancelled.');
+          }
+        }
+      }
+    } catch (e) {
+      if (onShowMessage != null) onShowMessage!('Dossier generation failed: $e');
+    } finally {
+      isExporting = false; exportMessage = ''; notifyListeners();
+    }
+  }
+
+  Future<void> downloadPitchPrint({required bool fullSong, required String format}) async {
+    if (rawNotes.isEmpty) return;
+    isExporting = true; exportMessage = "Generating PitchPrint™..."; notifyListeners();
+
+    double visibleStart = 0.0;
+    double visibleEnd = songDuration;
+
+    try {
+      var result = await VoxrayApi.generatePitchPrint(
+        taskId: currentTaskId ?? '',
+        enrichedNotes: _enrichManifestWithPolyphonicContext(rawNotes),
+        fullSong: fullSong,
+        visibleStart: visibleStart,
+        visibleEnd: visibleEnd,
+        songDuration: songDuration,
+      );
+
+      if (result['status'] == 'success') {
+        final Uint8List bytes = base64Decode(result['svg_b64']);
+        String saveName = originalFileName.contains('.')
+            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+            : originalFileName;
+
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(name: '${saveName}_pitchprint', bytes: bytes, fileExtension: 'svg', mimeType: MimeType.custom, customMimeType: 'image/svg+xml');
+        } else {
+          String? path = await FileSaver.instance.saveAs(name: '${saveName}_pitchprint', bytes: bytes, fileExtension: 'svg', mimeType: MimeType.custom, customMimeType: 'image/svg+xml');
+          if (path != null && path.isNotEmpty) {
+            if (onShowMessage != null) onShowMessage!('PitchPrint™ saved successfully.');
+          } else {
+            if (onShowMessage != null) onShowMessage!('Save cancelled.');
+          }
+        }
+      }
+    } catch (e) {
+      if (onShowMessage != null) onShowMessage!('PitchPrint™ generation failed: $e');
     } finally {
       isExporting = false; exportMessage = ''; notifyListeners();
     }
