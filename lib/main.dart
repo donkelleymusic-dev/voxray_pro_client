@@ -396,14 +396,24 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => zoomX = newZoom);
       return;
     }
-    double viewportCenterX = horizontalScrollController.position.pixels + (horizontalScrollController.position.viewportDimension / 2);
-    double centerTime = viewportCenterX / zoomX;
+    
+    double oldZoom = zoomX;
+    double viewportWidth = horizontalScrollController.position.viewportDimension;
+    double currentPixels = horizontalScrollController.position.pixels;
+    
+    double centerTime = (currentPixels + (viewportWidth / 2)) / oldZoom;
+    double newScrollX = (centerTime * newZoom) - (viewportWidth / 2);
     
     setState(() => zoomX = newZoom);
     
+    horizontalScrollController.jumpTo(math.max(0.0, newScrollX));
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      double newScrollX = (centerTime * zoomX) - (horizontalScrollController.position.viewportDimension / 2);
-      horizontalScrollController.jumpTo(newScrollX.clamp(0.0, horizontalScrollController.position.maxScrollExtent));
+      if (horizontalScrollController.hasClients) {
+        horizontalScrollController.jumpTo(
+          newScrollX.clamp(0.0, horizontalScrollController.position.maxScrollExtent)
+        );
+      }
     });
   }
 
@@ -412,14 +422,24 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() => zoomY = newZoom);
       return;
     }
-    double viewportCenterY = verticalScrollController.position.pixels + (verticalScrollController.position.viewportDimension / 2);
-    double centerMidi = maxMidi - (viewportCenterY / zoomY);
+    
+    double oldZoom = zoomY;
+    double viewportHeight = verticalScrollController.position.viewportDimension;
+    double currentPixels = verticalScrollController.position.pixels;
+    
+    double centerMidi = maxMidi - ((currentPixels + (viewportHeight / 2) - (oldZoom / 2)) / oldZoom);
+    double newScrollY = ((maxMidi - centerMidi) * newZoom) + (newZoom / 2) - (viewportHeight / 2);
     
     setState(() => zoomY = newZoom);
     
+    verticalScrollController.jumpTo(math.max(0.0, newScrollY));
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      double newScrollY = ((maxMidi - centerMidi) * zoomY) + (zoomY / 2) - (verticalScrollController.position.viewportDimension / 2);
-      verticalScrollController.jumpTo(newScrollY.clamp(0.0, verticalScrollController.position.maxScrollExtent));
+      if (verticalScrollController.hasClients) {
+        verticalScrollController.jumpTo(
+          newScrollY.clamp(0.0, verticalScrollController.position.maxScrollExtent)
+        );
+      }
     });
   }
 
@@ -713,7 +733,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             ),
             actions: [
                TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
-               ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent), onPressed: () => Navigator.pop(ctx, selected), child: const Text("Import", style: TextStyle(color: Colors.black))),
+               ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent), onPressed: () => Navigator.pop(ctx, selected), child: const Text("Import", style: Colors.black))),
             ],
           );
         });
@@ -1078,15 +1098,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     try {
       if (currentTaskId == null) {
-        // --- IMPROVED DEBUG LOOKUP ---
         String lookupKey = activeEditableStem.toLowerCase().trim();
         bool found = false;
         
-        // Check for loose match
         for (String key in cachedStemBytes.keys) {
             if (key.toLowerCase().trim() == lookupKey) {
                 found = true;
-                activeEditableStem = key; // Sync the key
+                activeEditableStem = key; 
                 break;
             }
         }
@@ -1332,6 +1350,30 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     setState(() { isPreviewing = true; exportMessage = "Queueing edits via Server..."; processingProgress = 0.0; });
 
     try {
+      // --- NEW LOGIC: Re-establish server session if offline ---
+      if (currentTaskId == null) {
+        if (!cachedStemBytes.containsKey(activeEditableStem)) {
+           throw Exception("Audio data not found in cache.");
+        }
+        
+        _showSaveConfirmation('Establishing new server session for Preview...');
+
+        var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+          ..fields['upload_type'] = 'stem'
+          ..fields['stem_target'] = activeEditableStem
+          ..fields['instruments_json'] = jsonEncode([activeEditableStem])
+          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[activeEditableStem]!, filename: '${activeEditableStem}_offline.ogg'));
+        
+        var sessionRes = await sessionReq.send();
+        if (sessionRes.statusCode == 200) {
+          var sessionData = jsonDecode(await sessionRes.stream.bytesToString());
+          currentTaskId = sessionData['task_id'];
+        } else {
+          throw Exception("Could not establish background server session.");
+        }
+      }
+      // ---------------------------------------------------------
+
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['edit_manifest'] = jsonEncode({
           'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
@@ -1339,7 +1381,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           'solo_stem': activeEditableStem,
           'processing_mode': processingMode
         })
-        ..fields['task_id'] = currentTaskId ?? ''
+        ..fields['task_id'] = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
@@ -1402,6 +1444,30 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     setState(() { isPreviewing = true; exportMessage = "Rendering plugins for $stem..."; processingProgress = 0.0; });
 
     try {
+      // --- NEW LOGIC: Re-establish server session if offline ---
+      if (currentTaskId == null) {
+        if (!cachedStemBytes.containsKey(stem)) {
+           throw Exception("Audio data not found in cache.");
+        }
+        
+        _showSaveConfirmation('Establishing new server session for Plugin Render...');
+
+        var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+          ..fields['upload_type'] = 'stem'
+          ..fields['stem_target'] = stem
+          ..fields['instruments_json'] = jsonEncode([stem])
+          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[stem]!, filename: '${stem}_offline.ogg'));
+        
+        var sessionRes = await sessionReq.send();
+        if (sessionRes.statusCode == 200) {
+          var sessionData = jsonDecode(await sessionRes.stream.bytesToString());
+          currentTaskId = sessionData['task_id'];
+        } else {
+          throw Exception("Could not establish background server session.");
+        }
+      }
+      // ---------------------------------------------------------
+
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['edit_manifest'] = jsonEncode({
           'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
@@ -1409,7 +1475,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           'solo_stem': stem,
           'processing_mode': processingMode
         })
-        ..fields['task_id'] = currentTaskId ?? ''
+        ..fields['task_id'] = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
@@ -1512,13 +1578,38 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
 
     try {
+      // --- NEW LOGIC: Re-establish server session if offline ---
+      if (currentTaskId == null) {
+        String lookupStem = activeEditableStem.isNotEmpty ? activeEditableStem : (cachedStemBytes.isNotEmpty ? cachedStemBytes.keys.first : '');
+        if (lookupStem.isEmpty || !cachedStemBytes.containsKey(lookupStem)) {
+           throw Exception("No valid track state found in cache to generate fallback export context.");
+        }
+        
+        _showSaveConfirmation('Establishing server architecture link for Master Mix...');
+
+        var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+          ..fields['upload_type'] = 'stem'
+          ..fields['stem_target'] = lookupStem
+          ..fields['instruments_json'] = jsonEncode([lookupStem])
+          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[lookupStem]!, filename: '${lookupStem}_offline.ogg'));
+        
+        var sessionRes = await sessionReq.send();
+        if (sessionRes.statusCode == 200) {
+          var sessionData = jsonDecode(await sessionRes.stream.bytesToString());
+          currentTaskId = sessionData['task_id'];
+        } else {
+          throw Exception("Could not build a backend framework pipeline target session.");
+        }
+      }
+      // ---------------------------------------------------------
+
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['edit_manifest'] = json.encode({
           "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
           "all_stems_notes": enrichedStemsNotesMap,
           "processing_mode": processingMode
         })
-        ..fields['task_id'] = currentTaskId ?? '' 
+        ..fields['task_id'] = currentTaskId!
         ..fields['export_format'] = format 
         ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
@@ -1675,7 +1766,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         throw Exception("Server error ${responseData.statusCode}");
       }
 
-      var result = jsonDecode(responseData.body);
+      var result = jsonDecode(result);
       if (result['status'] == 'success') {
         final Uint8List bytes = base64Decode(result['svg_b64']);
         String saveName = originalFileName.contains('.')
@@ -3047,7 +3138,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           message: "Preview pitch/DSP edits",
                           child: IconButton(
                             icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 24),
-                            // Button only active if there are un-previewed changes on the current active stem
                             onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem)) ? _renderStemEdits : null,
                           ),
                         ),
