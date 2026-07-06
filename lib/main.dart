@@ -1741,11 +1741,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   Future<void> _loadVoxrayProject() async {
-    FilePickerResult? result = await FilePicker.pickFiles(
+    // UPDATED: Explicitly set allowedExtensions and type
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom, 
-      allowedExtensions: ['vxp'],
+      allowedExtensions: ['vxp'], 
       withData: true,
     );
+    
     if (result == null) return;
     
     pauseAllPlayers();
@@ -1860,13 +1862,19 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     if (originalAudioBytes != null && isOriginalMixAvailable) {
        activePlaybackSources.add('original');
-       masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
-       masterHandle = SoLoud.instance.play(masterSource!, paused: true);
-       
-       ChannelState origState = getChannelState('original');
-       SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
-       SoLoud.instance.setPan(masterHandle!, origState.pan);
+       try {
+         masterSource = await SoLoud.instance.loadMem("master", originalAudioBytes!);
+         masterHandle = SoLoud.instance.play(masterSource!, paused: true);
+         
+         ChannelState origState = getChannelState('original');
+         SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
+         SoLoud.instance.setPan(masterHandle!, origState.pan);
+       } catch (e) {
+         debugPrint("Offline master preview load failed (unsupported format): $e");
+         _showSaveConfirmation("Warning: Original mix format unsupported by local player. Muted.");
+       }
     }
+
 
     for (String stem in generatedStems) {
        if (cachedStemBytes.containsKey(stem)) {
