@@ -234,8 +234,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   double zoomX = 50.0;
   double zoomY = 8.0;
   
-  final int minMidi = 36;
-  final int maxMidi = 84;
+  // FIXED: Adjusted MIDI constraints to match 88-key piano boundaries (A0 to C8)
+  final int minMidi = 21;
+  final int maxMidi = 108;
 
   bool isScrubMode = true;
   DragMode currentDragMode = DragMode.off;
@@ -3138,6 +3139,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           message: "Preview pitch/DSP edits",
                           child: IconButton(
                             icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 24),
+                            // Button only active if there are un-previewed changes on the current active stem
                             onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem)) ? _renderStemEdits : null,
                           ),
                         ),
@@ -3173,7 +3175,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             }).toList(),
                             onChanged: (String? newSelection) {
                               if (newSelection != null && newSelection != activeEditableStem) {
-                                setState(() => activeEditableStem = newSelection);
+                                // FIXED: Evaluate new stem's X-Ray state dynamically when dropdown changes
+                                setState(() {
+                                    activeEditableStem = newSelection;
+                                    isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
+                                });
                                 
                                 if (!generatedStems.contains(newSelection) && 
                                     originalAudioBytes != null && 
