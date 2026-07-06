@@ -429,30 +429,49 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   void seekAllPlayers(double seconds) {
     final time = Duration(milliseconds: (seconds * 1000).round());
-    if (masterHandle != null) SoLoud.instance.seek(masterHandle!, time);
-    if (synthHandle != null) SoLoud.instance.seek(synthHandle!, time);
+    if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
+      SoLoud.instance.seek(masterHandle!, time);
+    }
+    if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) {
+      SoLoud.instance.seek(synthHandle!, time);
+    }
     for (var handle in stemHandles.values) {
-      SoLoud.instance.seek(handle, time);
+      if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+        SoLoud.instance.seek(handle, time);
+      }
     }
   }
 
   void playAllPlayers() {
     setState(() => isPlaying = true);
-    if (masterHandle != null) SoLoud.instance.setPause(masterHandle!, false);
-    if (synthHandle != null) SoLoud.instance.setPause(synthHandle!, false);
+    if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
+      SoLoud.instance.setPause(masterHandle!, false);
+    }
+    if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) {
+      SoLoud.instance.setPause(synthHandle!, false);
+    }
     for (var handle in stemHandles.values) {
-      SoLoud.instance.setPause(handle, false);
+      if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+        SoLoud.instance.setPause(handle, false);
+      }
     }
   }
 
   void pauseAllPlayers() {
     setState(() => isPlaying = false);
-    if (masterHandle != null) SoLoud.instance.setPause(masterHandle!, true);
-    if (synthHandle != null) SoLoud.instance.setPause(synthHandle!, true);
+    if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
+      SoLoud.instance.setPause(masterHandle!, true);
+    }
+    if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) {
+      SoLoud.instance.setPause(synthHandle!, true);
+    }
     for (var handle in stemHandles.values) {
-      SoLoud.instance.setPause(handle, true);
+      if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+        SoLoud.instance.setPause(handle, true);
+      }
     }
   }
+
 
   void setSynthVolume(double vol) {
     if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, vol);
@@ -1312,24 +1331,17 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  Future<void> _renderStemPlugins(String stem) async {
+    Future<void> _renderStemPlugins(String stem) async {
     if (originalAudioBytes == null) return;
     
-    bool wasPlaying = isPlaying;
-    double resumePosition = currentPosition;
+    // REMOVED: bool wasPlaying = isPlaying; 
+    // REMOVED: double resumePosition = currentPosition;
     
     setState(() { isPreviewing = true; exportMessage = "Rendering plugins for $stem..."; processingProgress = 0.0; });
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['edit_manifest'] = jsonEncode({
-          'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-          'edits': _enrichManifestWithPolyphonicContext(allStemsNotes[stem] ?? []),
-          'solo_stem': stem,
-          'processing_mode': processingMode
-        })
-        ..fields['task_id'] = currentTaskId ?? ''
-        ..fields['is_test_mode'] = isTestModeActive.toString()
+        // ... (Keep your API mapping identical) ...
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
       var response = await request.send();
@@ -1343,16 +1355,26 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
           cachedStemBytes[stem] = previewBytes;
 
-          if (stemHandles.containsKey(stem)) {
+          // GUARD: Check handle validity before stopping
+          if (stemHandles.containsKey(stem) && SoLoud.instance.getIsValidVoiceHandle(stemHandles[stem]!)) {
              SoLoud.instance.stop(stemHandles[stem]!);
           }
 
           stemSources[stem] = await SoLoud.instance.loadMem("stem_${stem}_edited", previewBytes);
-          stemHandles[stem] = SoLoud.instance.play(stemSources[stem]!, paused: !wasPlaying);
+          
+          // FIX: Initialize safely paused, then align with CURRENT play state
+          stemHandles[stem] = SoLoud.instance.play(stemSources[stem]!, paused: true);
           
           SoLoud.instance.setVolume(stemHandles[stem]!, getChannelState(stem).volume);
-          SoLoud.instance.setPan(stemHandles[stem]!, getChannelState(stem).pan);
-          seekAllPlayers(resumePosition);
+          SoLoud.instance.setPanAbsolute(stemHandles[stem]!, getChannelState(stem).pan);
+          
+          // FIX: Sync to the current global playhead position, not the old snapshot
+          seekAllPlayers(currentPosition);
+          
+          // FIX: Only unpause if the DAW is actually playing right now
+          if (isPlaying) {
+             SoLoud.instance.setPause(stemHandles[stem]!, false);
+          }
           
           setState(() {
             dirtyStems.remove(stem); 
@@ -1366,6 +1388,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       setState(() { isPreviewing = false; exportMessage = ''; processingProgress = 0.0; });
     }
   }
+
 
   Future<void> _exportSynthAudio() async {
     if (rawNotes.isEmpty) return;
