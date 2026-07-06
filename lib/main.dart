@@ -1366,7 +1366,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           stemHandles[stem] = SoLoud.instance.play(stemSources[stem]!, paused: true);
           
           SoLoud.instance.setVolume(stemHandles[stem]!, getChannelState(stem).volume);
-          SoLoud.instance.setPanAbsolute(stemHandles[stem]!, getChannelState(stem).pan);
+          SoLoud.instance.setPan(stemHandles[stem]!, getChannelState(stem).pan);
           
           // FIX: Sync to the current global playhead position, not the old snapshot
           seekAllPlayers(currentPosition);
