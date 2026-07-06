@@ -2066,15 +2066,17 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 dirtyStems.add(key);
                                 if (state.isMuted) return;
                                 
-                                if (key == 'master') {
-                                  SoLoud.instance.setGlobalVolume(v);
-                                } else if (key == 'original') {
-                                  if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v);
-                                } else if (key == 'synth') {
-                                  if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, v);
-                                } else if (stemHandles.containsKey(key)) {
-                                  SoLoud.instance.setVolume(stemHandles[key]!, v);
-                                }
+// Volume Slider Fix
+if (key == 'master') {
+  SoLoud.instance.setGlobalVolume(v);
+} else if (key == 'original') {
+  if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setVolume(masterHandle!, v);
+} else if (key == 'synth') {
+  if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setVolume(synthHandle!, v);
+} else if (stemHandles.containsKey(key)) {
+  if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setVolume(stemHandles[key]!, v);
+}
+
                               }
                             ),
                           ),
@@ -2103,20 +2105,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               setMixerState(() => state.pan = v);
                               dirtyStems.add(key);
                               
-                              if (key == 'master') {
-                                // Pan applied to all active stems when adjusting Master track pan
-                                if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
-                                if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
-                                for (var handle in stemHandles.values) {
-                                  SoLoud.instance.setPan(handle, v);
-                                }
-                              } else if (key == 'original') {
-                                if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
-                              } else if (key == 'synth') {
-                                if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
-                              } else if (stemHandles.containsKey(key)) {
-                                SoLoud.instance.setPan(stemHandles[key]!, v);
-                              }
+                              // Pan Slider Fix
+if (key == 'master') {
+  if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setPanAbsolute(masterHandle!, v);
+  if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setPanAbsolute(synthHandle!, v);
+  for (var handle in stemHandles.values) {
+    if (SoLoud.instance.getIsValidVoiceHandle(handle)) SoLoud.instance.setPanAbsolute(handle, v);
+  }
+} else if (key == 'original') {
+  if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setPanAbsolute(masterHandle!, v);
+} else if (key == 'synth') {
+  if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setPanAbsolute(synthHandle!, v);
+} else if (stemHandles.containsKey(key)) {
+  if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPanAbsolute(stemHandles[key]!, v);
+}
                             }
                           ),
                         ),
