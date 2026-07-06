@@ -1289,7 +1289,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
         cachedStemBytes[activeEditableStem] = previewBytes;
 
-        if (stemHandles.containsKey(activeEditableStem)) {
+                if (stemHandles.containsKey(activeEditableStem) && SoLoud.instance.getIsValidVoiceHandle(stemHandles[activeEditableStem]!)) {
           SoLoud.instance.stop(stemHandles[activeEditableStem]!);
         }
 
@@ -1297,8 +1297,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
         
         SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
-        SoLoud.instance.setPan(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
-        seekAllPlayers(resumePosition);
+        SoLoud.instance.setPanAbsolute(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
+        
+        seekAllPlayers(currentPosition);
+        if (isPlaying) {
+           SoLoud.instance.setPause(stemHandles[activeEditableStem]!, false);
+        }
+
         
         if (!activePlaybackSources.contains(activeEditableStem)) {
            setState(() { activePlaybackSources.add(activeEditableStem); });
@@ -1308,18 +1313,15 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           dirtyStems.remove(activeEditableStem); 
         });
 
-        if (wasPlaying) {
-          playAllPlayers();
+        if (isPlaying) {
           _showSaveConfirmation('Edits applied to ${activeEditableStem.toUpperCase()} stem.', isPreview: true);
         } else {
           _showSaveConfirmation('Stem updated — tap Play to hear edits.', isPreview: true);
         }
       } else {
-        if (wasPlaying) playAllPlayers();
         _showSaveConfirmation('Render failed: ${result['message'] ?? 'unknown error'}');
       }
     } catch (e) {
-      if (wasPlaying) playAllPlayers();
       debugPrint("Stem render failed: $e");
       _showSaveConfirmation('Render failed: $e');
     } finally {
