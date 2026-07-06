@@ -204,7 +204,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-
   final List<String> popStems = ['vocals', 'instrumental', 'drums', 'bass', 'guitar', 'piano', 'other'];
   final List<String> orchStems = ['violin', 'cello', 'contrabass', 'flute', 'oboe', 'bassoon', 'trumpet', 'trombone', 'tuba', 'percussion', 'orchestral'];
   final List<String> forensicStems = ['forensic_id'];
@@ -362,6 +361,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         redoStack.clear();
         cachedStemBytes.remove(activeEditableStem);
         dirtyStems.add(activeEditableStem); 
+        hasBeenSaved = false; 
       });
     }
   }
@@ -472,7 +472,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-
   void setSynthVolume(double vol) {
     if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, vol);
   }
@@ -532,7 +531,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   // ============================================================
   // CORE API WORKFLOWS
   // ============================================================
-
   
   Future<void> _requestSnippetSplice(Map<String, dynamic> modifiedNote) async {
     if (activeEditableStem.isEmpty) return;
@@ -1015,7 +1013,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     });
 
     try {
-      // --- NEW LOGIC: Re-establish server session if offline ---
       if (currentTaskId == null) {
         if (!cachedStemBytes.containsKey(activeEditableStem)) {
            throw Exception("Audio data not found in cache.");
@@ -1037,7 +1034,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           throw Exception("Could not establish background server session.");
         }
       }
-      // ---------------------------------------------------------
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
@@ -1067,7 +1063,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-
   Future<void> _toggleXrayMode() async {
     if (rawNotes.isEmpty) return;
     
@@ -1082,7 +1077,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     setState(() { isXrayProcessing = true; isXrayMode = true; });
 
     try {
-      // --- NEW LOGIC: Re-establish server session if offline ---
       if (currentTaskId == null) {
         if (!cachedStemBytes.containsKey(activeEditableStem)) {
           _showSaveConfirmation('Missing audio data. Cannot process X-Ray.');
@@ -1107,7 +1101,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
           throw Exception("Could not establish background server session.");
         }
       }
-      // ---------------------------------------------------------
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
@@ -1137,7 +1130,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
   }
-
 
   Future<Uint8List> _fetchStemBytes(String stemName) async {
     if (currentTaskId == null) throw Exception("No active session");
@@ -1390,7 +1382,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-    Future<void> _renderStemPlugins(String stem) async {
+  Future<void> _renderStemPlugins(String stem) async {
     if (originalAudioBytes == null) return;
     
     setState(() { isPreviewing = true; exportMessage = "Rendering plugins for $stem..."; processingProgress = 0.0; });
@@ -1767,7 +1759,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         name: defaultSaveName,
         bytes: bytes,
         fileExtension: 'vxp',
-        mimeType: MimeType.zip,
+        mimeType: MimeType.custom,
+        customMimeType: 'application/octet-stream',
       );
 	  if (path != null && path.isNotEmpty) {
         setState(() {
@@ -1786,7 +1779,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   Future<void> _loadVoxrayProject() async {
-    // UPDATED: Explicitly set allowedExtensions and type
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom, 
       allowedExtensions: ['vxp'], 
@@ -1794,8 +1786,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     );
     
     if (result == null) return;
-
-    // --- NEW LOGIC: Enforce .vxp extension manually ---
+    
     String fileName = result.files.single.name.toLowerCase();
     if (!fileName.endsWith('.vxp')) {
       _showSaveConfirmation("Invalid format: Please select a valid Voxray (.vxp) project archive.");
@@ -1927,7 +1918,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
        }
     }
 
-
     for (String stem in generatedStems) {
        if (cachedStemBytes.containsKey(stem)) {
           activePlaybackSources.add(stem); 
@@ -1995,6 +1985,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         if (!SoLoud.instance.filters.freeverbFilter.isActive) {
           SoLoud.instance.filters.freeverbFilter.activate();
         }
+      } else {
+        if (SoLoud.instance.filters.freeverbFilter.isActive) {
+          SoLoud.instance.filters.freeverbFilter.deactivate();
+        }
       } 
       if (plugins.contains('EQ')) {
         //if (!SoLoud.instance.filters.eqFilter.isActive) {
@@ -2004,6 +1998,10 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       if (plugins.contains('Compressor')) {
         if (!SoLoud.instance.filters.compressorFilter.isActive) {
           SoLoud.instance.filters.compressorFilter.activate();
+        }
+      } else {
+        if (SoLoud.instance.filters.compressorFilter.isActive) {
+          SoLoud.instance.filters.compressorFilter.deactivate();
         }
       }
     } catch (e) {
@@ -2070,7 +2068,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       _pluginDropdown(state.plugin1, highlight, (val) {
                          if(state.plugin1 != val) {
                              setMixerState(() => state.plugin1 = val!);
-                             dirtyStems.add(key); 
+                             this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                              if (!isMaster) _renderStemPlugins(key);
                              else _applyMasterPlugins();
                          }
@@ -2078,7 +2076,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       _pluginDropdown(state.plugin2, highlight, (val) {
                          if(state.plugin2 != val) {
                              setMixerState(() => state.plugin2 = val!);
-                             dirtyStems.add(key);
+                             this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                              if (!isMaster) _renderStemPlugins(key);
                              else _applyMasterPlugins();
                          }
@@ -2086,7 +2084,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       _pluginDropdown(state.plugin3, highlight, (val) {
                          if(state.plugin3 != val) {
                              setMixerState(() => state.plugin3 = val!);
-                             dirtyStems.add(key);
+                             this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                              if (!isMaster) _renderStemPlugins(key);
                              else _applyMasterPlugins();
                          }
@@ -2094,7 +2092,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                       _pluginDropdown(state.plugin4, highlight, (val) {
                          if(state.plugin4 != val) {
                              setMixerState(() => state.plugin4 = val!);
-                             dirtyStems.add(key);
+                             this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                              if (!isMaster) _renderStemPlugins(key);
                              else _applyMasterPlugins();
                          }
@@ -2109,7 +2107,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                           icon: Icon(state.isMuted ? Icons.volume_off : Icons.volume_up, color: !state.isMuted ? highlight : Colors.white38, size: 18),
                           onPressed: () {
                             setMixerState(() => state.isMuted = !state.isMuted);
-                            dirtyStems.add(key);
+                            this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                             
                             double targetVol = state.isMuted ? 0.0 : state.volume;
                             if (key == 'original') {
@@ -2140,7 +2138,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                               max: 1.5, 
                               onChanged: (v) {
                                 setMixerState(() => state.volume = v);
-                                dirtyStems.add(key);
+                                this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                                 if (state.isMuted) return;
                                 
                                 // Volume Slider Fix
@@ -2179,7 +2177,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                             max: 1.0, 
                             onChanged: (v) {
                               setMixerState(() => state.pan = v);
-                              dirtyStems.add(key);
+                              this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                               
                               // Pan Slider Fix
                               if (key == 'master') {
@@ -2778,8 +2776,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: isPreview ? Colors.deepPurple[800] : Colors.grey[800],
+        content: Text(message, style: TextStyle(color: isPreview ? Colors.white : Colors.orange)),
+        backgroundColor: isPreview ? Colors.deepPurple[800] : Colors.black,
         duration: Duration(seconds: isPreview ? 6 : 4),
         action: isPreview
             ? SnackBarAction(
@@ -2863,7 +2861,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   List<PopupMenuEntry<String>> _buildMainMenu() {
-    bool canSave = isProjectLoaded && (!hasBeenSaved || dirtyStems.isNotEmpty);
+    bool canSave = isProjectLoaded && (!hasBeenSaved || dirtyStems.isNotEmpty || undoStack.isNotEmpty);
+    bool canSaveAs = isProjectLoaded;
 
     return [
       const PopupMenuItem(value: 'new_project', child: ListTile(leading: Icon(Icons.insert_drive_file, color: Colors.redAccent), title: Text('New Project'))),
@@ -2874,7 +2873,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       const PopupMenuDivider(),
       const PopupMenuItem(value: 'load', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Load Project'))),
       PopupMenuItem(value: 'save', enabled: canSave, child: ListTile(leading: Icon(Icons.save, color: canSave ? Colors.blueAccent : Colors.white38), title: Text('Save Project (Overwrite)', style: TextStyle(color: canSave ? Colors.white : Colors.white38)))),
-      PopupMenuItem(value: 'save_as', enabled: canSave, child: ListTile(leading: Icon(Icons.save_as, color: canSave ? Colors.white : Colors.white38), title: Text('Save Project As...', style: TextStyle(color: canSave ? Colors.white : Colors.white38)))),
+      PopupMenuItem(value: 'save_as', enabled: canSaveAs, child: ListTile(leading: Icon(Icons.save_as, color: canSaveAs ? Colors.white : Colors.white38), title: Text('Save Project As...', style: TextStyle(color: canSaveAs ? Colors.white : Colors.white38)))),
       const PopupMenuDivider(),
       PopupMenuItem(
         value: 'processing_mode', 
