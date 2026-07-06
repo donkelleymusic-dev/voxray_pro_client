@@ -881,7 +881,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               stemNotes = json.decode(json.encode(allStemsMap[targetStem]));
             } else {
               stemNotes = json.decode(json.encode(result['notes'] ?? []));
-              stemNotes = json.decode(json.encode(result['notes'] ?? []));
             }
 
             setState(() {
@@ -1289,7 +1288,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
         cachedStemBytes[activeEditableStem] = previewBytes;
 
-                if (stemHandles.containsKey(activeEditableStem) && SoLoud.instance.getIsValidVoiceHandle(stemHandles[activeEditableStem]!)) {
+        if (stemHandles.containsKey(activeEditableStem) && SoLoud.instance.getIsValidVoiceHandle(stemHandles[activeEditableStem]!)) {
           SoLoud.instance.stop(stemHandles[activeEditableStem]!);
         }
 
@@ -1297,14 +1296,13 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         stemHandles[activeEditableStem] = SoLoud.instance.play(stemSources[activeEditableStem]!, paused: true);
         
         SoLoud.instance.setVolume(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).volume);
-        SoLoud.instance.setPanAbsolute(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
+        SoLoud.instance.setPan(stemHandles[activeEditableStem]!, getChannelState(activeEditableStem).pan);
         
         seekAllPlayers(currentPosition);
         if (isPlaying) {
-           SoLoud.instance.setPause(stemHandles[activeEditableStem]!, false);
+          SoLoud.instance.setPause(stemHandles[activeEditableStem]!, false);
         }
 
-        
         if (!activePlaybackSources.contains(activeEditableStem)) {
            setState(() { activePlaybackSources.add(activeEditableStem); });
         }
@@ -2066,17 +2064,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                                 dirtyStems.add(key);
                                 if (state.isMuted) return;
                                 
-// Volume Slider Fix
-if (key == 'master') {
-  SoLoud.instance.setGlobalVolume(v);
-} else if (key == 'original') {
-  if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setVolume(masterHandle!, v);
-} else if (key == 'synth') {
-  if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setVolume(synthHandle!, v);
-} else if (stemHandles.containsKey(key)) {
-  if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setVolume(stemHandles[key]!, v);
-}
-
+                                // Volume Slider Fix
+                                if (key == 'master') {
+                                  SoLoud.instance.setGlobalVolume(v);
+                                } else if (key == 'original') {
+                                  if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setVolume(masterHandle!, v);
+                                } else if (key == 'synth') {
+                                  if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setVolume(synthHandle!, v);
+                                } else if (stemHandles.containsKey(key)) {
+                                  if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setVolume(stemHandles[key]!, v);
+                                }
                               }
                             ),
                           ),
@@ -2106,19 +2103,19 @@ if (key == 'master') {
                               dirtyStems.add(key);
                               
                               // Pan Slider Fix
-if (key == 'master') {
-  if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setPanAbsolute(masterHandle!, v);
-  if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setPanAbsolute(synthHandle!, v);
-  for (var handle in stemHandles.values) {
-    if (SoLoud.instance.getIsValidVoiceHandle(handle)) SoLoud.instance.setPanAbsolute(handle, v);
-  }
-} else if (key == 'original') {
-  if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setPanAbsolute(masterHandle!, v);
-} else if (key == 'synth') {
-  if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setPanAbsolute(synthHandle!, v);
-} else if (stemHandles.containsKey(key)) {
-  if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPanAbsolute(stemHandles[key]!, v);
-}
+                              if (key == 'master') {
+                                if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setPan(masterHandle!, v);
+                                if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setPan(synthHandle!, v);
+                                for (var handle in stemHandles.values) {
+                                  if (SoLoud.instance.getIsValidVoiceHandle(handle)) SoLoud.instance.setPan(handle, v);
+                                }
+                              } else if (key == 'original') {
+                                if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) SoLoud.instance.setPan(masterHandle!, v);
+                              } else if (key == 'synth') {
+                                if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) SoLoud.instance.setPan(synthHandle!, v);
+                              } else if (stemHandles.containsKey(key)) {
+                                if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, v);
+                              }
                             }
                           ),
                         ),
