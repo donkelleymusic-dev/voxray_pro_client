@@ -478,19 +478,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
   }
 
-  void playAllPlayers() async {
+  void playAllPlayers() {
     setState(() => isPlaying = true);
 
     // Helper to resurrect dead handles (since SoLoud destroys them at the end of a track)
-    Future<SoundHandle?> revive(SoundHandle? handle, AudioSource? source, String key) async {
+    // Removed async/await since SoLoud.instance.play is synchronous.
+    SoundHandle? revive(SoundHandle? handle, AudioSource? source, String key) {
       if (source == null) return handle;
       
       if (handle != null && SoLoud.instance.getIsValidVoiceHandle(handle)) {
         SoLoud.instance.setPause(handle, false);
         return handle;
       } else {
-        // Handle died. Re-play from the AudioSource currently in memory.
-        final newHandle = await SoLoud.instance.play(source, paused: true);
+        // Handle died. Re-play from the AudioSource currently in memory synchronously.
+        final newHandle = SoLoud.instance.play(source, paused: true);
         final state = getChannelState(key);
         
         SoLoud.instance.setVolume(newHandle, state.isMuted ? 0.0 : state.volume);
@@ -502,11 +503,11 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
     }
 
-    masterHandle = await revive(masterHandle, masterSource, 'original');
-    synthHandle = await revive(synthHandle, synthSource, 'synth');
+    masterHandle = revive(masterHandle, masterSource, 'original');
+    synthHandle = revive(synthHandle, synthSource, 'synth');
     
     for (String key in stemSources.keys) {
-      stemHandles[key] = (await revive(stemHandles[key], stemSources[key], key))!;
+      stemHandles[key] = revive(stemHandles[key], stemSources[key], key)!;
     }
   }
 
@@ -949,11 +950,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
                  int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
                  if (endIdx != -1) markers[endIdx]['time'] = songDuration;
               }
-              isLoading = false;
-              processingMessage = '';
+              // FIX: Update message and keep the loading bar active
+              processingMessage = "Downloading audio for ${targetStem.toUpperCase()}...";
             });
 
-            _loadStemPlayerSource(targetStem);
+            // FIX: Wait for the audio to fetch and load into SoLoud before clearing the UI
+            _loadStemPlayerSource(targetStem).then((_) {
+              if (mounted) {
+                setState(() {
+                  isLoading = false;
+                  processingMessage = '';
+                });
+              }
+            });
+
           } else if (statusData['status'] == 'error') {
             timer.cancel();
             setState(() { 
