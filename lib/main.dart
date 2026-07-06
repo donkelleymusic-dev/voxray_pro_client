@@ -1078,11 +1078,25 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
     try {
       if (currentTaskId == null) {
-        if (!cachedStemBytes.containsKey(activeEditableStem)) {
-          _showSaveConfirmation('Missing audio data. Cannot process X-Ray.');
-          setState(() { isXrayProcessing = false; isXrayMode = false; });
-          if (cachedTransportState) playAllPlayers();
-          return;
+        // --- IMPROVED DEBUG LOOKUP ---
+        String lookupKey = activeEditableStem.toLowerCase().trim();
+        bool found = false;
+        
+        // Check for loose match
+        for (String key in cachedStemBytes.keys) {
+            if (key.toLowerCase().trim() == lookupKey) {
+                found = true;
+                activeEditableStem = key; // Sync the key
+                break;
+            }
+        }
+
+        if (!found) {
+            debugPrint("DEBUG: Failed to find key '$lookupKey'. Available keys: ${cachedStemBytes.keys.toList()}");
+            _showSaveConfirmation('Missing audio data. Available keys: ${cachedStemBytes.keys.toList()}');
+            setState(() { isXrayProcessing = false; isXrayMode = false; });
+            if (cachedTransportState) playAllPlayers();
+            return;
         }
 
         _showSaveConfirmation('Establishing new server session for X-Ray...');
