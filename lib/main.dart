@@ -733,7 +733,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             ),
             actions: [
                TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
-               ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent), onPressed: () => Navigator.pop(ctx, selected), child: const Text("Import", style: Colors.black))),
+               ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent), onPressed: () => Navigator.pop(ctx, selected), child: const Text("Import", style: TextStyle(color: Colors.black))),
             ],
           );
         });
@@ -1766,7 +1766,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         throw Exception("Server error ${responseData.statusCode}");
       }
 
-      var result = jsonDecode(result);
+      var result = jsonDecode(responseData.body);
       if (result['status'] == 'success') {
         final Uint8List bytes = base64Decode(result['svg_b64']);
         String saveName = originalFileName.contains('.')
