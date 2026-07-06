@@ -1261,10 +1261,6 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   Future<void> _renderStemEdits() async {
     if (originalAudioBytes == null || activeEditableStem.isEmpty) return;
     
-    bool wasPlaying = isPlaying;
-    double resumePosition = currentPosition;
-    if (wasPlaying) pauseAllPlayers();
-    
     setState(() { isPreviewing = true; exportMessage = "Queueing edits via Server..."; processingProgress = 0.0; });
 
     try {
