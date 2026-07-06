@@ -1787,7 +1787,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   Future<void> _loadVoxrayProject() async {
     // UPDATED: Explicitly set allowedExtensions and type
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom, 
       allowedExtensions: ['vxp'], 
       withData: true,
