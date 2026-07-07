@@ -1016,6 +1016,17 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       return;
     }
 
+    // --- 1. LOG THE ATTEMPT ---
+    await BackendService.logEvent(
+      platform: _getPlatformString(), // <--- Dynamic platform detection here
+      severity: 'INFO',
+      message: 'User initiated stem generation for $targetToGenerate',
+    );
+
+    // --- 2. GET AUTH TOKEN ---
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) throw Exception('You must be logged in.');
+
     setState(() {
       isLoading = true;
       processingProgress = 0.0;
@@ -1025,16 +1036,26 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-stem-on-demand'))
         ..fields['task_id'] = currentTaskId!
-        ..fields['target_stem'] = targetToGenerate;
+        ..fields['target_stem'] = targetToGenerate
+        ..fields['access_token'] = session.accessToken;
 
       var res = await request.send();
       if (res.statusCode == 200) {
          final resData = json.decode(await res.stream.bytesToString());
          final String jobId = resData['job_id'];
          currentJobId = jobId;
+         // Log Success!
+         await BackendService.logEvent(
+            platform: 'flutter',
+            severity: 'INFO',
+            message: 'Successfully generated stem $targetToGenerate',
+          );
          _pollForStemData(jobId, targetToGenerate);
+      } else if (res.statusCode == 402) {
+         // --- 4. CATCH INSUFFICIENT FUNDS ---
+         throw Exception('Insufficient DSP tokens. Please open your Wallet to top up.');
       } else {
-        throw Exception("Server returned status code ${res.statusCode}");
+         throw Exception('API Error: ${res.statusCode}');
       }
     } catch (e) {
       setState(() { 
@@ -1045,6 +1066,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
            activeEditableStem = generatedStems.first;
         }
       });
+      // --- 5. LOG THE ERROR ---
+      await BackendService.logEvent(
+        platform: 'flutter',
+        severity: 'ERROR',
+        message: 'Stem generation failed: $e',
+      );
       _showSaveConfirmation("Failed to generate ${targetToGenerate.toUpperCase()} stem: $e");
     }
   }
@@ -1888,6 +1915,12 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     }
 
     return Uint8List.fromList(ZipEncoder().encode(archive)!);
+  }
+
+  /// Helper to dynamically get the current platform for logging
+  String _getPlatformString() {
+    if (kIsWeb) return 'flutter_web';
+    return 'flutter_${Platform.operatingSystem}'; // Returns flutter_macos, flutter_windows, flutter_ios, etc.
   }
 
   Future<void> _saveVoxrayProject() async {
