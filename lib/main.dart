@@ -45,11 +45,23 @@ import 'pedagogy/live_analyzer.dart';
 import 'ui/timeline_ruler.dart';
 import 'audio/vox_synth.dart';
 
-void main() async {
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'services/supabase_service.dart'; // Import the file we just made
+import 'screens/auth_screen.dart';
+import 'screens/wallet_screen.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Initialize Supabase
+  await Supabase.initialize(
+    url: 'https://dazqevapqvdpbdoypwke.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhenFldmFwcXZkcGJkb3lwd2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzODU1MTcsImV4cCI6MjA5ODk2MTUxN30.hJvau902z0lAXRnwHPLa30HoLJzxJg4zQDzSXuh_Tjs',
+  );
+
   await SoLoud.instance.init();
   runApp(MaterialApp(
-    home: const VoxrayDAW(), 
+    //home: const VoxrayDAW(), 
+    home: const AuthScreen(), // Start with the authentication screen
     theme: ThemeData(brightness: Brightness.dark)
   ));
 }
@@ -256,7 +268,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   String selectedEngineProfile = 'studio';
 
   final String apiBase = 'https://donkelleymusic--voxray-pro-api-api.modal.run';
-
+  //(add async to parent function)  await BackendService.logEvent(platform: 'flutter_macos', severity: 'CRITICAL', message: 'Audio buffer overflow');
+    
   @override
   void initState() {
     super.initState();
@@ -547,6 +560,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   }
 
   void _toggleMasterTransport() {
+    
     if (isPlaying) {
       pauseAllPlayers();
     } else {
@@ -3117,6 +3131,29 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             ),
             const SizedBox(width: 8),
             const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  final results = await BackendService.processAudio("dummy_audio_data");
+                  print("Success! Results: $results");
+                  // Optional: Check your new balance!
+                  final newBalance = await BackendService.getDSPBalance();
+                  print("Tokens remaining: $newBalance");
+                } catch (e) {
+                  print("Error: $e");
+                }
+              },
+              child: const Text('Test DSP Processing'),
+            ),
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const WalletScreen()),
+                );
+              },
+            )
           ],
         ),
         actions: [
