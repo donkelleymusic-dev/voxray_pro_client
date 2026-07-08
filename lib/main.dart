@@ -579,13 +579,25 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       double start = (note['start_time'] ?? 0.0).toDouble();
       double end = (note['end_time'] ?? 0.0).toDouble();
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
-      
-      var overlaps = targetNotesList.where((alt) {
+
+	  var overlaps = targetNotesList.where((alt) {
         if (alt['isDeleted'] == true) return false;
         double altStart = (alt['start_time'] ?? 0.0).toDouble();
         double altEnd = (alt['end_time'] ?? 0.0).toDouble();
-        return (start < altEnd && end > altStart);
+        
+        // Calculate exact overlap duration
+        double overlapStart = math.max(start, altStart);
+        double overlapEnd = math.min(end, altEnd);
+        
+        // Require at least 80ms of overlap to count as polyphony (ignores basic_pitch tails)
+        return (overlapEnd - overlapStart) > 0.08;
       }).toList();
+      //var overlaps = targetNotesList.where((alt) {
+      //  if (alt['isDeleted'] == true) return false;
+      //  double altStart = (alt['start_time'] ?? 0.0).toDouble();
+      //  double altEnd = (alt['end_time'] ?? 0.0).toDouble();
+      //  return (start < altEnd && end > altStart);
+      //}).toList();
       
       note['is_poly'] = overlaps.length > 1;
       note['target_freq'] = 440.0 * math.pow(2.0, (actualMidi - 69.0) / 12.0);
