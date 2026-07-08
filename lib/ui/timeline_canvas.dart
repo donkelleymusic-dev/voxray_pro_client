@@ -289,20 +289,27 @@ class AdvancedPianoRollPainter extends CustomPainter {
 
       final Path continuousPath = Path();
       bool isPathStarted = false;
+      double lastTime = -1.0;
 
       for (var point in continuousXray) {
-        // Python API returns [time, pitch] array to save data
         double time = (point[0] ?? 0.0).toDouble();
         double midiPitch = (point[1] ?? 60.0).toDouble();
 
-        // Map time and pitch directly to structural UI canvas coordinates
         double px = time * zoomX;
         double py = (maxMidi - midiPitch) * zoomY + (zoomY / 2);
 
-        // Don't draw point artifacts if they clip completely outside horizontal viewport bounds
+        // Culling: Don't draw point artifacts if they clip completely outside viewport bounds
         if (px < currentScrollX - 100 || px > currentScrollX + size.width + 100) {
-          isPathStarted = false; // Break the path so it doesn't draw a giant line across culling bounds
+          isPathStarted = false;
+          lastTime = time;
           continue;
+        }
+
+        // THE MAGIC GAP DETECTOR:
+        // Python extracts frames every ~23ms. If the gap between points is > 50ms, 
+        // it means we hit an unvoiced consonant, a breath, or absolute silence. Break the line!
+        if (isPathStarted && (time - lastTime) > 0.05) {
+          isPathStarted = false;
         }
 
         if (!isPathStarted) {
@@ -311,6 +318,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
         } else {
           continuousPath.lineTo(px, py);
         }
+        
+        lastTime = time;
       }
       canvas.drawPath(continuousPath, xrayPaint);
     }
