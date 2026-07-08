@@ -422,18 +422,20 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   void setZoomX(double newZoom) {
     if (!horizontalScrollController.hasClients) {
-      setState(() => zoomX = newZoom);
+      engine.updateZoomX(newZoom);
       return;
     }
     
-    double oldZoom = zoomX;
-    double viewportWidth = horizontalScrollController.position.viewportDimension;
+    double oldZoom = engine.zoomX;
     double currentPixels = horizontalScrollController.position.pixels;
     
-    double centerTime = (currentPixels + (viewportWidth / 2)) / oldZoom;
-    double newScrollX = (centerTime * newZoom) - (viewportWidth / 2);
+    // The playhead is visually anchored 150px from the left edge.
+    // We use this 150px offset as our zoom anchor instead of the viewport center.
+    double anchorOffset = 150.0; 
+    double anchorTime = (currentPixels + anchorOffset) / oldZoom;
+    double newScrollX = (anchorTime * newZoom) - anchorOffset;
     
-    setState(() => zoomX = newZoom);
+    engine.updateZoomX(newZoom);
     
     horizontalScrollController.jumpTo(math.max(0.0, newScrollX));
     
@@ -448,18 +450,45 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   void setZoomY(double newZoom) {
     if (!verticalScrollController.hasClients) {
-      setState(() => zoomY = newZoom);
+      engine.updateZoomY(newZoom);
       return;
     }
     
-    double oldZoom = zoomY;
+    double oldZoom = engine.zoomY;
     double viewportHeight = verticalScrollController.position.viewportDimension;
     double currentPixels = verticalScrollController.position.pixels;
     
-    double centerMidi = maxMidi - ((currentPixels + (viewportHeight / 2) - (oldZoom / 2)) / oldZoom);
-    double newScrollY = ((maxMidi - centerMidi) * newZoom) + (newZoom / 2) - (viewportHeight / 2);
+    double anchorMidi;
     
-    setState(() => zoomY = newZoom);
+    // 1. Try to find the active notes at the current playhead
+    var activeNotes = engine.rawNotes.where((n) {
+      if (n['isDeleted'] == true) return false;
+      double start = (n['start_time'] ?? 0).toDouble();
+      double end = (n['end_time'] ?? 0).toDouble();
+      return start <= engine.currentPosition && end >= engine.currentPosition;
+    }).toList();
+
+    if (activeNotes.isNotEmpty) {
+      // Anchor to the median pitch of the currently playing notes
+      List<double> midiValues = activeNotes
+          .map<double>((n) => (n['display_midi'] ?? n['actual_midi'] ?? 60.0).toDouble())
+          .toList()
+        ..sort();
+      anchorMidi = midiValues[midiValues.length ~/ 2];
+    } else {
+      // 2. Fallback: Anchor to the geometric center of the viewport if silent
+      anchorMidi = engine.maxMidi - ((currentPixels + (viewportHeight / 2) - (oldZoom / 2)) / oldZoom);
+    }
+
+    // Calculate where this MIDI note CURRENTLY sits on the screen relative to the scroll top
+    double oldDistanceFromTop = ((engine.maxMidi - anchorMidi) * oldZoom) + (oldZoom / 2);
+    double screenY = oldDistanceFromTop - currentPixels;
+
+    // Calculate where it WILL sit, and adjust scroll to keep it at the exact same screenY
+    double newDistanceFromTop = ((engine.maxMidi - anchorMidi) * newZoom) + (newZoom / 2);
+    double newScrollY = newDistanceFromTop - screenY;
+    
+    engine.updateZoomY(newZoom);
     
     verticalScrollController.jumpTo(math.max(0.0, newScrollY));
     
