@@ -254,6 +254,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
       var note = notes[i];
       if (note['isDeleted'] == true || (note['actual_midi'] ?? 60.0).round() == 0) continue; 
       
+      bool isXrayLine = note['type'] == 'xray_line';
+      
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
       double startX = note['start_time'] * zoomX;
       double endX = (note['start_time'] + ((note['end_time'] - note['start_time']) * (note['time_ratio'] ?? 1.0))) * zoomX;
@@ -264,24 +266,34 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double effectiveMidi = actualMidi + semitoneShift + (currentShiftCents / 100.0);
       double visualY = (maxMidi - effectiveMidi) * zoomY;
 
-      if (i == draggingNoteIndex) {
-        double ghostEffectiveMidi = actualMidi + initialSemitoneShift + (currentShiftCents / 100.0);
-        double ghostVisualY = (maxMidi - ghostEffectiveMidi) * zoomY;
-        Rect ghostRect = Rect.fromLTRB(startX, ghostVisualY + padding, endX, ghostVisualY + zoomY - padding);
-        canvas.drawRRect(RRect.fromRectAndRadius(ghostRect, const Radius.circular(4)), Paint()..color = Colors.white.withOpacity(0.15)..style = PaintingStyle.fill);
-        canvas.drawRRect(RRect.fromRectAndRadius(ghostRect, const Radius.circular(4)), Paint()..color = Colors.white.withOpacity(0.4)..style = PaintingStyle.stroke..strokeWidth = 1.0);
+      // Only process Ghost Rectangles and Solid Blocks for real notes
+      if (!isXrayLine) {
+        if (i == draggingNoteIndex) {
+          double ghostEffectiveMidi = actualMidi + initialSemitoneShift + (currentShiftCents / 100.0);
+          double ghostVisualY = (maxMidi - ghostEffectiveMidi) * zoomY;
+          Rect ghostRect = Rect.fromLTRB(startX, ghostVisualY + padding, endX, ghostVisualY + zoomY - padding);
+          canvas.drawRRect(RRect.fromRectAndRadius(ghostRect, const Radius.circular(4)), Paint()..color = Colors.white.withOpacity(0.15)..style = PaintingStyle.fill);
+          canvas.drawRRect(RRect.fromRectAndRadius(ghostRect, const Radius.circular(4)), Paint()..color = Colors.white.withOpacity(0.4)..style = PaintingStyle.stroke..strokeWidth = 1.0);
+        }
+
+        double baseFraction = note['xray_cents'] != null ? (note['xray_cents'] / 100.0) : (actualMidi - actualMidi.round());
+        double exactCurrentMidi = actualMidi.round() + baseFraction + semitoneShift + (currentShiftCents / 100.0);
+        int deviationFromDisplay = ((exactCurrentMidi - note['display_midi']) * 100).round();
+
+        Color noteColor = deviationFromDisplay.abs() <= 10 ? Colors.tealAccent : deviationFromDisplay.abs() <= 25 ? Colors.amberAccent : Colors.redAccent;
+        if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
+        if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
+
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), const Radius.circular(4)), Paint()..color = isXrayMode && i != draggingNoteIndex ? noteColor.withOpacity(0.4) : noteColor);
+
+        String labelText = '${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
+        TextPainter tp = TextPainter(text: TextSpan(text: labelText, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
+        if ((endX - startX) >= tp.width + 6 && zoomY > 14) {
+          tp.paint(canvas, Offset(startX + 3, visualY + (zoomY / 2) - (tp.height / 2)));
+        }
       }
 
-      double baseFraction = note['xray_cents'] != null ? (note['xray_cents'] / 100.0) : (actualMidi - actualMidi.round());
-      double exactCurrentMidi = actualMidi.round() + baseFraction + semitoneShift + (currentShiftCents / 100.0);
-      int deviationFromDisplay = ((exactCurrentMidi - note['display_midi']) * 100).round();
-
-      Color noteColor = deviationFromDisplay.abs() <= 10 ? Colors.tealAccent : deviationFromDisplay.abs() <= 25 ? Colors.amberAccent : Colors.redAccent;
-      if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
-      if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
-
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), const Radius.circular(4)), Paint()..color = isXrayMode && i != draggingNoteIndex ? noteColor.withOpacity(0.4) : noteColor);
-
+      // Draw the squiggly contour line for ALL objects (Real notes AND Continuous X-Ray lines)
       if (isXrayMode && note['contour'] != null && (note['contour'] as List).isNotEmpty) {
         Path contourPath = Path();
         List<dynamic> contour = note['contour'];
@@ -293,13 +305,10 @@ class AdvancedPianoRollPainter extends CustomPainter {
           double py = (maxMidi - pointMidi) * zoomY + (zoomY / 2);
           if (j == 0) contourPath.moveTo(px, py); else contourPath.lineTo(px, py);
         }
-        canvas.drawPath(contourPath, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2.0..strokeCap = StrokeCap.round);
-      }
-
-      String labelText = '${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
-      TextPainter tp = TextPainter(text: TextSpan(text: labelText, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
-      if ((endX - startX) >= tp.width + 6 && zoomY > 14) {
-        tp.paint(canvas, Offset(startX + 3, visualY + (zoomY / 2) - (tp.height / 2)));
+        
+        // Dim the background lines slightly so the real notes pop
+        Color lineColor = isXrayLine ? Colors.white.withOpacity(0.3) : Colors.white;
+        canvas.drawPath(contourPath, Paint()..color = lineColor..style = PaintingStyle.stroke..strokeWidth = 2.0..strokeCap = StrokeCap.round);
       }
     }
   }
