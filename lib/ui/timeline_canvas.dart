@@ -250,6 +250,45 @@ class AdvancedPianoRollPainter extends CustomPainter {
       canvas.drawLine(Offset(0, topY), Offset(size.width, topY), Paint()..color = Colors.white.withOpacity(0.05));
     }
 
+    // =========================================================================
+    // LAYER 1: DRAW GLOBAL CONTINUOUS VISUAL X-RAY TRACKING LINE
+    // =========================================================================
+    if (isXrayMode && widget.dawState.continuousXrayData.isNotEmpty) {
+      final xrayPaint = Paint()
+        ..color = Colors.tealAccent.withOpacity(0.35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round;
+
+      final Path continuousPath = Path();
+      bool isPathStarted = false;
+
+      for (var point in widget.dawState.continuousXrayData) {
+        double time = (point['t'] ?? 0.0).toDouble();
+        double midiPitch = (point['m'] ?? 60.0).toDouble();
+
+        // Map time and pitch directly to structural UI canvas coordinates
+        double px = time * zoomX;
+        double py = (maxMidi - midiPitch) * zoomY + (zoomY / 2);
+
+        // Don't draw point artifacts if they clip completely outside horizontal viewport bounds
+        if (px < currentScrollX - 100 || px > currentScrollX + size.width + 100) {
+          continue;
+        }
+
+        if (!isPathStarted) {
+          continuousPath.moveTo(px, py);
+          isPathStarted = true;
+        } else {
+          continuousPath.lineTo(px, py);
+        }
+      }
+      canvas.drawPath(continuousPath, xrayPaint);
+    }
+
+    // =========================================================================
+    // LAYER 2: DRAW ANALYTICAL BLOCKS AND LOCAL RE-TUNING GUIDES
+    // =========================================================================
     for (int i = 0; i < notes.length; i++) {
       var note = notes[i];
       if (note['isDeleted'] == true || (note['actual_midi'] ?? 60.0).round() == 0) continue; 
