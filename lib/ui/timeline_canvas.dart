@@ -62,6 +62,11 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
     double totalHeight = (maxMidi - minMidi + 1) * zoomY;
     double timelineWidth = duration * zoomX;
 
+    // Get current scroll position for the painter's culling logic
+    double currentScrollX = widget.horizontalScrollController.hasClients 
+        ? widget.horizontalScrollController.position.pixels 
+        : 0.0;
+
     var processedNotes = widget.dawState.rawNotes.map<Map<String, dynamic>>((note) {
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
       int semitoneShift = note['semitone_shift'] ?? 0;
@@ -97,6 +102,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         widget.dawState.seekAllPlayers(seekTime.clamp(0.0, widget.dawState.songDuration));
                       }
                     } else if (notification is ScrollUpdateNotification) {
+                      // Trigger a rebuild so the Painter gets the new currentScrollX for culling
+                      setState(() {}); 
+                      
                       if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
                         double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
                         widget.dawState.setState(() => widget.dawState.currentPosition = seekTime.clamp(0.0, widget.dawState.songDuration));
@@ -114,7 +122,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         const double touchSlop = 24.0; 
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
-                          if (pNote['isDeleted'] == true || (pNote['actual_midi'] ?? 60.0).round() == 0) continue;
+                          if (pNote['isDeleted'] == true || (pNote['actual_midi'] ?? 60.0).round() == 0 || pNote['type'] == 'xray_line') continue;
                           double startX = pNote['start_time'] * widget.dawState.zoomX;
                           double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
                           double effectiveMidi = (pNote['actual_midi'] ?? 60.0) + (pNote['semitone_shift'] ?? 0) + ((pNote['cents_shift'] ?? 0) / 100.0);
@@ -129,7 +137,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         const double touchSlop = 24.0; 
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
-                          if (pNote['isDeleted'] == true || (pNote['actual_midi'] ?? 60.0).round() == 0) continue;
+                          if (pNote['isDeleted'] == true || (pNote['actual_midi'] ?? 60.0).round() == 0 || pNote['type'] == 'xray_line') continue;
                           double startX = pNote['start_time'] * widget.dawState.zoomX;
                           double endX = (pNote['start_time'] + ((pNote['end_time'] - pNote['start_time']) * (pNote['time_ratio'] ?? 1.0))) * widget.dawState.zoomX;
                           double effectiveMidi = (pNote['actual_midi'] ?? 60.0) + (pNote['semitone_shift'] ?? 0) + ((pNote['cents_shift'] ?? 0) / 100.0);
@@ -177,9 +185,15 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           CustomPaint(
                             size: Size(timelineWidth, totalHeight),
                             painter: AdvancedPianoRollPainter(
-                              notes: processedNotes, zoomX: widget.dawState.zoomX, zoomY: widget.dawState.zoomY,
-                              minMidi: minMidi, maxMidi: maxMidi, isXrayMode: widget.dawState.isXrayMode,
-                              draggingNoteIndex: draggingNoteIndex, initialSemitoneShift: initialSemitoneShift,
+                              notes: processedNotes, 
+                              continuousXray: widget.dawState.continuousXray, // Passed via constructor
+                              currentScrollX: currentScrollX,                 // Passed via constructor
+                              zoomX: widget.dawState.zoomX, 
+                              zoomY: widget.dawState.zoomY,
+                              minMidi: minMidi, maxMidi: maxMidi, 
+                              isXrayMode: widget.dawState.isXrayMode,
+                              draggingNoteIndex: draggingNoteIndex, 
+                              initialSemitoneShift: initialSemitoneShift,
                             ),
                           ),
                           // Moving Vertical Playhead
@@ -231,13 +245,26 @@ class PianoKeysPainter extends CustomPainter {
 
 class AdvancedPianoRollPainter extends CustomPainter {
   final List<Map<String, dynamic>> notes;
+  final List<dynamic> continuousXray;
+  final double currentScrollX;
   final double zoomX; final double zoomY;
   final int minMidi; final int maxMidi;
   final bool isXrayMode;
   final int? draggingNoteIndex;
   final int initialSemitoneShift;
 
-  AdvancedPianoRollPainter({required this.notes, required this.zoomX, required this.zoomY, required this.minMidi, required this.maxMidi, this.isXrayMode = false, this.draggingNoteIndex, this.initialSemitoneShift = 0});
+  AdvancedPianoRollPainter({
+    required this.notes, 
+    required this.continuousXray,
+    required this.currentScrollX,
+    required this.zoomX, 
+    required this.zoomY, 
+    required this.minMidi, 
+    required this.maxMidi, 
+    this.isXrayMode = false, 
+    this.draggingNoteIndex, 
+    this.initialSemitoneShift = 0
+  });
 
   String getNoteName(int midi) { const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']; return '${noteNames[midi % 12]}${(midi ~/ 12) - 1}'; }
   bool isBlackKey(int midi) { int note = midi % 12; return note == 1 || note == 3 || note == 6 || note == 8 || note == 10; }
@@ -253,7 +280,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
     // =========================================================================
     // LAYER 1: DRAW GLOBAL CONTINUOUS VISUAL X-RAY TRACKING LINE
     // =========================================================================
-    if (isXrayMode && widget.dawState.continuousXrayData.isNotEmpty) {
+    if (isXrayMode && continuousXray.isNotEmpty) {
       final xrayPaint = Paint()
         ..color = Colors.tealAccent.withOpacity(0.35)
         ..style = PaintingStyle.stroke
@@ -263,9 +290,10 @@ class AdvancedPianoRollPainter extends CustomPainter {
       final Path continuousPath = Path();
       bool isPathStarted = false;
 
-      for (var point in widget.dawState.continuousXrayData) {
-        double time = (point['t'] ?? 0.0).toDouble();
-        double midiPitch = (point['m'] ?? 60.0).toDouble();
+      for (var point in continuousXray) {
+        // Python API returns [time, pitch] array to save data
+        double time = (point[0] ?? 0.0).toDouble();
+        double midiPitch = (point[1] ?? 60.0).toDouble();
 
         // Map time and pitch directly to structural UI canvas coordinates
         double px = time * zoomX;
@@ -273,6 +301,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
 
         // Don't draw point artifacts if they clip completely outside horizontal viewport bounds
         if (px < currentScrollX - 100 || px > currentScrollX + size.width + 100) {
+          isPathStarted = false; // Break the path so it doesn't draw a giant line across culling bounds
           continue;
         }
 
@@ -351,5 +380,14 @@ class AdvancedPianoRollPainter extends CustomPainter {
       }
     }
   }
-  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  
+  @override 
+  bool shouldRepaint(covariant AdvancedPianoRollPainter oldDelegate) {
+    // Only repaint if zooming, scrolling, or dragging changes
+    return oldDelegate.zoomX != zoomX ||
+           oldDelegate.zoomY != zoomY ||
+           oldDelegate.currentScrollX != currentScrollX ||
+           oldDelegate.draggingNoteIndex != draggingNoteIndex ||
+           oldDelegate.isXrayMode != isXrayMode;
+  }
 }
