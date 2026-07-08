@@ -192,6 +192,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   final ScrollController rulerScrollController = ScrollController();
   
   Map<String, List<dynamic>> allStemsNotes = {};
+  Map<String, List<dynamic>> allStemsContinuousXray = {}; // NEW: Layer 2 X-Ray
   String activeEditableStem = ''; 
 
   Set<String> targetStemsSelection = {};
@@ -210,6 +211,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       ? allStemsNotes[activeEditableStem]! 
       : [];
 
+  List<dynamic> get continuousXray => activeEditableStem.isNotEmpty && allStemsContinuousXray.containsKey(activeEditableStem)
+      ? allStemsContinuousXray[activeEditableStem]!
+      : [];
   set rawNotes(List<dynamic> updatedNotes) {
     if (activeEditableStem.isNotEmpty) {
       allStemsNotes[activeEditableStem] = updatedNotes;
@@ -800,6 +804,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       masterSource = null; 
       synthHandle = null; 
       synthSource = null;
+      allStemsContinuousXray.clear();
       activePlaybackSources.clear(); 
       activeEditableStem = ''; 
       currentTaskId = null; 
@@ -912,6 +917,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       currentTaskId = null;
       currentJobId = null;
       suggestedStems.clear();
+	  allStemsContinuousXray.clear();
 
       if (uploadOptions['type'] == 'mix') {
         isOriginalMixAvailable = true;
@@ -1211,6 +1217,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         if (data['status'] == 'success') {
           setState(() {
             rawNotes = data['notes']; 
+			if (data['continuous_xray'] != null) {
+               allStemsContinuousXray[activeEditableStem] = data['continuous_xray'];
+            }
             registerUndoSnapshot();
           });
           _showSaveConfirmation('X-Ray data successfully reprocessed.');
@@ -1290,6 +1299,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
         if (data['status'] == 'success') {
           setState(() {
             rawNotes = data['notes'];
+			if (data['continuous_xray'] != null) {
+               allStemsContinuousXray[activeEditableStem] = data['continuous_xray'];
+            }
             registerUndoSnapshot(); 
           });
         } else {
@@ -1956,6 +1968,7 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       "target_stems_selection": targetStemsSelection.toList(),
       "generated_stems": generatedStems.toList(),
       "all_stems_notes": allStemsNotes,
+	  "all_stems_continuous_xray": allStemsContinuousXray,
       "active_editable_stem": activeEditableStem,
       "history": {"undo_stack": undoStack, "redo_stack": redoStack}
     };
@@ -2166,6 +2179,9 @@ class VoxrayDAWState extends State<VoxrayDAW> {
       }
       if (projectData['all_stems_notes'] != null) {
         allStemsNotes = Map<String, List<dynamic>>.from(projectData['all_stems_notes']);
+      }
+	  if (projectData['all_stems_continuous_xray'] != null) {
+        allStemsContinuousXray = Map<String, List<dynamic>>.from(projectData['all_stems_continuous_xray']);
       }
       activeEditableStem = projectData['active_editable_stem'] ?? '';
       
