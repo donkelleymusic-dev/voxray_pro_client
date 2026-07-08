@@ -247,8 +247,25 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   double zoomY = 8.0;
   
   // FIXED: Adjusted MIDI constraints to match 88-key piano boundaries (A0 to C8)
-  final int minMidi = 21;
-  final int maxMidi = 108;
+  //final int minMidi = 21;
+  //final int maxMidi = 108;
+  int get minMidi {
+    switch (activeEditableStem) {
+      case 'bass': case 'contrabass': case 'tuba': return 24;
+      case 'violin': case 'flute': return 55;
+      case 'piano': case 'original': return 21;
+      default: return 36;
+    }
+  }
+
+  int get maxMidi {
+    switch (activeEditableStem) {
+      case 'bass': case 'contrabass': case 'tuba': return 72;
+      case 'violin': case 'flute': return 108;
+      case 'piano': case 'original': return 108;
+      default: return 84;
+    }
+  }
 
   bool isScrubMode = true;
   DragMode currentDragMode = DragMode.off;
@@ -353,14 +370,16 @@ class VoxrayDAWState extends State<VoxrayDAW> {
             int medianMidi = midiValues[midiValues.length ~/ 2];
 
             double viewportHeight = verticalScrollController.position.viewportDimension;
-            double targetY = ((maxMidi - medianMidi) * zoomY) + (zoomY / 2) - (viewportHeight / 2);
-            targetY = targetY.clamp(0.0, verticalScrollController.position.maxScrollExtent);
-
-            verticalScrollController.animateTo(
-              targetY,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
+            double noteY = ((maxMidi - medianMidi) * zoomY) + (zoomY / 2);
+            double currentY = verticalScrollController.position.pixels;
+            
+            // Calculate target and clamp to boundaries
+            double targetY = (noteY - (viewportHeight / 2)).clamp(0.0, verticalScrollController.position.maxScrollExtent);
+            
+            // Smooth follow camera logic (LERP). No animations fighting each other.
+            if ((targetY - currentY).abs() > 1.0) {
+              verticalScrollController.jumpTo(currentY + (targetY - currentY) * 0.15); // 15% interpolation per frame
+            }
           }
         }
       }
