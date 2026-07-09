@@ -117,11 +117,12 @@ class NoteInspector {
                                 ),
                                 if (prob > 0.85) Text("Mechanical Tuning Detected")
                                 if (prob < 0.30) Text("Natural Human Wobble")
-                              )
-                            else if (!hasXray && dawState.isXrayMode)
-                              const Text('X-Ray: processing...', style: TextStyle(fontSize: 12, color: Colors.white38))
-                            else if (!hasXray)
-                              const Text('X-Ray not enabled', style: TextStyle(fontSize: 12, color: Colors.white38)),
+                              ),
+                            // Add these as completely separate Text widgets in the list
+                            if (prob > 0.85) 
+                              const Text("Mechanical Tuning Detected", style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                            if (prob < 0.30) 
+                              const Text("Natural Human Wobble", style: TextStyle(fontSize: 12, color: Colors.tealAccent)),
                           ],
                         ),
                         ElevatedButton.icon(
