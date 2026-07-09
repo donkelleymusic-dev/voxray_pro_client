@@ -909,7 +909,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         ..fields['upload_type'] = 'stem'
         ..fields['stem_target'] = chosenIdentity
         ..fields['instruments_json'] = jsonEncode([chosenIdentity])
-        ..files.add(await http.MultipartFile.fromPath('file', bytes, filename: result.files.single.name));
+        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: result.files.single.name));
       
       var res = await req.send();
       var data = jsonDecode(await res.stream.bytesToString());
@@ -993,7 +993,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         ..fields['upload_type'] = uploadOptions['type']! 
         ..fields['stem_target'] = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'none'
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(await http.MultipartFile.fromPath('file', originalAudioBytes!, filename: result.files.single.name));
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: result.files.single.name));
       
       var response = await request.send();
       if (response.statusCode != 200) throw Exception("Server rejected file upload");
@@ -1583,7 +1583,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           ..fields['upload_type'] = 'stem'
           ..fields['stem_target'] = activeEditableStem
           ..fields['instruments_json'] = jsonEncode([activeEditableStem])
-		  ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[activeEditableStem]!));
+		  ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -1812,7 +1812,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           ..fields['upload_type'] = 'stem'
           ..fields['stem_target'] = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
-          ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[lookupStem]!));
+          ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
