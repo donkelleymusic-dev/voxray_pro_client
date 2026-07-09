@@ -54,6 +54,18 @@ class NoteInspector {
                     .reduce((a, b) => a + b) / (note['contour'] as List).length
                 : null;
 
+            var forensics = note['forensics'];
+            bool isAnalyzed = forensics != null && forensics['is_analyzed'] == true;
+            
+            if (isAnalyzed) {
+                double prob = forensics['tuning_probability'];
+                double stdDev = forensics['std_deviation'];
+                
+                // Example UI Logic:
+                // if (prob > 0.85) -> Show Red "Mechanical Tuning Detected" warning
+                // if (prob < 0.30) -> Show Green "Natural Human Wobble" text
+            }
+            
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.only(
@@ -103,6 +115,8 @@ class NoteInspector {
                                   fontSize: 12,
                                   color: xrayCents <= 15 ? Colors.tealAccent : Colors.redAccent,
                                 ),
+                                if (prob > 0.85) -> Show Red "Mechanical Tuning Detected" warning
+                                if (prob < 0.30) -> Show Green "Natural Human Wobble" text
                               )
                             else if (!hasXray && dawState.isXrayMode)
                               const Text('X-Ray: processing...', style: TextStyle(fontSize: 12, color: Colors.white38))
