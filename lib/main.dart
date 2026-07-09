@@ -181,7 +181,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   Timer? positionTimer;
 
   Set<String> activePlaybackSources = {};
-  final Map<String, Uint8List> cachedStemBytes = {}; 
+  //final Map<String, Uint8List> cachedStemBytes = {}; // only needed for in ram audio storage... we are shifting to disk based for reliability and memory use
   bool isFetchingStems = false;
 
   SynthSettings synthSettings = const SynthSettings();
