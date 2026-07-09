@@ -1133,7 +1133,57 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       }
     });
   }
+  void _pollForXrayReprocess(String jobId, String targetStem) {
+    pollingTimer?.cancel();
+    
+    pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      try {
+        var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
+        if (statusRes.statusCode == 200) {
+          var statusData = json.decode(statusRes.body);
+          
+          if (mounted) {
+             setState(() {
+               processingMessage = statusData['message'] ?? "Processing X-Ray...";
+             });
+          }
 
+          if (statusData['status'] == 'complete') {
+            timer.cancel();
+            await _clearActiveJob(); // Wipe the recovery ticket from the hard drive
+
+            final result = statusData['result'];
+            
+            if (mounted) {
+              setState(() {
+                // Inject the new high-res pitch data into the UI
+                allStemsNotes[targetStem] = result['notes'];
+                if (result['continuous_xray'] != null) {
+                   allStemsContinuousXray[targetStem] = result['continuous_xray'];
+                }
+                isXrayProcessing = false;
+                isXrayMode = true; // Ensure the UI mode turns/stays on
+                registerUndoSnapshot(); 
+              });
+              _showSaveConfirmation('X-Ray high-resolution tracking complete.');
+            }
+
+          } else if (statusData['status'] == 'error') {
+            timer.cancel();
+            await _clearActiveJob();
+            if (mounted) {
+              setState(() => isXrayProcessing = false);
+              _showSaveConfirmation('X-Ray Processing Error: ${statusData['message']}');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint("X-Ray polling network blink (app likely backgrounded): $e");
+        // We do NOT cancel the timer here. It will keep trying when internet returns!
+      }
+    });
+  }
+	
   void _pollForXrayData(String jobId, String targetStem) {
     pollingTimer?.cancel();
     
@@ -1316,33 +1366,32 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         }
       }
 
+      // Start the Background X-Ray Job
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
         ..fields['notes_manifest'] = jsonEncode(_enrichManifestWithPolyphonicContext(rawNotes)); 
 
       var response = await request.send();
-      var responseData = await http.Response.fromStream(response);
       
-      if (responseData.statusCode == 200) {
-        var data = jsonDecode(responseData.body);
-        if (data['status'] == 'success') {
-          setState(() {
-            rawNotes = data['notes']; 
-			if (data['continuous_xray'] != null) {
-               allStemsContinuousXray[activeEditableStem] = data['continuous_xray'];
-            }
-            registerUndoSnapshot();
-          });
-          _showSaveConfirmation('X-Ray data successfully reprocessed.');
-        } else {
-          _showSaveConfirmation('Reprocess failed: ${data['message']}');
-        }
+      if (response.statusCode == 200) {
+        var data = jsonDecode(await response.stream.bytesToString());
+        
+        // Grab the Job ID and register it globally
+        String jobId = data['job_id'];
+        await _registerActiveJob(jobId, currentTaskId!, 'XRAY_REPROCESS', activeEditableStem);
+        
+        // Start polling in the background!
+        _pollForXrayReprocess(jobId, activeEditableStem);
+      } else {
+        throw Exception("Server rejected X-Ray request.");
       }
+
     } catch (e) {
       debugPrint("XRAY Reprocess error: $e");
       _showSaveConfirmation('Reprocess failed: $e');
-    } finally {
       setState(() => isXrayProcessing = false);
+    } finally {
+      // Un-pause the audio immediately so the user can keep working while it polls!
       if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
   }
@@ -1413,7 +1462,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         await _registerActiveJob(jobId, currentTaskId!, 'XRAY_REPROCESS', activeEditableStem);
         
         // Start polling in the background!
-        _pollForXrayData(jobId, activeEditableStem);
+        _pollForXrayReprocess(jobId, activeEditableStem);
         
       } else {
         throw Exception("Server rejected X-Ray request.");
