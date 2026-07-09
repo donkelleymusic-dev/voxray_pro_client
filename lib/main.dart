@@ -1374,41 +1374,52 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   }
 
   Future<void> _loadStemPlayerSource(String stemName) async {
-    setState(() { isFetchingStems = true; });
+    if (stemsCurrentlyFetching.contains(stemName)) return; 
+    
+    setState(() { 
+      stemsCurrentlyFetching.add(stemName);
+      isFetchingStems = true; 
+    });
 
     bool wasPlaying = isPlaying;
     if (wasPlaying) pauseAllPlayers(); 
 
     try {
-      final Uint8List bytes = cachedStemBytes[stemName] ?? await _fetchStemBytes(stemName);
-      cachedStemBytes[stemName] = bytes;
+      // 1. Get the Temp Directory
+      final dir = await getTemporaryDirectory();
+      final String filePath = '${dir.path}/${currentTaskId}_$stemName.ogg';
+
+      // 2. Download and save to disk if we don't have it locally
+      if (!cachedStemPaths.containsKey(stemName) || !await File(filePath).exists()) {
+         final bytes = await _fetchStemBytes(stemName);
+         await File(filePath).writeAsBytes(bytes);
+         cachedStemPaths[stemName] = filePath;
+      }
 
       if (stemHandles.containsKey(stemName)) {
         SoLoud.instance.stop(stemHandles[stemName]!);
       }
 
-      stemSources[stemName] = await SoLoud.instance.loadMem("stem_$stemName", bytes);
+      // 3. Load from the DISK PATH, not memory!
+      stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
       SoLoud.instance.setPause(stemHandles[stemName]!, true); 
 
       ChannelState state = getChannelState(stemName);
-      double effectiveVolume = state.isMuted ? 0.0 : state.volume;
-      
-      SoLoud.instance.setVolume(stemHandles[stemName]!, effectiveVolume);
+      SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
       SoLoud.instance.setPan(stemHandles[stemName]!, state.pan); 
+      
     } catch (e) {
       debugPrint("Stem track layer $stemName build failed: $e");
       _showSaveConfirmation('Stem layer $stemName unavailable: $e');
       setState(() => activePlaybackSources.remove(stemName));
     } finally {
-      setState(() { isFetchingStems = false; });
+      setState(() { 
+        stemsCurrentlyFetching.remove(stemName);
+        isFetchingStems = false; 
+      });
       seekAllPlayers(currentPosition); 
-      if (wasPlaying) {
-        await Future.delayed(const Duration(milliseconds: 50));
-        playAllPlayers();
-      } else {
-        pauseAllPlayers();
-      }
+      if (wasPlaying) playAllPlayers(); else pauseAllPlayers();
     }
   }
 
