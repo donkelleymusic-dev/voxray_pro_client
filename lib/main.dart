@@ -425,16 +425,14 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // The user just came back to the app!
-      // If we were waiting for a job, immediately ping the server.
-      if (currentJobId != null && isLoading) {
-         debugPrint("App resumed. Manually checking job status...");
-         _pollRenderJob(currentJobId!); // Or _pollForStemData
-      }
+      // The app just woke up!
+      // We don't need to manually trigger anything here anymore because 
+      // our resilient Timer.periodic will automatically resume ticking 
+      // the moment the OS gives the app its internet access back.
+      debugPrint("App resumed. Polling timers will automatically catch up.");
     } else if (state == AppLifecycleState.paused) {
-      // App went to the background. 
-      // You can optionally cancel timers here to save battery, 
-      // knowing 'resumed' will pick them back up.
+      // App went to the background.
+      debugPrint("App backgrounded. OS suspended network sockets.");
     }
   }
 
@@ -1111,14 +1109,18 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           _showSaveConfirmation('Processing Error: Server returned ${statusRes.statusCode}');
         }
       } catch (e) {
-        debugPrint("Polling error: $e");
-        timer.cancel();
-        setState(() { 
-          isLoading = false; 
-          processingMessage = "Error: $e"; 
-          activePlaybackSources.remove(targetStem);
-        });
-        _showSaveConfirmation('Connection error during polling.');
+        debugPrint("Polling network blink (app likely backgrounded): $e");
+        
+        // REMOVED: timer.cancel(); 
+        // We DO NOT cancel the timer here anymore. 
+        // We let it keep ticking so it instantly reconnects when the app is opened again!
+        
+        if (mounted) {
+          setState(() {
+            // Tell the user what is actually happening instead of showing a scary error
+            processingMessage = "Reconnecting to server..."; 
+          });
+        }
       }
     });
   }
