@@ -19,6 +19,17 @@ class NoteInspector {
     double tempTime = note['time_ratio'] ?? 1.0;
     bool tempMuted = note['isMuted'] ?? false;
     bool tempDeleted = note['isDeleted'] ?? false;
+    
+    // Safely extract the X-Ray and Forensic data from the selected note
+    final double? xrayCents = note['xray_cents'] != null ? (note['xray_cents']).toDouble() : null;
+    final bool hasXray = xrayCents != null;
+    
+    final Map<String, dynamic>? forensics = note['forensics'];
+    final bool isAnalyzed = forensics != null && forensics['is_analyzed'] == true;
+    final double prob = isAnalyzed ? (forensics['tuning_probability'] ?? 0.0).toDouble()
+    // Example UI Logic:
+    // if (prob > 0.85) -> Show Red "Mechanical Tuning Detected" warning
+    // if (prob < 0.30) -> Show Green "Natural Human Wobble" text
 
     showModalBottomSheet(
       context: context, backgroundColor: Colors.grey[950], isScrollControlled: true,
@@ -60,10 +71,6 @@ class NoteInspector {
             if (isAnalyzed) {
                 double prob = forensics['tuning_probability'];
                 double stdDev = forensics['std_deviation'];
-                
-                // Example UI Logic:
-                // if (prob > 0.85) -> Show Red "Mechanical Tuning Detected" warning
-                // if (prob < 0.30) -> Show Green "Natural Human Wobble" text
             }
             
             return SafeArea(
@@ -108,21 +115,24 @@ class NoteInspector {
                               ],
                             ),
                             const SizedBox(height: 2),
-                            if (hasXray && xrayCents != null)
+                            if (hasXray && xrayCents != null) ...[
                               Text(
                                 'X-Ray avg drift: ${xrayCents.toStringAsFixed(1)}¢',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: xrayCents <= 15 ? Colors.tealAccent : Colors.redAccent,
                                 ),
-                                if (prob > 0.85) Text("Mechanical Tuning Detected")
-                                if (prob < 0.30) Text("Natural Human Wobble")
                               ),
-                            // Add these as completely separate Text widgets in the list
-                            if (prob > 0.85) 
-                              const Text("Mechanical Tuning Detected", style: TextStyle(fontSize: 12, color: Colors.redAccent)),
-                            if (prob < 0.30) 
-                              const Text("Natural Human Wobble", style: TextStyle(fontSize: 12, color: Colors.tealAccent)),
+                              // Add the forensic text checks
+                              if (isAnalyzed && prob > 0.85) 
+                                const Text("Mechanical Tuning Detected", style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                              if (isAnalyzed && prob < 0.30) 
+                                const Text("Natural Human Wobble", style: TextStyle(fontSize: 12, color: Colors.tealAccent)),
+                            ] 
+                            else if (!hasXray && dawState.isXrayMode)
+                              const Text('X-Ray: processing...', style: TextStyle(fontSize: 12, color: Colors.white38))
+                            else if (!hasXray)
+                              const Text('X-Ray not enabled', style: TextStyle(fontSize: 12, color: Colors.white38)),
                           ],
                         ),
                         ElevatedButton.icon(
