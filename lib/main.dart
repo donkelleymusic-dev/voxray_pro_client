@@ -666,7 +666,6 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       Map<String, dynamic> note = Map<String, dynamic>.from(entry);
       double start = (note['start_time'] ?? 0.0).toDouble();
       double end = (note['end_time'] ?? 0.0).toDouble();
-      double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
 
 	  // 1. Grab the original pitch AND the user's manual drag shifts
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
