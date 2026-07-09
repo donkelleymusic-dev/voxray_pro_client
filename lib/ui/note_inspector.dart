@@ -115,8 +115,8 @@ class NoteInspector {
                                   fontSize: 12,
                                   color: xrayCents <= 15 ? Colors.tealAccent : Colors.redAccent,
                                 ),
-                                if (prob > 0.85) -> Show Red "Mechanical Tuning Detected" warning
-                                if (prob < 0.30) -> Show Green "Natural Human Wobble" text
+                                if (prob > 0.85) Text("Mechanical Tuning Detected")
+                                if (prob < 0.30) Text("Natural Human Wobble")
                               )
                             else if (!hasXray && dawState.isXrayMode)
                               const Text('X-Ray: processing...', style: TextStyle(fontSize: 12, color: Colors.white38))
