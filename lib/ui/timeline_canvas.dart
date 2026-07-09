@@ -367,8 +367,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
       
       bool isXrayLine = note['type'] == 'xray_line';
       
-      //double actualMidi (already defined, so just setting here instead) 
-      actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
       double startX = note['start_time'] * zoomX;
       double endX = (note['start_time'] + ((note['end_time'] - note['start_time']) * (note['time_ratio'] ?? 1.0))) * zoomX;
       double padding = zoomY * 0.15; 
