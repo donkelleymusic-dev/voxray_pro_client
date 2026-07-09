@@ -31,6 +31,9 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # for app persistence, we can now save ids in case app is killed by user and relaunched later
+  shared_preferences: ^2.3.0 
+  
   # Add the audio engine package here
   flutter_soloud: ^4.0.6
 
