@@ -157,6 +157,40 @@ class VoxrayDAW extends StatefulWidget {
   State<VoxrayDAW> createState() => VoxrayDAWState(); 
 }
 
+import 'package:shared_preferences/shared_preferences.dart';
+
+Future<void> _resumeInterruptedJobsOnStartup() async {
+  final prefs = await SharedPreferences.getInstance();
+  
+  // 1. Look in the local hard drive for a saved claim ticket
+  final savedJobId = prefs.getString('active_job_id');
+  final savedTargetStem = prefs.getString('active_target_stem');
+  final savedTaskId = prefs.getString('active_task_id'); // Helps map it to the right song
+
+  // 2. If they exist, it means the app crashed or was force-quit while waiting!
+  if (savedJobId != null && savedTargetStem != null) {
+    debugPrint("Found an interrupted job! Resuming...");
+
+    // 3. FAKE IT 'TIL YOU MAKE IT: Reconstruct the UI state.
+    // We instantly lock the UI back into the "Loading" state so the 
+    // user knows we are picking up right where we left off.
+    setState(() {
+      currentJobId = savedJobId;
+      currentTaskId = savedTaskId;
+      activeEditableStem = savedTargetStem; // Put the dropdown back to the right stem
+      
+      isLoading = true;
+      processingMessage = "Reconnecting to server for $savedTargetStem...";
+    });
+
+    // 4. RESTART THE ENGINE
+    // We call your exact same polling function using the saved ticket.
+    // The Modal backend doesn't care that your phone rebooted. If the job 
+    // finished 5 hours ago, the first poll will instantly return "complete"!
+    _pollForStemData(savedJobId, savedTargetStem);
+  }
+}
+
 class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   // --- SoLoud Audio Engine Handles ---
   AudioSource? masterSource;
@@ -294,6 +328,10 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+
+	// Register lifecycle observers (if app was quit/force quit while app was doing stem generation etc)
+  	WidgetsBinding.instance.addObserver(this);
+	  
 	// 2. Register the observer
     WidgetsBinding.instance.addObserver(this);
     horizontalScrollController.addListener(() {
