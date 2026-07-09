@@ -181,7 +181,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   Timer? positionTimer;
 
   Set<String> activePlaybackSources = {};
-  //final Map<String, Uint8List> cachedStemBytes = {}; // only needed for in ram audio storage... we are shifting to disk based for reliability and memory use
+  final Map<String, Uint8List> cachedStemBytes = {};
   bool isFetchingStems = false;
 
   SynthSettings synthSettings = const SynthSettings();
@@ -834,7 +834,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       allStemsNotes.clear(); 
       generatedStems.clear(); 
       targetStemsSelection.clear(); 
-      cachedStemBytes.clear();
+      cachedStemPaths.clear();
       stemHandles.clear(); 
       stemSources.clear(); 
       masterHandle = null; 
@@ -909,7 +909,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         ..fields['upload_type'] = 'stem'
         ..fields['stem_target'] = chosenIdentity
         ..fields['instruments_json'] = jsonEncode([chosenIdentity])
-        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: result.files.single.name));
+        ..files.add(await http.MultipartFile.fromPath('file', bytes, filename: result.files.single.name));
       
       var res = await req.send();
       var data = jsonDecode(await res.stream.bytesToString());
@@ -948,7 +948,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       hasBeenSaved = false;
       dirtyStems.clear();
 
-      cachedStemBytes.clear();
+      cachedStemPaths.clear();
       for(var h in stemHandles.values) SoLoud.instance.stop(h);
       stemHandles.clear();
       stemSources.clear();
@@ -993,7 +993,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         ..fields['upload_type'] = uploadOptions['type']! 
         ..fields['stem_target'] = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'none'
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: result.files.single.name));
+        ..files.add(await http.MultipartFile.fromPath('file', originalAudioBytes!, filename: result.files.single.name));
       
       var response = await request.send();
       if (response.statusCode != 200) throw Exception("Server rejected file upload");
@@ -1238,7 +1238,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
 
     try {
       if (currentTaskId == null) {
-        if (!cachedStemBytes.containsKey(activeEditableStem)) {
+        if (!cachedStemPaths.containsKey(activeEditableStem)) {
            throw Exception("Audio data not found in cache.");
         }
         
@@ -1248,7 +1248,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           ..fields['upload_type'] = 'stem'
           ..fields['stem_target'] = activeEditableStem
           ..fields['instruments_json'] = jsonEncode([activeEditableStem])
-          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[activeEditableStem]!, filename: '${activeEditableStem}_offline.ogg'));
+          ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[activeEditableStem]!));
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -1308,7 +1308,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         String lookupKey = activeEditableStem.toLowerCase().trim();
         bool found = false;
         
-        for (String key in cachedStemBytes.keys) {
+        for (String key in cachedStemPaths.keys) {
             if (key.toLowerCase().trim() == lookupKey) {
                 found = true;
                 activeEditableStem = key; 
@@ -1317,8 +1317,8 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         }
 
         if (!found) {
-            debugPrint("DEBUG: Failed to find key '$lookupKey'. Available keys: ${cachedStemBytes.keys.toList()}");
-            _showSaveConfirmation('Missing audio data. Available keys: ${cachedStemBytes.keys.toList()}');
+            debugPrint("DEBUG: Failed to find key '$lookupKey'. Available keys: ${cachedStemPaths.keys.toList()}");
+            _showSaveConfirmation('Missing audio data. Available keys: ${cachedStemPaths.keys.toList()}');
             setState(() { isXrayProcessing = false; isXrayMode = false; });
             if (cachedTransportState) playAllPlayers();
             return;
@@ -1330,7 +1330,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           ..fields['upload_type'] = 'stem'
           ..fields['stem_target'] = activeEditableStem
           ..fields['instruments_json'] = jsonEncode([activeEditableStem])
-          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[activeEditableStem]!, filename: '${activeEditableStem}_offline.ogg'));
+          ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[activeEditableStem]!));
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -1573,7 +1573,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
     try {
       // --- NEW LOGIC: Re-establish server session if offline ---
       if (currentTaskId == null) {
-        if (!cachedStemBytes.containsKey(activeEditableStem)) {
+        if (!cachedStemPaths.containsKey(activeEditableStem)) {
            throw Exception("Audio data not found in cache.");
         }
         
@@ -1583,7 +1583,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           ..fields['upload_type'] = 'stem'
           ..fields['stem_target'] = activeEditableStem
           ..fields['instruments_json'] = jsonEncode([activeEditableStem])
-          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[activeEditableStem]!, filename: '${activeEditableStem}_offline.ogg'));
+		  ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[activeEditableStem]!));
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -1604,7 +1604,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         })
         ..fields['task_id'] = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+        ..files.add(await http.MultipartFile.fromPath('file', originalAudioBytes!, filename: 'audio.wav'));
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
@@ -1667,7 +1667,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
     try {
       // --- NEW LOGIC: Re-establish server session if offline ---
       if (currentTaskId == null) {
-        if (!cachedStemBytes.containsKey(stem)) {
+        if (!cachedStemPaths.containsKey(stem)) {
            throw Exception("Audio data not found in cache.");
         }
         
@@ -1677,7 +1677,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           ..fields['upload_type'] = 'stem'
           ..fields['stem_target'] = stem
           ..fields['instruments_json'] = jsonEncode([stem])
-          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[stem]!, filename: '${stem}_offline.ogg'));
+          ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[stem]!));
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -1698,7 +1698,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         })
         ..fields['task_id'] = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+        ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[stem]!));
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
@@ -1801,8 +1801,8 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
     try {
       // --- NEW LOGIC: Re-establish server session if offline ---
       if (currentTaskId == null) {
-        String lookupStem = activeEditableStem.isNotEmpty ? activeEditableStem : (cachedStemBytes.isNotEmpty ? cachedStemBytes.keys.first : '');
-        if (lookupStem.isEmpty || !cachedStemBytes.containsKey(lookupStem)) {
+        String lookupStem = activeEditableStem.isNotEmpty ? activeEditableStem : (cachedStemPaths.isNotEmpty ? cachedStemPaths.keys.first : '');
+        if (lookupStem.isEmpty || !cachedStemPaths.containsKey(lookupStem)) {
            throw Exception("No valid track state found in cache to generate fallback export context.");
         }
         
@@ -1812,7 +1812,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           ..fields['upload_type'] = 'stem'
           ..fields['stem_target'] = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
-          ..files.add(http.MultipartFile.fromBytes('file', cachedStemBytes[lookupStem]!, filename: '${lookupStem}_offline.ogg'));
+          ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[lookupStem]!));
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -1833,7 +1833,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         ..fields['task_id'] = currentTaskId!
         ..fields['export_format'] = format 
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+        ..files.add(await http.MultipartFile.fromPath('file', originalAudioBytes!, filename: 'master.wav'));
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
@@ -1885,14 +1885,20 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   }
 
   Future<void> _exportStemsAsZip() async {
-    if (cachedStemBytes.isEmpty) { 
+    if (cachedStemPaths.isEmpty) { 
       _showSaveConfirmation("No extracted audio stems available to export."); 
       return; 
     }
     setState(() { isExporting = true; exportMessage = "Packing unmixed multi-track stems archive..."; });
     try {
       Archive arch = Archive();
-      cachedStemBytes.forEach((k, v) => arch.addFile(ArchiveFile('${projectName}_stem_$k.ogg', v.length, v)));
+      
+      // NEW: Read from disk
+      for (var entry in cachedStemPaths.entries) {
+        final bytes = await File(entry.value).readAsBytes();
+        arch.addFile(ArchiveFile('${projectName}_stem_${entry.key}.ogg', bytes.length, bytes));
+      }
+      
       Uint8List zip = Uint8List.fromList(ZipEncoder().encode(arch)!);
       await FileSaver.instance.saveAs(name: "${projectName}_stems", bytes: zip, fileExtension: 'zip', mimeType: MimeType.zip);
       _showSaveConfirmation("All tracks exported successfully as unmixed multi-track stems.");
@@ -2021,7 +2027,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
     }
   }
 
-  Uint8List _packageProjectBytes() {
+  Future<Uint8List> _packageProjectBytes() async {
     Map<String, dynamic> projectData = {
       "voxray_version": "1.5.0",
       "project_name": projectName,
@@ -2033,7 +2039,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       "target_stems_selection": targetStemsSelection.toList(),
       "generated_stems": generatedStems.toList(),
       "all_stems_notes": allStemsNotes,
-	  "all_stems_continuous_xray": allStemsContinuousXray,
+      "all_stems_continuous_xray": allStemsContinuousXray, 
       "active_editable_stem": activeEditableStem,
       "history": {"undo_stack": undoStack, "redo_stack": redoStack}
     };
@@ -2048,8 +2054,14 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       archive.addFile(ArchiveFile('original_audio.dat', originalAudioBytes!.length, originalAudioBytes));
     }
 
-    for (var entry in cachedStemBytes.entries) {
-      archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
+    // NEW: Read from disk instead of RAM
+    for (var entry in cachedStemPaths.entries) {
+      try {
+        final bytes = await File(entry.value).readAsBytes();
+        archive.addFile(ArchiveFile('${entry.key}.ogg', bytes.length, bytes));
+      } catch (e) {
+        debugPrint("Skipping missing file for package: ${entry.key}");
+      }
     }
 
     return Uint8List.fromList(ZipEncoder().encode(archive)!);
@@ -2068,7 +2080,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       return;
     }
     
-    final bytes = _packageProjectBytes();
+    final bytes = await _packageProjectBytes();
     try {
       await File(currentProjectPath!).writeAsBytes(bytes);
       setState(() {
@@ -2087,7 +2099,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       return;
     }
     
-    final bytes = _packageProjectBytes();
+    final bytes = await _packageProjectBytes();
     try {
       await File(currentProjectPath!).writeAsBytes(bytes);
       setState(() {
@@ -2101,7 +2113,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   }
 
   Future<void> _saveVoxrayProjectAs() async {
-    final bytes = _packageProjectBytes();
+    final bytes = await _packageProjectBytes();
     
     String defaultSaveName = originalFileName.contains('.')
         ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
@@ -2167,7 +2179,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       hasBeenSaved = true;
       dirtyStems.clear();
 
-      cachedStemBytes.clear();
+      cachedStemPaths.clear();
       for(var h in stemHandles.values) SoLoud.instance.stop(h);
       stemHandles.clear();
       stemSources.clear();
@@ -2188,14 +2200,19 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
     }
 
     Map<String, dynamic> projectData = {};
+    final tempDir = await getTemporaryDirectory(); // ADD THIS
+
     for (ArchiveFile file in archive) {
       if (file.name == 'project.json') {
         projectData = json.decode(utf8.decode(file.content as List<int>));
       } else if (file.name == 'original_audio.dat') {
         originalAudioBytes = file.content as Uint8List;
       } else if (file.name.endsWith('.ogg')) {
+        // NEW: Write extracted file to disk, store path
         String stemName = file.name.replaceAll('.ogg', '');
-        cachedStemBytes[stemName] = file.content as Uint8List;
+        String extractPath = '${tempDir.path}/imported_$stemName.ogg';
+        await File(extractPath).writeAsBytes(file.content as List<int>);
+        cachedStemPaths[stemName] = extractPath;
       }
     }
 
@@ -2275,7 +2292,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
     }
 
     for (String stem in generatedStems) {
-       if (cachedStemBytes.containsKey(stem)) {
+       if (cachedStemPaths.containsKey(stem)) {
           activePlaybackSources.add(stem); 
           await _loadStemPlayerSource(stem);
        }
