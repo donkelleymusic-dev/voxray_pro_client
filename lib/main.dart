@@ -446,6 +446,8 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       setState(() {
         undoStack.add(json.encode(allStemsNotes));
         redoStack.clear();
+		//redoStackContinuous.clear();
+		undoStackContinuous.add(json.encode(allStemsContinuousXray));
         //cachedStemBytes.remove(activeEditableStem); // remove: don't want to remove ogg audio from the project!
         dirtyStems.add(activeEditableStem); 
         hasBeenSaved = false; 
@@ -1368,6 +1370,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
+		  registerUndoSnapshot();
           var sessionData = jsonDecode(await sessionRes.stream.bytesToString());
           currentTaskId = sessionData['task_id'];
         } else {
@@ -1449,6 +1452,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
+		  registerUndoSnapshot();
           var sessionData = jsonDecode(await sessionRes.stream.bytesToString());
           currentTaskId = sessionData['task_id'];
         } else {
@@ -1464,6 +1468,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       var response = await request.send();
       
       if (response.statusCode == 200) {
+		registerUndoSnapshot();
         var data = jsonDecode(await response.stream.bytesToString());
         
         // Grab the Job ID and register it globally
@@ -1632,6 +1637,9 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       setState(() {
         redoStack.add(json.encode(allStemsNotes));
         allStemsNotes = Map<String, List<dynamic>>.from(json.decode(undoStack.removeLast()));
+
+		redoStackContinuous.add(json.encode(allStemsContinuousXray));
+    	allStemsContinuousXray = json.decode(undoStackContinuous.removeLast());
       });
     }
   }
@@ -1641,6 +1649,8 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       setState(() {
         undoStack.add(json.encode(allStemsNotes));
         allStemsNotes = Map<String, List<dynamic>>.from(json.decode(redoStack.removeLast()));
+		undoStackContinuous.add(json.encode(allStemsContinuousXray));
+    	allStemsContinuousXray = json.decode(undoStackContinuous.removeLast());
       });
     }
   }
@@ -2384,6 +2394,8 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       if (projectData['history'] != null) {
         undoStack = List<String>.from(projectData['history']['undo_stack']);
         redoStack = List<String>.from(projectData['history']['redo_stack']);
+		undoStackContinuous = List<String>.from(projectData['history']['undo_stack_continuous'] ?? []);
+        redoStackContinuous = List<String>.from(projectData['history']['redo_stack_continuous'] ?? []);
       }
       if (rawNotes.isNotEmpty && rawNotes.first.containsKey('contour')) {
         isXrayMode = true;
