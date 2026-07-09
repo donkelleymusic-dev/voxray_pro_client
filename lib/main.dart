@@ -40,6 +40,8 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:archive/archive.dart'; 
 import 'dart:typed_data';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'ui/timeline_canvas.dart';
 import 'pedagogy/live_analyzer.dart';
 import 'ui/timeline_ruler.dart';
@@ -156,8 +158,6 @@ class VoxrayDAW extends StatefulWidget {
   @override
   State<VoxrayDAW> createState() => VoxrayDAWState(); 
 }
-
-import 'package:shared_preferences/shared_preferences.dart';
 
 class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
 
