@@ -2940,6 +2940,40 @@ class VoxrayDAWState extends State<VoxrayDAW> {
               _dossierRow("Deleted notes", "$deletedCount"),
               const SizedBox(height: 10),
 
+			    /*void printForensicDossier(String stem) {
+				  var notes = allStemsNotes[stem] ?? [];
+				  int highlyTunedCount = 0;
+				  int totalAnalyzed = 0;
+				
+				  print('\n=== FORENSIC DOSSIER: ${stem.toUpperCase()} ===');
+				
+				  for (var note in notes) {
+				    // Ignore deleted notes and background X-Ray lines
+				    if (note['isDeleted'] == true || note['type'] == 'xray_line') continue;
+				
+				    var forensics = note['forensics'];
+				    if (forensics != null && forensics['is_analyzed'] == true) {
+				      totalAnalyzed++;
+				      double prob = (forensics['tuning_probability'] ?? 0.0).toDouble();
+				      
+				      if (prob > 0.80) { // 80% confident it's Auto-Tuned
+				        highlyTunedCount++;
+				        double startTime = (note['start_time'] ?? 0.0).toDouble();
+				        print('Suspicious Note at ${startTime.toStringAsFixed(2)}s | Tuning Probability: ${(prob * 100).round()}% | Flatness (StdDev): ${forensics['std_deviation']}¢');
+				      }
+				    }
+				  }
+				
+				  if (totalAnalyzed > 0) {
+				    double overallScore = (highlyTunedCount / totalAnalyzed) * 100;
+				    print('-----------------------------------------');
+				    print('OVERALL TRACK SCORE: ${overallScore.toStringAsFixed(1)}% of analyzed notes show signs of mechanical pitch correction.');
+				    print('=========================================\n');
+				  } else {
+				    print('No notes were long enough to analyze.');
+				  }
+				}
+				*/
               const Text("PITCH ACCURACY", style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.2)),
               const SizedBox(height: 8),
               if (!hasXray)
