@@ -668,6 +668,14 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       double end = (note['end_time'] ?? 0.0).toDouble();
       double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
 
+	  // 1. Grab the original pitch AND the user's manual drag shifts
+      double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
+      int semitoneShift = note['semitone_shift'] ?? 0;
+      double centsShift = (note['cents_shift'] ?? 0).toDouble();
+      
+      // 2. Calculate the true, user-edited MIDI target
+      double effectiveMidi = actualMidi + semitoneShift + (centsShift / 100.0);
+		
 	  var overlaps = targetNotesList.where((alt) {
         if (alt['isDeleted'] == true) return false;
         double altStart = (alt['start_time'] ?? 0.0).toDouble();
@@ -688,7 +696,9 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       //}).toList();
       
       note['is_poly'] = overlaps.length > 1;
-      note['target_freq'] = 440.0 * math.pow(2.0, (actualMidi - 69.0) / 12.0);
+      
+      // 3. USE EFFECTIVE MIDI for the backend frequency target!
+      note['target_freq'] = 440.0 * math.pow(2.0, (effectiveMidi - 69.0) / 12.0);
       note['component_count'] = overlaps.length;
       
       enrichedList.add(note);
