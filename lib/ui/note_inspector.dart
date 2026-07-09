@@ -26,7 +26,7 @@ class NoteInspector {
     
     final Map<String, dynamic>? forensics = note['forensics'];
     final bool isAnalyzed = forensics != null && forensics['is_analyzed'] == true;
-    final double prob = isAnalyzed ? (forensics['tuning_probability'] ?? 0.0).toDouble()
+    final double prob = isAnalyzed ? (forensics['tuning_probability'] ?? 0.0).toDouble() : 0.0;
     // Example UI Logic:
     // if (prob > 0.85) -> Show Red "Mechanical Tuning Detected" warning
     // if (prob < 0.30) -> Show Green "Natural Human Wobble" text
