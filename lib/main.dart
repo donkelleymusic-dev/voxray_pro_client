@@ -241,6 +241,8 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   
   List<String> undoStack = [];
   List<String> redoStack = [];
+  List<String> undoStackContinuous = [];
+  List<String> redoStackContinuous = [];
   
   bool isLoading = false;
   double processingProgress = 0.0; 
