@@ -221,11 +221,21 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
 }
 
 class PianoKeysPainter extends CustomPainter {
-  final int minMidi; final int maxMidi; final double zoomY;
+  final int minMidi; 
+  final int maxMidi; 
+  final double zoomY;
+  
   PianoKeysPainter({required this.minMidi, required this.maxMidi, required this.zoomY});
 
-  bool isBlackKey(int midi) { int note = midi % 12; return note == 1 || note == 3 || note == 6 || note == 8 || note == 10; }
-  String getNoteName(int midi) { const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']; return '${noteNames[midi % 12]}${(midi ~/ 12) - 1}'; }
+  bool isBlackKey(int midi) { 
+    int note = midi % 12; 
+    return note == 1 || note == 3 || note == 6 || note == 8 || note == 10; 
+  }
+  
+  String getNoteName(int midi) { 
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']; 
+    return '${noteNames[midi % 12]}${(midi ~/ 12) - 1}'; 
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -233,14 +243,38 @@ class PianoKeysPainter extends CustomPainter {
       double topY = (maxMidi - i) * zoomY;
       Paint keyPaint = Paint()..color = isBlackKey(i) ? Colors.black87 : Colors.white;
       canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), keyPaint);
-      if (!isBlackKey(i)) canvas.drawLine(Offset(0, topY + zoomY), Offset(size.width, topY + zoomY), Paint()..color = Colors.grey[400]!);
-      if (i % 12 == 0 && zoomY > 10) {
-        TextPainter tp = TextPainter(text: TextSpan(text: getNoteName(i), style: TextStyle(color: isBlackKey(i) ? Colors.white : Colors.black, fontSize: 8, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
-        tp.paint(canvas, Offset(size.width - tp.width - 2, topY + (zoomY / 2) - (tp.height / 2)));
+      
+      if (!isBlackKey(i)) {
+        canvas.drawLine(Offset(0, topY + zoomY), Offset(size.width, topY + zoomY), Paint()..color = Colors.grey[400]!);
+      }
+      
+      if (i % 12 == 0) {
+        // Calculate font size to be ~75% of the key height.
+        // Clamp it so it never goes smaller than 5.0, and never larger than 10.0.
+        double dynamicFontSize = (zoomY * 0.75).clamp(5.0, 10.0);
+
+        // Lower the cutoff threshold. Only stop rendering if the key is smaller than 5 pixels high.
+        if (zoomY >= 5.0) {
+          TextPainter tp = TextPainter(
+            text: TextSpan(
+              text: getNoteName(i), 
+              style: TextStyle(
+                color: isBlackKey(i) ? Colors.white : Colors.black, 
+                fontSize: dynamicFontSize, 
+                fontWeight: FontWeight.bold
+              )
+            ), 
+            textDirection: TextDirection.ltr
+          )..layout();
+          
+          tp.paint(canvas, Offset(size.width - tp.width - 2, topY + (zoomY / 2) - (tp.height / 2)));
+        }
       }
     }
   }
-  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  
+  @override 
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
 class AdvancedPianoRollPainter extends CustomPainter {
