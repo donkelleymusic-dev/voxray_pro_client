@@ -159,38 +159,6 @@ class VoxrayDAW extends StatefulWidget {
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<void> _resumeInterruptedJobsOnStartup() async {
-  final prefs = await SharedPreferences.getInstance();
-  
-  // 1. Look in the local hard drive for a saved claim ticket
-  final savedJobId = prefs.getString('active_job_id');
-  final savedTargetStem = prefs.getString('active_target_stem');
-  final savedTaskId = prefs.getString('active_task_id'); // Helps map it to the right song
-
-  // 2. If they exist, it means the app crashed or was force-quit while waiting!
-  if (savedJobId != null && savedTargetStem != null) {
-    debugPrint("Found an interrupted job! Resuming...");
-
-    // 3. FAKE IT 'TIL YOU MAKE IT: Reconstruct the UI state.
-    // We instantly lock the UI back into the "Loading" state so the 
-    // user knows we are picking up right where we left off.
-    setState(() {
-      currentJobId = savedJobId;
-      currentTaskId = savedTaskId;
-      activeEditableStem = savedTargetStem; // Put the dropdown back to the right stem
-      
-      isLoading = true;
-      processingMessage = "Reconnecting to server for $savedTargetStem...";
-    });
-
-    // 4. RESTART THE ENGINE
-    // We call your exact same polling function using the saved ticket.
-    // The Modal backend doesn't care that your phone rebooted. If the job 
-    // finished 5 hours ago, the first poll will instantly return "complete"!
-    _pollForStemData(savedJobId, savedTargetStem);
-  }
-}
-
 class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   // --- SoLoud Audio Engine Handles ---
   AudioSource? masterSource;
@@ -348,7 +316,9 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         }
       }
     });
-    
+	  
+    _restoreAutoSaveOnStartup();
+	  
     positionTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       if (!isPlaying || !mounted) return;
       
@@ -474,6 +444,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         dirtyStems.add(activeEditableStem); 
         hasBeenSaved = false; 
       });
+	  triggerAutoSave();
     }
   }
 
@@ -877,7 +848,11 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       undoStack.clear();
       redoStack.clear();
     });
-    
+
+	final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/voxray_autosave.json');
+    if (await file.exists()) await file.delete();
+	  
     _showSaveConfirmation("New empty project loaded.");
   }
 
@@ -1097,6 +1072,8 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
               // FIX: Update message and keep the loading bar active
               processingMessage = "Downloading audio for ${targetStem.toUpperCase()}...";
             });
+			  
+			triggerAutoSave();
 
             // FIX: Wait for the audio to fetch and load into SoLoud before clearing the UI
             _loadStemPlayerSource(targetStem).then((_) {
@@ -3326,7 +3303,155 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       case 'test_mode': setState(() => isTestModeActive = !isTestModeActive); break;
     }
   }
+  // =========================================================================
+  // SILENT AUTO-SAVE & RESTORE ARCHITECTURE
+  // =========================================================================
 
+  // 1. The Trigger (Call this after any user action)
+  void triggerAutoSave() {
+    if (currentTaskId == null || isRestoringState) return;
+    _autoSaveTimer?.cancel();
+    // Wait 2 seconds of inactivity before writing to disk to prevent lag
+    _autoSaveTimer = Timer(const Duration(seconds: 2), _performAutoSave);
+  }
+
+  // 2. The Writer (Creates a tiny JSON file of the UI state)
+  Future<void> _performAutoSave() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/voxray_autosave.json');
+
+      Map<String, dynamic> stateData = {
+        "timestamp": DateTime.now().toIso8601String(),
+        "task_id": currentTaskId,
+        "job_id": currentJobId,
+        "project_name": projectName,
+        "original_file": originalFileName,
+        "song_duration": songDuration,
+        "mixer_state": mixerState.map((k, v) => MapEntry(k, v.toJson())),
+        "target_stems_selection": targetStemsSelection.toList(),
+        "generated_stems": generatedStems.toList(),
+        "all_stems_notes": allStemsNotes,
+        "all_stems_continuous_xray": allStemsContinuousXray,
+        "active_editable_stem": activeEditableStem,
+        "cached_stem_paths": cachedStemPaths, // Remember where the audio is!
+        "zoom_x": zoomX,
+        "zoom_y": zoomY,
+      };
+
+      await file.writeAsString(jsonEncode(stateData));
+      debugPrint("Auto-saved to disk silently.");
+    } catch (e) {
+      debugPrint("Auto-save failed silently: $e");
+    }
+  }
+
+  // 3. The Resurrector (Runs on app boot)
+  Future<void> _restoreAutoSaveOnStartup() async {
+    try {
+      setState(() => isRestoringState = true);
+      
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/voxray_autosave.json');
+      
+      if (!await file.exists()) {
+        setState(() => isRestoringState = false);
+        return; // Normal fresh boot
+      }
+
+      final data = jsonDecode(await file.readAsString());
+      
+      // If the autosave is older than 24 hours, ignore it
+      final savedTime = DateTime.parse(data['timestamp']);
+      if (DateTime.now().difference(savedTime).inHours > 24) {
+        await file.delete();
+        setState(() => isRestoringState = false);
+        return;
+      }
+
+      setState(() {
+        isLoading = true;
+        processingMessage = "Restoring previous session...";
+        
+        currentTaskId = data['task_id'];
+        currentJobId = data['job_id'];
+        projectName = data['project_name'];
+        originalFileName = data['original_file'];
+        songDuration = data['song_duration'];
+        zoomX = data['zoom_x'] ?? 50.0;
+        zoomY = data['zoom_y'] ?? 8.0;
+        
+        if (data['mixer_state'] != null) {
+          Map<String, dynamic> ms = data['mixer_state'];
+          mixerState = ms.map((k, v) => MapEntry(k, ChannelState.fromJson(v)));
+        }
+        
+        targetStemsSelection = Set<String>.from(data['target_stems_selection']);
+        generatedStems = Set<String>.from(data['generated_stems']);
+        allStemsNotes = Map<String, List<dynamic>>.from(data['all_stems_notes']);
+        allStemsContinuousXray = Map<String, List<dynamic>>.from(data['all_stems_continuous_xray']);
+        activeEditableStem = data['active_editable_stem'];
+        
+        Map<String, dynamic> savedPaths = data['cached_stem_paths'] ?? {};
+        savedPaths.forEach((k, v) => cachedStemPaths[k] = v.toString());
+      });
+
+      // Reconnect Audio Files from Disk
+      for (String stem in generatedStems) {
+         if (cachedStemPaths.containsKey(stem)) {
+            activePlaybackSources.add(stem); 
+            await _loadStemPlayerSource(stem); // Will load lightning fast from disk
+         }
+      }
+
+      // Reconnect to API polling if we crashed while waiting!
+      if (currentJobId != null && activeEditableStem.isNotEmpty) {
+          _pollForStemData(currentJobId!, activeEditableStem);
+      } else {
+          setState(() { isLoading = false; processingMessage = ""; });
+      }
+      
+      _showSaveConfirmation("Recovered previous unsaved session.");
+
+    } catch (e) {
+      debugPrint("Failed to restore autosave: $e");
+    } finally {
+      setState(() => isRestoringState = false);
+    }
+  }
+	
+  Future<void> _resumeInterruptedJobsOnStartup() async {
+	final prefs = await SharedPreferences.getInstance();
+	
+	// 1. Look in the local hard drive for a saved claim ticket
+	final savedJobId = prefs.getString('active_job_id');
+	final savedTargetStem = prefs.getString('active_target_stem');
+	final savedTaskId = prefs.getString('active_task_id'); // Helps map it to the right song
+	
+	// 2. If they exist, it means the app crashed or was force-quit while waiting!
+	if (savedJobId != null && savedTargetStem != null) {
+	debugPrint("Found an interrupted job! Resuming...");
+	
+	// 3. FAKE IT 'TIL YOU MAKE IT: Reconstruct the UI state.
+	// We instantly lock the UI back into the "Loading" state so the 
+	// user knows we are picking up right where we left off.
+	setState(() {
+	  currentJobId = savedJobId;
+	  currentTaskId = savedTaskId;
+	  activeEditableStem = savedTargetStem; // Put the dropdown back to the right stem
+	  
+	  isLoading = true;
+	  processingMessage = "Reconnecting to server for $savedTargetStem...";
+	});
+	
+	// 4. RESTART THE ENGINE
+	// We call your exact same polling function using the saved ticket.
+	// The Modal backend doesn't care that your phone rebooted. If the job 
+	// finished 5 hours ago, the first poll will instantly return "complete"!
+	_pollForStemData(savedJobId, savedTargetStem);
+	}
+  }
+		
   @override
   Widget build(BuildContext context) {
     bool isCurrentStemGenerated = generatedStems.contains(activeEditableStem);
