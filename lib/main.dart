@@ -1030,6 +1030,11 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
           if (statusData['status'] == 'complete') {
             timer.cancel();
             final result = statusData['result'];
+			  
+			// CLEAN UP persistent job_id:
+		    final prefs = await SharedPreferences.getInstance();
+		    await prefs.remove('active_job_id');
+		    await prefs.remove('active_target_stem');
 
             List<dynamic> stemNotes = [];
             final allStemsMap = result['all_stems_notes'];
@@ -1131,6 +1136,12 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
          final resData = json.decode(await res.stream.bytesToString());
          final String jobId = resData['job_id'];
          currentJobId = jobId;
+		  
+		  // SAVE IT TO DISK:
+	     final prefs = await SharedPreferences.getInstance();
+	     await prefs.setString('active_job_id', jobId);
+	     await prefs.setString('active_target_stem', targetToGenerate);
+	     
          // Log Success!
          await BackendService.logEvent(
             platform: 'flutter',
