@@ -198,7 +198,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           ),
                           // Moving Vertical Playhead
                           Positioned(
-                            left: widget.dawState.currentPosition * widget.dawState.zoomX,
+                            left: (widget.dawState.currentPosition * widget.dawState.zoomX) * 0.8, // * 0.8 is to savely move playhead left of center by that much. 1.0 is center.
                             top: 0,
                             bottom: 0,
                             child: Container(
