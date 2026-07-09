@@ -157,7 +157,7 @@ class VoxrayDAW extends StatefulWidget {
   State<VoxrayDAW> createState() => VoxrayDAWState(); 
 }
 
-class VoxrayDAWState extends State<VoxrayDAW> {
+class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
   // --- SoLoud Audio Engine Handles ---
   AudioSource? masterSource;
   SoundHandle? masterHandle;
@@ -294,6 +294,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
   @override
   void initState() {
     super.initState();
+	// 2. Register the observer
+    WidgetsBinding.instance.addObserver(this);
     horizontalScrollController.addListener(() {
       if (rulerScrollController.hasClients) {
         if ((rulerScrollController.position.pixels - horizontalScrollController.position.pixels).abs() > 0.1) {
@@ -392,6 +394,8 @@ class VoxrayDAWState extends State<VoxrayDAW> {
 
   @override
   void dispose() {
+	// 3. Remove the observer
+    WidgetsBinding.instance.removeObserver(this);
     pollingTimer?.cancel();
     positionTimer?.cancel();
     horizontalScrollController.dispose();
@@ -400,6 +404,23 @@ class VoxrayDAWState extends State<VoxrayDAW> {
     SoLoud.instance.disposeAllSources();
     SoLoud.instance.deinit();
     super.dispose();
+  }
+
+	// 4. Listen for the app waking up
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // The user just came back to the app!
+      // If we were waiting for a job, immediately ping the server.
+      if (currentJobId != null && isLoading) {
+         debugPrint("App resumed. Manually checking job status...");
+         _pollRenderJob(currentJobId!); // Or _pollForStemData
+      }
+    } else if (state == AppLifecycleState.paused) {
+      // App went to the background. 
+      // You can optionally cancel timers here to save battery, 
+      // knowing 'resumed' will pick them back up.
+    }
   }
 
   void notifyChanged() {
