@@ -41,6 +41,7 @@ import 'package:archive/archive.dart';
 import 'dart:typed_data';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 import 'ui/timeline_canvas.dart';
 import 'pedagogy/live_analyzer.dart';
@@ -956,18 +957,18 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       currentTaskId = null;
       currentJobId = null;
       suggestedStems.clear();
-	  allStemsContinuousXray.clear();
+      allStemsContinuousXray.clear();
 
       if (uploadOptions['type'] == 'mix') {
         isOriginalMixAvailable = true;
         activePlaybackSources.add('original');
-        processingMessage = "Analyzing profile and dynamic parameters...";
+        processingMessage = "Uploading Full Mix... Please keep app open.";
       } else {
         isOriginalMixAvailable = false;
         activeEditableStem = uploadOptions['stem']!;
         activePlaybackSources.add(activeEditableStem);
         targetStemsSelection.add(activeEditableStem);
-        processingMessage = "Analyzing ${activeEditableStem.toUpperCase()} stem notes...";
+        processingMessage = "Uploading ${activeEditableStem.toUpperCase()} stem... Please keep app open.";
       }
     });
 
@@ -1022,7 +1023,15 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         return;
       }
 
+      // =========================================================
+      // THE NEW GLOBAL TASK REGISTRATION GOES HERE
+      // The upload is done, the server has the file. Safe to background now.
+      // =========================================================
       currentJobId = data['job_id']; 
+      
+      await _registerActiveJob(currentJobId!, currentTaskId!, 'INITIAL_STEM_ANALYSIS', uploadOptions['stem']!);
+      
+      // Start polling (Modal will now handle Waking GPU -> Separation -> Pitch)
       _pollForStemData(currentJobId!, uploadOptions['stem']!);
 
     } catch (e) {
@@ -1125,6 +1134,47 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
     });
   }
 
+  void _pollForXrayData(String jobId, String targetStem) {
+    pollingTimer?.cancel();
+    
+    pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      try {
+        var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
+        if (statusRes.statusCode == 200) {
+          var statusData = json.decode(statusRes.body);
+          
+          if (statusData['status'] == 'complete') {
+            timer.cancel();
+            await _clearActiveJob(); // Wipe the recovery ticket
+
+            final result = statusData['result'];
+            
+            setState(() {
+              // Inject the new high-res pitch data into the UI
+              allStemsNotes[targetStem] = result['notes'];
+              if (result['continuous_xray'] != null) {
+                 allStemsContinuousXray[targetStem] = result['continuous_xray'];
+              }
+              isXrayProcessing = false;
+              registerUndoSnapshot(); 
+            });
+            
+            _showSaveConfirmation('X-Ray high-resolution tracking complete.');
+
+          } else if (statusData['status'] == 'error') {
+            timer.cancel();
+            await _clearActiveJob();
+            setState(() => isXrayProcessing = false);
+            _showSaveConfirmation('X-Ray Processing Error: ${statusData['message']}');
+          }
+        }
+      } catch (e) {
+        debugPrint("X-Ray polling network blink (app likely backgrounded): $e");
+        // We do NOT cancel the timer here. It will keep trying!
+      }
+    });
+  }
+
   Future<void> _generateStemOnDemand(String targetToGenerate) async {
     if (currentTaskId == null) return;
     
@@ -1160,8 +1210,13 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
          final resData = json.decode(await res.stream.bytesToString());
          final String jobId = resData['job_id'];
          currentJobId = jobId;
+		 // 1. Register the job!
+		 await _registerActiveJob(jobId, currentTaskId!, 'STEM_GENERATION', targetToGenerate);
+		   
+		 // 2. Start polling
+		 _pollForStemData(jobId, targetToGenerate);
 		  
-		  // SAVE IT TO DISK:
+		 // SAVE IT TO DISK:
 	     final prefs = await SharedPreferences.getInstance();
 	     await prefs.setString('active_job_id', jobId);
 	     await prefs.setString('active_target_stem', targetToGenerate);
@@ -1343,34 +1398,33 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         }
       }
 
+      // Start the X-Ray Job
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id'] = currentTaskId!
         ..fields['notes_manifest'] = jsonEncode(_enrichManifestWithPolyphonicContext(rawNotes));
 
       var response = await request.send();
-      var responseData = await http.Response.fromStream(response);
       
-      if (responseData.statusCode == 200) {
-        var data = jsonDecode(responseData.body);
-        if (data['status'] == 'success') {
-          setState(() {
-            rawNotes = data['notes'];
-			if (data['continuous_xray'] != null) {
-               allStemsContinuousXray[activeEditableStem] = data['continuous_xray'];
-            }
-            registerUndoSnapshot(); 
-          });
-        } else {
-          _showSaveConfirmation('XRAY failed: ${data['message']}');
-          setState(() => isXrayMode = false);
-        }
+      if (response.statusCode == 200) {
+        var data = jsonDecode(await response.stream.bytesToString());
+        
+        // Grab the Job ID and register it globally
+        String jobId = data['job_id'];
+        await _registerActiveJob(jobId, currentTaskId!, 'XRAY_REPROCESS', activeEditableStem);
+        
+        // Start polling in the background!
+        _pollForXrayData(jobId, activeEditableStem);
+        
+      } else {
+        throw Exception("Server rejected X-Ray request.");
       }
+
     } catch (e) {
       debugPrint("XRAY error: $e");
       _showSaveConfirmation('Connection error: $e');
-      setState(() => isXrayMode = false);
+      setState(() { isXrayMode = false; isXrayProcessing = false; });
     } finally {
-      setState(() { isXrayProcessing = false; });
+      // We immediately resume playback here! The UI is unblocked while it polls.
       if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
   }
@@ -3456,38 +3510,81 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
       setState(() => isRestoringState = false);
     }
   }
-	
-  Future<void> _resumeInterruptedJobsOnStartup() async {
-	final prefs = await SharedPreferences.getInstance();
-	
-	// 1. Look in the local hard drive for a saved claim ticket
-	final savedJobId = prefs.getString('active_job_id');
-	final savedTargetStem = prefs.getString('active_target_stem');
-	final savedTaskId = prefs.getString('active_task_id'); // Helps map it to the right song
-	
-	// 2. If they exist, it means the app crashed or was force-quit while waiting!
-	if (savedJobId != null && savedTargetStem != null) {
-	debugPrint("Found an interrupted job! Resuming...");
-	
-	// 3. FAKE IT 'TIL YOU MAKE IT: Reconstruct the UI state.
-	// We instantly lock the UI back into the "Loading" state so the 
-	// user knows we are picking up right where we left off.
-	setState(() {
-	  currentJobId = savedJobId;
-	  currentTaskId = savedTaskId;
-	  activeEditableStem = savedTargetStem; // Put the dropdown back to the right stem
+
+    // Call this immediately AFTER you receive a job_id from Modal, 
+	// but BEFORE you start your Timer.periodic polling loop.
+	Future<void> _registerActiveJob(String jobId, String taskId, String jobType, String target) async {
+	  final prefs = await SharedPreferences.getInstance();
+	  final jobData = {
+	    'job_id': jobId,
+	    'task_id': taskId,
+	    'job_type': jobType,
+	    'target': target,
+	  };
+	  await prefs.setString('pending_backend_job', jsonEncode(jobData));
 	  
-	  isLoading = true;
-	  processingMessage = "Reconnecting to server for $savedTargetStem...";
-	});
-	
-	// 4. RESTART THE ENGINE
-	// We call your exact same polling function using the saved ticket.
-	// The Modal backend doesn't care that your phone rebooted. If the job 
-	// finished 5 hours ago, the first poll will instantly return "complete"!
-	_pollForStemData(savedJobId, savedTargetStem);
+	  // Set your UI state so the loading bar appears
+	  setState(() {
+	    currentJobId = jobId;
+	    currentTaskId = taskId;
+	    isLoading = true;
+	  });
 	}
-  }
+	
+	// Call this inside your polling loops the moment status == 'complete' or 'error'
+	Future<void> _clearActiveJob() async {
+	  final prefs = await SharedPreferences.getInstance();
+	  await prefs.remove('pending_backend_job');
+	  setState(() { currentJobId = null; });
+	}
+	
+	Future<void> _resumeInterruptedJobsOnStartup() async {
+	  final prefs = await SharedPreferences.getInstance();
+	  final jobString = prefs.getString('pending_backend_job');
+	
+	  if (jobString != null) {
+	    debugPrint("Found an interrupted backend job! Routing to correct handler...");
+	    
+	    final jobData = jsonDecode(jobString);
+	    final jobId = jobData['job_id'];
+	    final taskId = jobData['task_id'];
+	    final jobType = jobData['job_type'];
+	    final target = jobData['target'];
+	
+	    setState(() {
+	      currentJobId = jobId;
+	      currentTaskId = taskId;
+	      isLoading = true;
+	      processingMessage = "Reconnecting to server...";
+	    });
+	
+	    // The Router: Send the job to the correct polling loop!
+	    switch (jobType) {
+	      case 'STEM_GENERATION':
+	      case 'INITIAL_STEM_ANALYSIS':
+	        activeEditableStem = target; // Fix the UI dropdown
+	        _pollForStemData(jobId, target);
+	        break;
+	        
+	      case 'XRAY_REPROCESS':
+	        activeEditableStem = target;
+	        _pollForXrayReprocess(jobId, target); // Assumes you made a dedicated polling loop for this
+	        break;
+	        
+	      case 'MASTER_RENDER':
+	      case 'STEM_EDIT_PREVIEW':
+	        setState(() { isPreviewing = true; exportMessage = "Reconnecting to render engine..."; });
+	        _pollRenderJob(jobId); // Your existing render poller
+	        break;
+	        
+	      default:
+	        // If the job type is unknown, just clear it so we don't get stuck
+	        _clearActiveJob();
+	        setState(() => isLoading = false);
+	        break;
+	    }
+	  }
+	}
 		
   @override
   Widget build(BuildContext context) {
