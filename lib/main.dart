@@ -160,6 +160,13 @@ class VoxrayDAW extends StatefulWidget {
 import 'package:shared_preferences/shared_preferences.dart';
 
 class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
+
+  // --- persistent storage, data, jobs etc.
+  Set<String> stemsCurrentlyFetching = {}; 
+  final Map<String, String> cachedStemPaths = {}; 
+  Timer? _autoSaveTimer;
+  bool isRestoringState = false;
+	
   // --- SoLoud Audio Engine Handles ---
   AudioSource? masterSource;
   SoundHandle? masterHandle;
