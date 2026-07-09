@@ -3295,7 +3295,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
             ),
             const SizedBox(width: 8),
             const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
-            ElevatedButton(
+            /*ElevatedButton(
               onPressed: () async {
                 try {
                   final results = await BackendService.processAudio("dummy_audio_data");
@@ -3308,7 +3308,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
                 }
               },
               child: const Text('Test DSP Processing'),
-            ),
+            ),*/
             IconButton(
               icon: const Icon(Icons.account_balance_wallet),
               onPressed: () {
