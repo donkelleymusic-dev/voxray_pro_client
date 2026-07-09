@@ -1604,7 +1604,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         })
         ..fields['task_id'] = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(await http.MultipartFile.fromPath('file', originalAudioBytes!, filename: 'audio.wav'));
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
@@ -1833,7 +1833,7 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
         ..fields['task_id'] = currentTaskId!
         ..fields['export_format'] = format 
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(await http.MultipartFile.fromPath('file', originalAudioBytes!, filename: 'master.wav'));
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
 
       var response = await request.send();
       var responseData = await http.Response.fromStream(response);
