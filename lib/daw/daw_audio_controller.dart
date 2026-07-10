@@ -36,6 +36,12 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
   // (Declared here as abstract getters/setters so the analyser is happy,
   //  but the host State provides the actual storage.)
 
+  double get songDuration;
+  set songDuration(double value);
+  
+  bool get isLoading;
+  set isLoading(bool value);
+  
   AudioSource? get masterSource;
   set masterSource(AudioSource? v);
   SoundHandle? get masterHandle;
@@ -182,12 +188,20 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
       stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
       
       // 2. NEW: Extract duration and update the global DAW state
+      //final duration = SoLoud.instance.getLength(stemSources[stemName]!);
+      //if (duration > songDuration) {
+      //  setState(() {
+      //    songDuration = duration;
+      //  });
+      //}
+      // 1. Get the source length
       final duration = SoLoud.instance.getLength(stemSources[stemName]!);
-      if (duration > songDuration) {
-        setState(() {
-          songDuration = duration;
-        });
-      }
+      
+      // 2. Set the global duration via the setter
+      songDuration = duration; 
+      
+      // 3. Force UI rebuild
+      setState(() {});
 
       // 3. Setup playback
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
