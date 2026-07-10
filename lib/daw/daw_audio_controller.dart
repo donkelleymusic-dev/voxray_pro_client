@@ -51,6 +51,8 @@ mixin DawAudioController on VoxrayDAWStateBase {
   }
 
   void playAllPlayers() {
+    // If that prints FALSE or NULL even though you just loaded a file, you have a disconnected State. issue.
+    debugPrint("DEBUG: MasterHandle valid? ${masterHandle != null ? SoLoud.instance.getIsValidVoiceHandle(masterHandle!) : 'NULL'}");
     setState(() => isPlaying = true);
 
     SoundHandle? revive(SoundHandle? handle, AudioSource? source, String key) {
@@ -136,6 +138,8 @@ mixin DawAudioController on VoxrayDAWStateBase {
       SoLoud.instance.setPause(stemHandles[stemName]!, true);
 
       final state = getChannelState(stemName);
+      //If debug is 0.0, the issue is in your ChannelState.fromJson or how you are re-populating mixerState from the .vxp file.
+      debugPrint("DEBUG: Loading volume for $stemName: ${state.volume}");
       SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
       SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
 
