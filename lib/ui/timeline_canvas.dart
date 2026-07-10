@@ -3,6 +3,7 @@ import '../main.dart';
 import 'note_inspector.dart';
 import 'package:flutter/rendering.dart'; 
 import 'dart:math' as math;
+import '../models/channel_state.dart';
 
 class TimelineCanvasWidget extends StatefulWidget {
   final VoxrayDAWState dawState;
