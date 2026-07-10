@@ -94,41 +94,39 @@ class VoxrayDAW extends StatefulWidget {
 // STATE  (UI fields + lifecycle; business logic via mixins)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class VoxrayDAWState extends State<VoxrayDAW>
-    with WidgetsBindingObserver, DawAudioController, DawApiService {
+abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingObserver {
 
   // ── API base ──────────────────────────────────────────────────────────────
-  @override
   final String apiBase = 'https://donkelleymusic--voxray-pro-api-api.modal.run';
 
   // ── Persistent storage / job tracking ────────────────────────────────────
-  @override Set<String> stemsCurrentlyFetching = {};
-  @override final Map<String, String> cachedStemPaths = {};
+  Set<String> stemsCurrentlyFetching = {};
+  final Map<String, String> cachedStemPaths = {};
   Timer? __autoSaveTimer;
-  @override Timer? get _autoSaveTimer => __autoSaveTimer;
-  @override set _autoSaveTimer(Timer? v) => __autoSaveTimer = v;
-  @override bool isRestoringState = false;
+  Timer? get _autoSaveTimer => __autoSaveTimer;
+  set _autoSaveTimer(Timer? v) => __autoSaveTimer = v;
+  bool isRestoringState = false;
 
   // ── SoLoud audio engine handles ───────────────────────────────────────────
-  @override AudioSource? masterSource;
-  @override SoundHandle? masterHandle;
-  @override AudioSource? synthSource;
-  @override SoundHandle? synthHandle;
-  @override Map<String, AudioSource> stemSources = {};
-  @override Map<String, SoundHandle> stemHandles = {};
+  AudioSource? masterSource;
+  SoundHandle? masterHandle;
+  AudioSource? synthSource;
+  SoundHandle? synthHandle;
+  Map<String, AudioSource> stemSources = {};
+  Map<String, SoundHandle> stemHandles = {};
 
-  @override bool isPlaying = false;
+  bool isPlaying = false;
   Timer? positionTimer;
 
-  @override Set<String> activePlaybackSources = {};
-  @override bool isFetchingStems = false;
+  Set<String> activePlaybackSources = {};
+  bool isFetchingStems = false;
 
-  @override SynthSettings synthSettings = const SynthSettings();
-  @override bool isSynthRendering = false;
-  @override String synthMessage   = '';
-  @override String processingMode = 'advanced';
+  SynthSettings synthSettings = const SynthSettings();
+  bool isSynthRendering = false;
+  String synthMessage   = '';
+  String processingMode = 'advanced';
 
-  @override Map<String, ChannelState> mixerState = {
+  Map<String, ChannelState> mixerState = {
     'master': ChannelState(), 'synth': ChannelState(),
     'vocals': ChannelState(), 'instrumental': ChannelState(),
   };
@@ -139,9 +137,9 @@ class VoxrayDAWState extends State<VoxrayDAW>
   final ScrollController rulerScrollController      = ScrollController();
 
   // ── Note / x-ray data ────────────────────────────────────────────────────
-  @override Map<String, List<dynamic>> allStemsNotes        = {};
-  @override Map<String, List<dynamic>> allStemsContinuousXray = {};
-  @override String activeEditableStem = '';
+  Map<String, List<dynamic>> allStemsNotes        = {};
+  Map<String, List<dynamic>> allStemsContinuousXray = {};
+  String activeEditableStem = '';
 
   List<dynamic> get rawNotes =>
       activeEditableStem.isNotEmpty && allStemsNotes.containsKey(activeEditableStem)
@@ -160,61 +158,61 @@ class VoxrayDAWState extends State<VoxrayDAW>
   }
 
   // ── Stem catalogue ────────────────────────────────────────────────────────
-  @override final List<String> popStems = [
+  final List<String> popStems = [
     'vocals','instrumental','drums','bass','guitar','piano','other'
   ];
-  @override final List<String> orchStems = [
+  final List<String> orchStems = [
     'violin','cello','contrabass','flute','oboe','bassoon',
     'trumpet','trombone','tuba','percussion','orchestral'
   ];
-  @override final List<String> forensicStems = ['forensic_id'];
+  final List<String> forensicStems = ['forensic_id'];
 
   // ── Stem selection ────────────────────────────────────────────────────────
-  @override Set<String> targetStemsSelection = {};
-  @override Set<String> generatedStems       = {};
-  @override List<String> suggestedStems      = [];
+  Set<String> targetStemsSelection = {};
+  Set<String> generatedStems       = {};
+  List<String> suggestedStems      = [];
 
   // ── Project flags ─────────────────────────────────────────────────────────
-  @override bool isOriginalMixAvailable = false;
+  bool isOriginalMixAvailable = false;
   bool isTestModeActive = false;
-  @override bool isProjectLoaded = false;
-  @override bool hasBeenSaved    = false;
-  @override String? currentProjectPath;
-  @override Set<String> dirtyStems = {};
+  bool isProjectLoaded = false;
+  bool hasBeenSaved    = false;
+  String? currentProjectPath;
+  Set<String> dirtyStems = {};
 
   // ── Markers ───────────────────────────────────────────────────────────────
-  @override List<Map<String, dynamic>> markers = [
+  List<Map<String, dynamic>> markers = [
     {'id': 'mk_start', 'time': 0.0, 'label': 'Start'},
     {'id': 'mk_end',   'time': 30.0, 'label': 'End'},
   ];
 
   // ── Undo / Redo ───────────────────────────────────────────────────────────
-  @override List<String> undoStack           = [];
-  @override List<String> redoStack           = [];
-  @override List<String> undoStackContinuous = [];
-  @override List<String> redoStackContinuous = [];
+  List<String> undoStack           = [];
+  List<String> redoStack           = [];
+  List<String> undoStackContinuous = [];
+  List<String> redoStackContinuous = [];
 
   // ── Loading / progress ────────────────────────────────────────────────────
-  @override bool   isLoading          = false;
-  @override double processingProgress = 0.0;
-  @override String processingMessage  = '';
-  @override Timer? pollingTimer;
-  @override String? currentTaskId;
-  @override String? currentJobId;
+  bool   isLoading          = false;
+  double processingProgress = 0.0;
+  String processingMessage  = '';
+  Timer? pollingTimer;
+  String? currentTaskId;
+  String? currentJobId;
 
   // ── X-Ray ─────────────────────────────────────────────────────────────────
-  @override bool isXrayMode       = false;
-  @override bool isXrayProcessing = false;
+  bool isXrayMode       = false;
+  bool isXrayProcessing = false;
 
   // ── File info ─────────────────────────────────────────────────────────────
-  @override String originalFileName = 'Unknown File';
-  @override String originalFilePath = '';
+  String originalFileName = 'Unknown File';
+  String originalFilePath = '';
 
   // ── Timeline & playback ───────────────────────────────────────────────────
-  @override double songDuration    = 30.0;
-  @override double currentPosition = 0.0;
-  @override double zoomX = 50.0;
-  @override double zoomY = 8.0;
+  double songDuration    = 30.0;
+  double currentPosition = 0.0;
+  double zoomX = 50.0;
+  double zoomY = 8.0;
 
   // ── MIDI range helpers ────────────────────────────────────────────────────
   int get minMidi {
@@ -239,30 +237,42 @@ class VoxrayDAWState extends State<VoxrayDAW>
   bool isScrubMode = true;
   DragMode currentDragMode = DragMode.off;
 
-  @override String projectName = 'Voxray_Session';
-  @override Uint8List? originalAudioBytes;
+  String projectName = 'Voxray_Session';
+  Uint8List? originalAudioBytes;
 
   bool isLiveModeActive  = false;
   bool isLoopModeActive  = false;
   double loopStartBoundary = 0.0;
-  @override double loopEndBoundary = 30.0;
+  double loopEndBoundary = 30.0;
 
   bool isUserScrolling = false;
-  @override bool   isExporting   = false;
-  @override bool   isPreviewing  = false;
-  @override String exportMessage = '';
-  @override String selectedEngineProfile = 'studio';
+  bool   isExporting   = false;
+  bool   isPreviewing  = false;
+  String exportMessage = '';
+  String selectedEngineProfile = 'studio';
 
-  //@override bool get isTestModeActive => isTestModeActive;
-
-  // ── DawApiService contract helpers ────────────────────────────────────────
-  @override String get currentTaskId_nullable => currentTaskId ?? '';
-
-  @override
+  // ── Base Methods & Abstract Mixin Signatures ──────────────────────────────
+  
   ChannelState getChannelState(String key) {
     if (!mixerState.containsKey(key)) mixerState[key] = ChannelState();
     return mixerState[key]!;
   }
+
+  // Abstract hooks for UI methods implemented in the subclass
+  void showSaveConfirmation(String message, {bool isPreview = false});
+  void showEngineRecommendationDialog();
+
+  // Abstract hooks for audio mixin methods called by API mixin
+  void pauseAllPlayers();
+  void playAllPlayers();
+  void seekAllPlayers(double seconds);
+
+} // <--- This closes VoxrayDAWStateBase!
+
+// =========================================================================
+// FINAL DAW STATE (Assembles the Base + Audio Mixin + API Mixin)
+// =========================================================================
+class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiService {
 
   @override
   void showSaveConfirmation(String message, {bool isPreview = false}) {
@@ -271,13 +281,6 @@ class VoxrayDAWState extends State<VoxrayDAW>
 
   @override
   void showEngineRecommendationDialog() => _showEngineRecommendationDialog();
-
-  @override
-  Future<void> loadStemPlayerSource(String stemName, String apiBase, String taskId) =>
-      super.loadStemPlayerSource(stemName, apiBase, taskId);
-
-  @override
-  Future<void> loadSynthSource() => super.loadSynthSource();
 
   // =========================================================================
   // LIFECYCLE
