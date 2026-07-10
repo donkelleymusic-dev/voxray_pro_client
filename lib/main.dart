@@ -1169,6 +1169,8 @@ class VoxrayDAWState extends State<VoxrayDAW> with WidgetsBindingObserver {
             
             if (mounted) {
               setState(() {
+				  
+                processingMessage = "";
                 // Inject the new high-res pitch data into the UI
                 allStemsNotes[targetStem] = result['notes'];
                 if (result['continuous_xray'] != null) {
