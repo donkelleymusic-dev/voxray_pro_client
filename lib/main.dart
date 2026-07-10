@@ -253,7 +253,7 @@ class VoxrayDAWState extends State<VoxrayDAW>
   @override String exportMessage = '';
   @override String selectedEngineProfile = 'studio';
 
-  @override bool get isTestModeActive => isTestModeActive;
+  //@override bool get isTestModeActive => isTestModeActive;
 
   // ── DawApiService contract helpers ────────────────────────────────────────
   @override String get currentTaskId_nullable => currentTaskId ?? '';
