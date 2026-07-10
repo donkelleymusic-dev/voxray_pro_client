@@ -240,8 +240,8 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
   }
 
   // ── Preview tone ──────────────────────────────────────────────────────────
-
-  Future<void> playPreviewTone(double freq, SynthSettings settings) async {
+  //Future<void> playPreviewTone(double freq, SynthSettings settings) async {
+  Future<void> playPreviewTone(double freq, [dynamic settings]) async {
     try {
       final dummyNote = [{
         'start_time': 0.0, 'end_time': 0.5,
