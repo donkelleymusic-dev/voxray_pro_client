@@ -195,13 +195,13 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
       //  });
       //}
       // 1. Get the source length
-      final duration = SoLoud.instance.getLength(stemSources[stemName]!);
+      //final duration = SoLoud.instance.getLength(stemSources[stemName]!);
       
       // 2. Set the global duration via the setter
-      songDuration = duration; 
+      //songDuration = duration.inMilliseconds / 1000.0;
       
       // 3. Force UI rebuild
-      setState(() {});
+      //setState(() {});
 
       // 3. Setup playback
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
