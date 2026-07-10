@@ -1268,8 +1268,8 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   void triggerAutoSave() {
     if (currentTaskId == null || isRestoringState) return;
-    _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer(const Duration(seconds: 2), _performAutoSave);
+    autoSaveTimer?.cancel();
+    autoSaveTimer = Timer(const Duration(seconds: 2), _performAutoSave);
   }
 
   Future<void> _performAutoSave() async {
