@@ -102,9 +102,10 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // ── Persistent storage / job tracking ────────────────────────────────────
   Set<String> stemsCurrentlyFetching = {};
   final Map<String, String> cachedStemPaths = {};
-  Timer? __autoSaveTimer;
-  Timer? get _autoSaveTimer => __autoSaveTimer;
-  set _autoSaveTimer(Timer? v) => __autoSaveTimer = v;
+  Timer? autoSaveTimer;
+  //Timer? __autoSaveTimer;
+  //Timer? get _autoSaveTimer => __autoSaveTimer;
+  //set _autoSaveTimer(Timer? v) => __autoSaveTimer = v;
   bool isRestoringState = false;
 
   // ── SoLoud audio engine handles ───────────────────────────────────────────
@@ -261,6 +262,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // Abstract hooks for UI methods implemented in the subclass
   void showSaveConfirmation(String message, {bool isPreview = false});
   void showEngineRecommendationDialog();
+  void registerUndoSnapshot();
 
   // Abstract hooks for audio mixin methods called by API mixin
   void pauseAllPlayers();
