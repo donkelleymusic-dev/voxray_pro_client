@@ -13,7 +13,7 @@
 ///   - synth WAV rendering and loading
 ///   - preview tone generation
 ///
-/// Requires the consuming State to have the fields declared in VoxrayDAWState.
+/// Requires the consuming State to have the fields declared in VoxrayDAWStateBase.
 /// No UI dialogs live here — only audio engine logic.
 
 import 'dart:io';
@@ -27,67 +27,11 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/channel_state.dart';
 import '../audio/vox_synth.dart';
+import '../main.dart'; // Gives access to VoxrayDAWStateBase
 
 /// Drop this mixin onto VoxrayDAWState.
 /// All methods call [setState] via the mixin's inherited binding.
-mixin DawAudioController<T extends StatefulWidget> on State<T> {
-
-  // ── Fields that must exist on the host State ──────────────────────────────
-  // (Declared here as abstract getters/setters so the analyser is happy,
-  //  but the host State provides the actual storage.)
-
-  double get songDuration;
-  set songDuration(double value);
-  
-  bool get isLoading;
-  set isLoading(bool value);
-  
-  AudioSource? get masterSource;
-  set masterSource(AudioSource? v);
-  SoundHandle? get masterHandle;
-  set masterHandle(SoundHandle? v);
-
-  AudioSource? get synthSource;
-  set synthSource(AudioSource? v);
-  SoundHandle? get synthHandle;
-  set synthHandle(SoundHandle? v);
-
-  Map<String, AudioSource> get stemSources;
-  Map<String, SoundHandle> get stemHandles;
-
-  bool get isPlaying;
-  set isPlaying(bool v);
-
-  double get currentPosition;
-  set currentPosition(double v);
-
-  Set<String> get activePlaybackSources;
-  Set<String> get stemsCurrentlyFetching;
-  bool get isFetchingStems;
-  set isFetchingStems(bool v);
-
-  Map<String, String> get cachedStemPaths;
-  Map<String, ChannelState> get mixerState;
-
-  SynthSettings get synthSettings;
-  bool get isSynthRendering;
-  set isSynthRendering(bool v);
-  String get synthMessage;
-  set synthMessage(String v);
-
-  List<dynamic> get rawNotes;
-  //double get songDuration;
-  String get currentTaskId_nullable; // expose nullable task id
-  String get activeEditableStem;
-
-  // ── Channel state helper ──────────────────────────────────────────────────
-
-  ChannelState getChannelState(String key) {
-    if (!mixerState.containsKey(key)) {
-      mixerState[key] = ChannelState();
-    }
-    return mixerState[key]!;
-  }
+mixin DawAudioController on VoxrayDAWStateBase {
 
   // ── Transport ─────────────────────────────────────────────────────────────
 
@@ -186,24 +130,8 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
 
       // 1. Load the source
       stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
-      
-      // 2. NEW: Extract duration and update the global DAW state
-      //final duration = SoLoud.instance.getLength(stemSources[stemName]!);
-      //if (duration > songDuration) {
-      //  setState(() {
-      //    songDuration = duration;
-      //  });
-      //}
-      // 1. Get the source length
-      //final duration = SoLoud.instance.getLength(stemSources[stemName]!);
-      
-      // 2. Set the global duration via the setter
-      //songDuration = duration.inMilliseconds / 1000.0;
-      
-      // 3. Force UI rebuild
-      //setState(() {});
 
-      // 3. Setup playback
+      // 2. Setup playback
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
       SoLoud.instance.setPause(stemHandles[stemName]!, true);
 
@@ -265,7 +193,7 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
   }
 
   // ── Preview tone ──────────────────────────────────────────────────────────
-  //Future<void> playPreviewTone(double freq, SynthSettings settings) async {
+  
   Future<void> playPreviewTone(double freq, [dynamic settings]) async {
     try {
       final dummyNote = [{
@@ -274,7 +202,12 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
         'cents_shift': 0, 'volume': 1.0, 'isMuted': false, 'isDeleted': false,
         'time_ratio': 1.0, 'vibrato_scale': 1.0, 'drift_scale': 1.0, 'amplitude': 1.0,
       }];
-      final wavBytes = renderNotesToWavBytes(notes: dummyNote, duration: 0.5, settings: settings);
+      final wavBytes = renderNotesToWavBytes(
+        notes: dummyNote, 
+        duration: 0.5, 
+        // Fallback to DAW's synthSettings if none are explicitly passed
+        settings: settings ?? synthSettings
+      );
       final previewSrc = await SoLoud.instance.loadMem('preview', wavBytes);
       SoLoud.instance.play(previewSrc, volume: 0.7);
     } catch (e) {
