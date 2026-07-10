@@ -104,6 +104,7 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
   double get loopEndBoundary;
   set loopEndBoundary(double v);
   double get currentPosition;
+  set currentPosition(double value);
   double get zoomX;
   set zoomX(double v);
   double get zoomY;
@@ -168,7 +169,7 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
   void showSaveConfirmation(String message, {bool isPreview});
   void showEngineRecommendationDialog();
   void registerUndoSnapshot();
-  void triggerAutoSave();
+  //void triggerAutoSave();
 
   String getPlatformString() {
     if (kIsWeb) return 'flutter_web';
