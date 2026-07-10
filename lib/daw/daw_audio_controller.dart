@@ -70,7 +70,7 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
   set synthMessage(String v);
 
   List<dynamic> get rawNotes;
-  double get songDuration;
+  //double get songDuration;
   String get currentTaskId_nullable; // expose nullable task id
   String get activeEditableStem;
 
