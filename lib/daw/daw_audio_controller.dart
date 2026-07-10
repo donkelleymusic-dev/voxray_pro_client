@@ -178,7 +178,18 @@ mixin DawAudioController<T extends StatefulWidget> on State<T> {
         SoLoud.instance.stop(stemHandles[stemName]!);
       }
 
+      // 1. Load the source
       stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
+      
+      // 2. NEW: Extract duration and update the global DAW state
+      final duration = SoLoud.instance.getLength(stemSources[stemName]!);
+      if (duration > songDuration) {
+        setState(() {
+          songDuration = duration;
+        });
+      }
+
+      // 3. Setup playback
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
       SoLoud.instance.setPause(stemHandles[stemName]!, true);
 
