@@ -5,23 +5,11 @@
 // voXRAY Enterprise DSP & Roformer Engine — PROPRIETARY AND CONFIDENTIAL
 // ==============================================================================
 
-/// DAW API Service
-///
-/// Mixin for VoxrayDAWState that owns all backend communication:
-///   - File upload & analysis initiation
-///   - Long-poll loops for stem generation, X-Ray, renders
-///   - Project save / load / package (*.vxp)
-///   - Export (master mix, stems ZIP, synth WAV, dossier, PitchPrint)
-///   - Auto-save & session restore
-///   - Job registration / recovery (SharedPreferences)
-///
-/// No SoLoud calls live here — that belongs in DawAudioController.
-/// No widget-building code lives here — that belongs in VoxrayDAWState.
-
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math; 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
@@ -36,140 +24,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/channel_state.dart';
 import '../audio/vox_synth.dart';
 import '../services/supabase_service.dart';
+import '../main.dart'; // Gives access to VoxrayDAWStateBase
 
 /// Drop this mixin onto VoxrayDAWState.
-mixin DawApiService<T extends StatefulWidget> on State<T> {
-
-  // ── Contract: fields that the host State must expose ─────────────────────
-
-  String get apiBase;
-
-  String? get currentTaskId;
-  set currentTaskId(String? v);
-  String? get currentJobId;
-  set currentJobId(String? v);
-  String? get currentProjectPath;
-  set currentProjectPath(String? v);
-
-  bool get isLoading;
-  set isLoading(bool v);
-  double get processingProgress;
-  set processingProgress(double v);
-  String get processingMessage;
-  set processingMessage(String v);
-
-  bool get isPreviewing;
-  set isPreviewing(bool v);
-  bool get isExporting;
-  set isExporting(bool v);
-  bool get isSynthRendering;
-  set isSynthRendering(bool v);
-  String get exportMessage;
-  set exportMessage(String v);
-  String get synthMessage;
-  set synthMessage(String v);
-
-  bool get isXrayMode;
-  set isXrayMode(bool v);
-  bool get isXrayProcessing;
-  set isXrayProcessing(bool v);
-
-  bool get isProjectLoaded;
-  set isProjectLoaded(bool v);
-  bool get hasBeenSaved;
-  set hasBeenSaved(bool v);
-  bool get isOriginalMixAvailable;
-  set isOriginalMixAvailable(bool v);
-  bool get isTestModeActive;
-  bool get isRestoringState;
-  set isRestoringState(bool v);
-
-  String get activeEditableStem;
-  set activeEditableStem(String v);
-  String get originalFileName;
-  set originalFileName(String v);
-  String get originalFilePath;
-  set originalFilePath(String v);
-  String get projectName;
-  set projectName(String v);
-  String get processingMode;
-  String get selectedEngineProfile;
-  set selectedEngineProfile(String v);
-
-  Uint8List? get originalAudioBytes;
-  set originalAudioBytes(Uint8List? v);
-
-  double get songDuration;
-  set songDuration(double v);
-  double get loopEndBoundary;
-  set loopEndBoundary(double v);
-  double get currentPosition;
-  set currentPosition(double value);
-  double get zoomX;
-  set zoomX(double v);
-  double get zoomY;
-  set zoomY(double v);
-
-  Map<String, ChannelState> get mixerState;
-  Map<String, List<dynamic>> get allStemsNotes;
-  set allStemsNotes(Map<String, List<dynamic>> v);
-  Map<String, List<dynamic>> get allStemsContinuousXray;
-  set allStemsContinuousXray(Map<String, List<dynamic>> v);
-
-  Set<String> get targetStemsSelection;
-  Set<String> get generatedStems;
-  List<String> get suggestedStems;
-  Set<String> get dirtyStems;
-  Set<String> get activePlaybackSources;
-  Map<String, String> get cachedStemPaths;
-  Map<String, SoundHandle> get stemHandles;
-  Map<String, AudioSource> get stemSources;
-
-  AudioSource? get masterSource;
-  set masterSource(AudioSource? v);
-  SoundHandle? get masterHandle;
-  set masterHandle(SoundHandle? v);
-  SoundHandle? get synthHandle;
-  set synthHandle(SoundHandle? v);
-  AudioSource? get synthSource;
-  set synthSource(AudioSource? v);
-
-  SynthSettings get synthSettings;
-  List<dynamic> get rawNotes;
-
-  Timer? get pollingTimer;
-  set pollingTimer(Timer? v);
-  Timer? get _autoSaveTimer;
-  set _autoSaveTimer(Timer? v);
-
-  List<Map<String, dynamic>> get markers;
-  List<String> get undoStack;
-  set undoStack(List<String> v);
-  List<String> get redoStack;
-  set redoStack(List<String> v);
-  List<String> get undoStackContinuous;
-  set undoStackContinuous(List<String> v);
-  List<String> get redoStackContinuous;
-  set redoStackContinuous(List<String> v);
-
-  List<String> get popStems;
-  List<String> get orchStems;
-  List<String> get forensicStems;
-
-  ChannelState getChannelState(String key);
-
-  // Host must supply these audio actions (implemented in DawAudioController):
+mixin DawApiService on VoxrayDAWStateBase {
+  
+  // ── Sibling Dependencies ─────────────────────────────────────────────────
+  // These are handled by DawAudioController, so we declare them abstractly 
+  // here so this API mixin can successfully call them.
   void pauseAllPlayers();
   void playAllPlayers();
   void seekAllPlayers(double seconds);
   Future<void> loadStemPlayerSource(String stemName, String apiBase, String taskId);
   Future<void> loadSynthSource();
-
-  // Host must supply these UI helpers:
-  void showSaveConfirmation(String message, {bool isPreview});
-  void showEngineRecommendationDialog();
-  void registerUndoSnapshot();
-  //void triggerAutoSave();
 
   String getPlatformString() {
     if (kIsWeb) return 'flutter_web';
@@ -202,20 +69,12 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
       }).toList();
 
       note['is_poly']         = overlaps.length > 1;
-      note['target_freq']     = 440.0 * (2.0.toDouble() == 2.0
-          ? _pow2((effectiveMidi - 69.0) / 12.0)
-          : 440.0);
+      note['target_freq']     = 440.0 * math.pow(2.0, (effectiveMidi - 69.0) / 12.0);
       note['component_count'] = overlaps.length;
       enrichedList.add(note);
     }
     return enrichedList;
   }
-
-  double _pow2(double exp) => exp == 0 ? 1.0 : (exp > 0
-      ? List.generate(exp.ceil(), (_) => 2.0).fold(1.0, (a, b) => a * b)
-      : 1.0 / List.generate((-exp).ceil(), (_) => 2.0).fold(1.0, (a, b) => a * b));
-  // NOTE: The above is a placeholder. In practice dart:math pow() is used.
-  // Replace with: import 'dart:math' as math; then math.pow(2.0, exp).toDouble()
 
   // =========================================================================
   // UPLOAD & ANALYSIS
@@ -307,7 +166,7 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
     } else return;
 
     setState(() {
-      isLoading         = true;
+      isLoading          = true;
       processingProgress = 0.0;
       originalAudioBytes = audioBytes;
       originalFileName   = result.files.single.name;
@@ -332,7 +191,7 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
         activePlaybackSources.add('original');
         processingMessage = 'Uploading Full Mix... Please keep app open.';
       } else {
-        isOriginalMixAvailable  = false;
+        isOriginalMixAvailable   = false;
         activeEditableStem       = uploadOptions['stem']!;
         activePlaybackSources.add(activeEditableStem);
         targetStemsSelection.add(activeEditableStem);
@@ -381,8 +240,8 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
       if (uploadOptions['type'] == 'mix') {
         if (selectedEngineProfile != 'studio') showEngineRecommendationDialog();
         setState(() {
-          isLoading     = false;
-          songDuration  = (data['duration'] ?? 30.0).toDouble();
+          isLoading       = false;
+          songDuration    = (data['duration'] ?? 30.0).toDouble();
           loopEndBoundary = songDuration;
           int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
           if (endIdx != -1) markers[endIdx]['time'] = songDuration;
@@ -441,7 +300,6 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
       processingMessage  = 'Ingesting stem and generating tracking matrices...';
       targetStemsSelection.add(chosenIdentity);
       activeEditableStem = chosenIdentity;
-      // note: cachedStemBytes removed — audio stored on disk via loadStemPlayerSource
     });
 
     try {
@@ -680,7 +538,7 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
     );
     if (confirm != true) return;
 
-    bool cachedTransportState = false; // host sets this via pauseAllPlayers
+    bool cachedTransportState = isPlaying; 
     pauseAllPlayers();
     setState(() { isXrayProcessing = true; isXrayMode = true; });
 
@@ -789,7 +647,7 @@ mixin DawApiService<T extends StatefulWidget> on State<T> {
       showSaveConfirmation('Connection error: $e');
       setState(() { isXrayMode = false; isXrayProcessing = false; });
     } finally {
-      playAllPlayers(); // resume immediately; polling is background
+      playAllPlayers(); 
     }
   }
 
