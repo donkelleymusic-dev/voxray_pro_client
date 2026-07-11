@@ -52,7 +52,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
   void playAllPlayers() {
     // If that prints FALSE or NULL even though you just loaded a file, you have a disconnected State. issue.
-    debugPrint("DEBUG: MasterHandle valid? ${masterHandle != null ? SoLoud.instance.getIsValidVoiceHandle(masterHandle!) : 'NULL'}");
+    logToSupabase("DEBUG: MasterHandle valid? ${masterHandle != null ? SoLoud.instance.getIsValidVoiceHandle(masterHandle!) : 'NULL'}");
     setState(() => isPlaying = true);
 
     SoundHandle? revive(SoundHandle? handle, AudioSource? source, String key) {
@@ -139,12 +139,12 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       final state = getChannelState(stemName);
       //If debug is 0.0, the issue is in your ChannelState.fromJson or how you are re-populating mixerState from the .vxp file.
-      debugPrint("DEBUG: Loading volume for $stemName: ${state.volume}");
+      logToSupabase("DEBUG: Loading volume for $stemName: ${state.volume}");
       SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
       SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
 
     } catch (e) {
-      debugPrint('Stem track layer $stemName build failed: $e');
+      logToSupabase('Stem track layer $stemName build failed: $e');
       setState(() => activePlaybackSources.remove(stemName));
     } finally {
       setState(() {
@@ -181,7 +181,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       SoLoud.instance.setVolume(synthHandle!, state.isMuted ? 0.0 : state.volume);
       SoLoud.instance.setPan(synthHandle!, state.pan);
     } catch (e) {
-      debugPrint('Synth layer load failed: $e');
+      logToSupabase('Synth layer load failed: $e');
       setState(() => activePlaybackSources.remove('synth'));
     } finally {
       setState(() { isSynthRendering = false; synthMessage = ''; });
@@ -215,7 +215,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       final previewSrc = await SoLoud.instance.loadMem('preview', wavBytes);
       SoLoud.instance.play(previewSrc, volume: 0.7);
     } catch (e) {
-      debugPrint('Preview error: $e');
+      logToSupabase('Preview error: $e');
     }
   }
 }
