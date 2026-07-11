@@ -108,6 +108,7 @@ class _AuthScreenState extends State<AuthScreen> {
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
                 decoration: const InputDecoration(
                   labelText: 'Email',
                   border: OutlineInputBorder(),
@@ -117,7 +118,8 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 16),
               TextField(
                 controller: _passwordController,
-                obscureText: true,
+                obscureText: true,                
+                autofillHints: const [AutofillHints.password],
                 decoration: const InputDecoration(
                   labelText: 'Password',
                   border: OutlineInputBorder(),
