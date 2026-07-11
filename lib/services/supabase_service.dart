@@ -185,4 +185,62 @@ class BackendService {
       rethrow;
     }
   }
+  // Inside class BackendService...
+
+  /// Check if the user has an active monthly subscription
+  static Future<bool> isSubscriptionActive() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return false;
+    try {
+      final response = await supabase
+          .from('user_wallets')
+          .select('subscription_status')
+          .eq('user_id', userId)
+          .single();
+      return response['subscription_status'] == 'active';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Get the Checkout URL for starting a new monthly subscription
+  static Future<String> getSubscriptionUrl() async {
+    final session = supabase.auth.currentSession;
+    if (session == null) throw Exception('Must be logged in.');
+
+    final url = Uri.parse('https://donkelleymusic--voxray-pro-api-api.modal.run/create-subscription-session');
+    final response = await http.post(url, headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: {
+      'access_token': session.accessToken,
+    });
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['checkout_url'];
+    }
+    throw Exception(response.body);
+  }
+
+  /// Get the pre-built Stripe Customer Portal URL for modifying cards or canceling
+  static Future<String> getStripePortalUrl() async {
+    final session = supabase.auth.currentSession;
+    if (session == null) throw Exception('Must be logged in.');
+
+    final url = Uri.parse('https://donkelleymusic--voxray-pro-api-api.modal.run/create-portal-session');
+    final response = await http.post(url, headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: {
+      'access_token': session.accessToken,
+    });
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['portal_url'];
+    }
+    throw Exception(response.body);
+  }
+
+  /// Dynamic app texts fetched from Supabase (About info, FAQ, announcements)
+  static Future<String> fetchAppContent(String key) async {
+    try {
+      final res = await supabase.from('app_content').select('content').eq('key', key).single();
+      return res['content'] as String;
+    } catch (e) {
+      return "Failed to load content.";
+    }
+  }
+  
 }
