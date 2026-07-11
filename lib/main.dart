@@ -142,6 +142,15 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   Map<String, List<dynamic>> allStemsContinuousXray = {};
   String activeEditableStem = '';
 
+  void logToSupabase(String message, {String severity = 'INFO'}) {
+    debugPrint('[$severity] $message');
+    BackendService.logEvent(
+      platform: getPlatformString(),
+      severity: severity,
+      message: message,
+    );
+  }
+  
   List<dynamic> get rawNotes =>
       activeEditableStem.isNotEmpty && allStemsNotes.containsKey(activeEditableStem)
           ? allStemsNotes[activeEditableStem]!
@@ -421,9 +430,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      debugPrint('App resumed. Polling timers will automatically catch up.');
+      logToSupabase('App resumed. Polling timers will automatically catch up.');
     } else if (state == AppLifecycleState.paused) {
-      debugPrint('App backgrounded. OS suspended network sockets.');
+      logToSupabase('App backgrounded. OS suspended network sockets.');
     }
   }
 
@@ -728,7 +737,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         }
       }
     } catch (e) {
-      debugPrint('Master DSP activation failed: $e');
+      logToSupabase('Master DSP activation failed: $e');
     }
   }
 
