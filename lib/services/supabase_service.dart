@@ -154,17 +154,20 @@ class BackendService {
     final session = supabase.auth.currentSession;
     if (session == null) throw Exception('Must be logged in to buy tokens.');
 
-    // PASTE YOUR MODAL STRIPE CHECKOUT URL HERE:
-    final stripeModalUrl = Uri.parse('https://donkelleymusic--voxray-stripe-create-checkout.modal.run');
+    // 1. Point to the FastAPI Modal App base URL + the specific endpoint route
+    // Note: If you are running modal serve, this might have a -dev suffix (e.g., ...api-api-dev.modal.run)
+    final stripeModalUrl = Uri.parse('https://donkelleymusic--voxray-pro-api-api.modal.run/create-checkout-session');
 
     try {
       final response = await http.post(
         stripeModalUrl,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+        // 2. Switch from application/json to form-urlencoded to match FastAPI Form(...)
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        // 3. Pass data as a Map of strings, matching the exact parameter names in Python
+        body: {
           'access_token': session.accessToken,
-          'token_amount': tokenAmountToBuy,
-        }),
+          'amount': tokenAmountToBuy.toString(), 
+        },
       );
 
       if (response.statusCode == 200) {
