@@ -99,20 +99,28 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                     if (notification is UserScrollNotification) {
                       widget.dawState.isUserScrolling = notification.direction != ScrollDirection.idle;
                       if (!widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
-                        double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
+                        // Dynamically calculate 35% of the current screen width
+                        double viewportWidth = notification.metrics.viewportDimension;
+                        double anchorOffset = viewportWidth * 0.35;
+                        
+                        double seekTime = (notification.metrics.pixels + anchorOffset) / widget.dawState.zoomX;
                         widget.dawState.seekAllPlayers(seekTime.clamp(0.0, widget.dawState.songDuration));
                       }
                     } else if (notification is ScrollUpdateNotification) {
-                      // Trigger a rebuild so the Painter gets the new currentScrollX for culling
                       setState(() {}); 
                       
                       if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
-                        double seekTime = (notification.metrics.pixels + 150) / widget.dawState.zoomX;
+                        // Dynamically calculate 35% of the current screen width
+                        double viewportWidth = notification.metrics.viewportDimension;
+                        double anchorOffset = viewportWidth * 0.35;
+                        
+                        double seekTime = (notification.metrics.pixels + anchorOffset) / widget.dawState.zoomX;
                         widget.dawState.setState(() => widget.dawState.currentPosition = seekTime.clamp(0.0, widget.dawState.songDuration));
                       }
                     }
                     return false;
                   },
+
                   child: SingleChildScrollView(
                     controller: widget.horizontalScrollController,
                     physics: scrollPhysics,
