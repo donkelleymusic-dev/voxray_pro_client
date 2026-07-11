@@ -378,13 +378,20 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
       setState(() => currentPosition = currentT);
 
       if (!isUserScrolling) {
-        double targetX = (currentT * zoomX) - 150.0;
+        // Calculate dynamic offset (fallback to 0 if clients aren't attached yet)
+        double anchorOffset = horizontalScrollController.hasClients 
+            ? horizontalScrollController.position.viewportDimension * 0.35 
+            : 0.0;
+            
+        double targetX = (currentT * zoomX) - anchorOffset;
         if (targetX < 0) targetX = 0;
+        
         if (horizontalScrollController.hasClients &&
             horizontalScrollController.position.maxScrollExtent > 0) {
           horizontalScrollController.jumpTo(targetX.clamp(
               0.0, horizontalScrollController.position.maxScrollExtent));
         }
+
 
         if (verticalScrollController.hasClients && rawNotes.isNotEmpty) {
           var activeNotes = rawNotes.where((n) {
@@ -494,16 +501,20 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   void jumpToTimelinePosition(double seconds) {
     seekAllPlayers(seconds);
     setState(() => currentPosition = seconds);
-    double targetX = math.max(0.0, (seconds * zoomX) - 150.0);
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (horizontalScrollController.hasClients &&
-          horizontalScrollController.positions.length == 1 &&
           horizontalScrollController.position.maxScrollExtent > 0) {
+          
+        double anchorOffset = horizontalScrollController.position.viewportDimension * 0.35;
+        double targetX = math.max(0.0, (seconds * zoomX) - anchorOffset);
+        
         horizontalScrollController.jumpTo(
             targetX.clamp(0.0, horizontalScrollController.position.maxScrollExtent));
       }
     });
   }
+
 
   void setZoomX(double newZoom) {
     if (!horizontalScrollController.hasClients) {
@@ -512,9 +523,13 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
     }
     double oldZoom      = zoomX;
     double currentPixels = horizontalScrollController.position.pixels;
-    const double anchorOffset = 150.0;
+    
+    // Dynamic 35% offset so the playhead doesn't jump when zooming
+    double anchorOffset = horizontalScrollController.position.viewportDimension * 0.35;
+    
     double anchorTime   = (currentPixels + anchorOffset) / oldZoom;
     double newScrollX   = (anchorTime * newZoom) - anchorOffset;
+    
     setState(() => zoomX = newZoom);
     horizontalScrollController.jumpTo(math.max(0.0, newScrollX));
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -524,6 +539,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
       }
     });
   }
+
 
   void setZoomY(double newZoom) {
     if (!verticalScrollController.hasClients) {
@@ -690,8 +706,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   // =========================================================================
 
   void addMarkerAtCurrentPlayhead() {
+    double anchorOffset = horizontalScrollController.hasClients 
+        ? horizontalScrollController.position.viewportDimension * 0.35 
+        : 0.0;
+
     double visualPlayheadTime = (horizontalScrollController.hasClients
-            ? (horizontalScrollController.position.pixels + 150) / zoomX
+            ? (horizontalScrollController.position.pixels + anchorOffset) / zoomX
             : currentPosition)
         .clamp(0.0, songDuration);
 
@@ -707,6 +727,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
       });
     });
   }
+
 
   void setLoopFromMarkers(double start, double end) {
     setState(() { loopStartBoundary = start; loopEndBoundary = end; });
