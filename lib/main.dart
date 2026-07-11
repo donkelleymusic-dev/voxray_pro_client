@@ -141,7 +141,13 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   Map<String, List<dynamic>> allStemsNotes        = {};
   Map<String, List<dynamic>> allStemsContinuousXray = {};
   String activeEditableStem = '';
-
+  
+  // ── Global Log Multiplexer ──────────────────────────────────────────────
+  String getPlatformString() {
+    if (kIsWeb) return 'flutter_web';
+    return 'flutter_${Platform.operatingSystem}';
+  }
+  
   void logToSupabase(String message, {String severity = 'INFO'}) {
     debugPrint('[$severity] $message');
     BackendService.logEvent(
