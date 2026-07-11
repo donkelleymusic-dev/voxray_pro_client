@@ -1,0 +1,24 @@
+name: Delete Old Artifacts
+
+# Triggers the workflow every Sunday at midnight, or allows manual execution from the Actions tab
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  clean-artifacts:
+    runs-on: ubuntu-latest
+    
+    # Required permission scope to allow the script to delete data
+    permissions:
+      actions: write
+
+    steps:
+      # Option A: Using a pre-built marketplace script (Highly Recommended)
+      - name: Purge old artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: '*'           # Deletes all artifacts matching this name pattern ('*' targets everything)
+          use-Glob: true
+          expire-after: '3d' # Deletes artifacts older than 30 days
