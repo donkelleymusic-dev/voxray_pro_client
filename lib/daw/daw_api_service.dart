@@ -565,6 +565,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id']         = currentTaskId!
+        ..fields['stem_target']     = activeEditableStem
         ..fields['notes_manifest']  = jsonEncode(enrichManifestWithPolyphonicContext(rawNotes));
 
       var response = await request.send();
@@ -630,6 +631,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
         ..fields['task_id']        = currentTaskId!
+        ..fields['stem_target']     = activeEditableStem
         ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(rawNotes));
 
       var response = await request.send();
