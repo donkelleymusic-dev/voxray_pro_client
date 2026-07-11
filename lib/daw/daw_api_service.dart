@@ -38,10 +38,10 @@ mixin DawApiService on VoxrayDAWStateBase {
   Future<void> loadStemPlayerSource(String stemName, String apiBase, String taskId);
   Future<void> loadSynthSource();
 
-  String getPlatformString() {
-    if (kIsWeb) return 'flutter_web';
-    return 'flutter_${Platform.operatingSystem}';
-  }
+  //String getPlatformString() {
+  //  if (kIsWeb) return 'flutter_web';
+  //  return 'flutter_${Platform.operatingSystem}';
+  //}
 
   // =========================================================================
   // CONTEXT ENRICHMENT
