@@ -183,6 +183,13 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   ];
   final List<String> forensicStems = ['forensic_id'];
 
+  // 1. Group your instruments logically in your state
+  final Map<String, List<String>> instrumentCategories = {
+    'Pop / Rock Band': ['vocals', 'drums', 'bass', 'guitar', 'piano'],
+    'Orchestral & Acoustic': ['orchestral', 'violin', 'cello', 'flute', 'brass'],
+    'Utilities': ['instrumental', 'other', 'forensic_id'],
+  };
+    
   // ── Stem selection ────────────────────────────────────────────────────────
   Set<String> targetStemsSelection = {};
   Set<String> generatedStems       = {};
@@ -1699,6 +1706,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setTreeState) {
+          
+          // 1. We keep your exact checkbox logic (handles recommendations and selection perfectly)
           Widget buildStemCheckbox(String stem) {
             bool isSuggested = suggestedStems.contains(stem);
             return CheckboxListTile(
@@ -1725,7 +1734,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   if (checked == true) targetStemsSelection.add(stem);
                   else targetStemsSelection.remove(stem);
                 });
-                setState(() {});
+                setState(() {}); // Updates the main background UI if necessary
               },
             );
           }
@@ -1735,36 +1744,69 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
             title: const Text('Stem Extraction Matrix',
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             content: SizedBox(
-              width: 300,
+              width: 320,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                        'Select which stems will be available in the dropdown to generate later.',
-                        style: TextStyle(color: Colors.white38, fontSize: 11)),
-                    const SizedBox(height: 10),
-                    const Text('POP & ROCK MODELS',
-                        style: TextStyle(
-                            color: Colors.tealAccent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold)),
-                    ...popStems.map(buildStemCheckbox),
-                    const Divider(color: Colors.white24),
-                    const Text('ORCHESTRAL MODELS',
-                        style: TextStyle(
-                            color: Colors.amberAccent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold)),
-                    ...orchStems.map(buildStemCheckbox),
-                    const Divider(color: Colors.white24),
-                    const Text('FORENSIC SUITE',
-                        style: TextStyle(
-                            color: Colors.redAccent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold)),
-                    ...forensicStems.map(buildStemCheckbox),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 12.0),
+                      child: Text(
+                          'Select which stems will be available in the dropdown to generate later.',
+                          style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    ),
+                    
+                    // 2. Wrap the lists in ExpansionTiles to compress the UI
+                    // We use Theme to hide the default borders ExpansionTile draws
+                    Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: Column(
+                        children: [
+                          // POP & ROCK - Initially expanded since it's most common
+                          ExpansionTile(
+                            initiallyExpanded: true, 
+                            iconColor: Colors.tealAccent,
+                            collapsedIconColor: Colors.tealAccent,
+                            title: const Text('POP & ROCK MODELS',
+                                style: TextStyle(
+                                    color: Colors.tealAccent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.1)),
+                            children: popStems.map(buildStemCheckbox).toList(),
+                          ),
+                          
+                          // ORCHESTRAL - Collapsed by default
+                          ExpansionTile(
+                            initiallyExpanded: false,
+                            iconColor: Colors.amberAccent,
+                            collapsedIconColor: Colors.amberAccent,
+                            title: const Text('ORCHESTRAL MODELS',
+                                style: TextStyle(
+                                    color: Colors.amberAccent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.1)),
+                            children: orchStems.map(buildStemCheckbox).toList(),
+                          ),
+                          
+                          // FORENSICS - Collapsed by default
+                          ExpansionTile(
+                            initiallyExpanded: false,
+                            iconColor: Colors.redAccent,
+                            collapsedIconColor: Colors.redAccent,
+                            title: const Text('FORENSIC SUITE',
+                                style: TextStyle(
+                                    color: Colors.redAccent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.1)),
+                            children: forensicStems.map(buildStemCheckbox).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
