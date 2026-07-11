@@ -117,42 +117,54 @@ mixin DawAudioController on VoxrayDAWStateBase {
     if (wasPlaying) pauseAllPlayers();
 
     try {
-      final dir = await getTemporaryDirectory();
-      final String filePath = '${dir.path}/${taskId}_$stemName.ogg';
+      bool localFileExists = false;
+      String? targetPath = cachedStemPaths[stemName];
 
-      if (!cachedStemPaths.containsKey(stemName) || !await File(filePath).exists()) {
+      // 1. If the project loader or autosave registered a path, check if it's physically on disk
+      if (targetPath != null && targetPath.isNotEmpty) {
+        if (await File(targetPath).exists()) {
+          localFileExists = true;
+        }
+      }
+
+      // 2. Only download from the server if we lack a valid offline file path
+      if (!localFileExists) {
+        if (taskId.isEmpty) {
+          throw Exception('Cannot fetch stem: no valid server Task ID or offline cache path available.');
+        }
+        final dir = await getTemporaryDirectory();
+        final String networkFilePath = '${dir.path}/${taskId}_$stemName.ogg';
+        
+        logToSupabase("Local cache missing for track [$stemName]. Streaming from remote node deployment...");
         final bytes = await fetchStemBytes(stemName, apiBase, taskId);
-        await File(filePath).writeAsBytes(bytes);
-        cachedStemPaths[stemName] = filePath;
+        await File(networkFilePath).writeAsBytes(bytes);
+        cachedStemPaths[stemName] = networkFilePath;
+      } else {
+        logToSupabase("Cache verified. Streaming [$stemName] directly from storage path: ${cachedStemPaths[stemName]}");
       }
 
-      if (stemHandles.containsKey(stemName)) {
-        SoLoud.instance.stop(stemHandles[stemName]!);
-      }
-
-      // Force clear the old voice handle before creating a new one
+      // Force clear the old voice handle before creating a new one to avoid dead engine pointers
       if (stemHandles.containsKey(stemName)) {
         if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
           SoLoud.instance.stop(stemHandles[stemName]!);
         }
-        stemHandles.remove(stemName); // Remove it so play() gets a fresh reference
+        stemHandles.remove(stemName);
       }
-      
-      // 1. Load the source
+
+      // Read audio dynamically from disk (Streaming, not loading into RAM)
       stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
 
-      // 2. Setup playback
+      // Setup playback parameters
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
       SoLoud.instance.setPause(stemHandles[stemName]!, true);
 
       final state = getChannelState(stemName);
-      //If debug is 0.0, the issue is in your ChannelState.fromJson or how you are re-populating mixerState from the .vxp file.
-      logToSupabase("DEBUG: Loading volume for $stemName: ${state.volume}");
+      logToSupabase("DSP Configuration: Channel track [$stemName] initialized with volume level: ${state.volume}");
       SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
       SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
 
     } catch (e) {
-      logToSupabase('Stem track layer $stemName build failed: $e');
+      logToSupabase('Audio Layer Processing Failure [Track: $stemName]: $e', severity: 'ERROR');
       setState(() => activePlaybackSources.remove(stemName));
     } finally {
       setState(() {
