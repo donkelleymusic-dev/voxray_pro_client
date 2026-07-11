@@ -210,7 +210,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
       SoLoud.instance.setPan(masterHandle!, origState.pan);
     } catch (e) {
-      debugPrint('Audio preview setup failed (non-fatal): $e');
+      logToSupabase('Audio preview setup failed (non-fatal): $e');
     }
 
     try {
@@ -254,7 +254,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       pollForStemData(currentJobId!, uploadOptions['stem']!);
 
     } catch (e) {
-      debugPrint('Initialization Failed: $e');
+      logToSupabase('Initialization Failed: $e');
       setState(() { isLoading = false; processingMessage = 'Failed to start.'; });
       showSaveConfirmation('Initialization Failed: $e');
     }
@@ -390,7 +390,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           showSaveConfirmation('Processing Error: Server returned ${statusRes.statusCode}');
         }
       } catch (e) {
-        debugPrint('Polling network blink (app likely backgrounded): $e');
+        logToSupabase('Polling network blink (app likely backgrounded): $e');
         if (mounted) setState(() => processingMessage = 'Reconnecting to server...');
       }
     });
@@ -432,7 +432,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           }
         }
       } catch (e) {
-        debugPrint('X-Ray polling network blink: $e');
+        logToSupabase('X-Ray polling network blink: $e');
       }
     });
   }
@@ -577,7 +577,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         throw Exception('Server rejected X-Ray request.');
       }
     } catch (e) {
-      debugPrint('XRAY Reprocess error: $e');
+      logToSupabase('XRAY Reprocess error: $e');
       showSaveConfirmation('Reprocess failed: $e');
       setState(() => isXrayProcessing = false);
     } finally {
@@ -643,7 +643,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         throw Exception('Server rejected X-Ray request.');
       }
     } catch (e) {
-      debugPrint('XRAY error: $e');
+      logToSupabase('XRAY error: $e');
       showSaveConfirmation('Connection error: $e');
       setState(() { isXrayMode = false; isXrayProcessing = false; });
     } finally {
@@ -676,7 +676,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           throw Exception('Task expired or crashed on server');
         }
       } catch (e) {
-        debugPrint('Polling network blink: $e');
+        logToSupabase('Polling network blink: $e');
       }
       await Future.delayed(const Duration(seconds: 3));
       retryCount++;
@@ -745,7 +745,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         showSaveConfirmation('Render failed: ${result['message'] ?? 'unknown error'}');
       }
     } catch (e) {
-      debugPrint('Stem render failed: $e');
+      logToSupabase('Stem render failed: $e');
       showSaveConfirmation('Render failed: $e');
     } finally {
       setState(() { isPreviewing = false; exportMessage = ''; processingProgress = 0.0; });
@@ -802,7 +802,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         }
       }
     } catch (e) {
-      debugPrint('Plugin render failed: $e');
+      logToSupabase('Plugin render failed: $e');
       showSaveConfirmation('Plugin render failed: $e');
     } finally {
       setState(() { isPreviewing = false; exportMessage = ''; processingProgress = 0.0; });
@@ -1061,7 +1061,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         final bytes = await File(entry.value).readAsBytes();
         archive.addFile(ArchiveFile('${entry.key}.ogg', bytes.length, bytes));
       } catch (e) {
-        debugPrint('Skipping missing file for package: ${entry.key}');
+        logToSupabase('Skipping missing file for package: ${entry.key}');
       }
     }
 
@@ -1241,7 +1241,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
         SoLoud.instance.setPan(masterHandle!, origState.pan);
       } catch (e) {
-        debugPrint('Offline master preview load failed: $e');
+        logToSupabase('Offline master preview load failed: $e');
         showSaveConfirmation('Warning: Original mix format unsupported by local player. Muted.');
       }
     }
@@ -1291,9 +1291,9 @@ mixin DawApiService on VoxrayDAWStateBase {
         'zoom_x': zoomX, 'zoom_y': zoomY,
       };
       await file.writeAsString(jsonEncode(data));
-      debugPrint('Auto-saved to disk silently.');
+      logToSupabase('Auto-saved to disk silently.');
     } catch (e) {
-      debugPrint('Auto-save failed silently: $e');
+      logToSupabase('Auto-save failed silently: $e');
     }
   }
 
@@ -1363,7 +1363,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       showSaveConfirmation('Recovered previous unsaved session.');
     } catch (e) {
-      debugPrint('Failed to restore autosave: $e');
+      logToSupabase('Failed to restore autosave: $e');
     } finally {
       setState(() => isRestoringState = false);
     }
