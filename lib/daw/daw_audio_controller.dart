@@ -130,6 +130,14 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.stop(stemHandles[stemName]!);
       }
 
+      // Force clear the old voice handle before creating a new one
+      if (stemHandles.containsKey(stemName)) {
+        if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
+          SoLoud.instance.stop(stemHandles[stemName]!);
+        }
+        stemHandles.remove(stemName); // Remove it so play() gets a fresh reference
+      }
+      
       // 1. Load the source
       stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
 
