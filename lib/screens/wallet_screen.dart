@@ -34,10 +34,14 @@ class _WalletScreenState extends State<WalletScreen> {
       
       // 2. Open the URL in the phone's native browser
       final uri = Uri.parse(checkoutUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        throw Exception('Could not launch payment page.');
+      
+      // BYPASS canLaunchUrl and force the launch attempt.
+      // launchUrl returns a boolean indicating success or failure.
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      
+      if (!launched) {
+        // If it still fails, print the exact URL so we can see if it's malformed
+        throw Exception('Could not launch payment page. URL was: $checkoutUrl');
       }
     } catch (e) {
       if (mounted) {
@@ -49,6 +53,7 @@ class _WalletScreenState extends State<WalletScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
