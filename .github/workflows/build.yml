@@ -1,8 +1,8 @@
 name: Build Flutter APK
 
 on:
-  push:
-    branches: [ main ] # Triggers the build whenever you push to main
+  #push:
+    #branches: [ main ] # Triggers the build whenever you push to main
   workflow_dispatch: # Allows you to trigger the build manually
 
 jobs:
