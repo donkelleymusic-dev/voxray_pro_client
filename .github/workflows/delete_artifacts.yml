@@ -13,6 +13,7 @@ jobs:
     # Required permission scope to allow the script to delete data
     permissions:
       actions: write
+      contents: read
 
     steps:
       # Option A: Using a pre-built marketplace script (Highly Recommended)
