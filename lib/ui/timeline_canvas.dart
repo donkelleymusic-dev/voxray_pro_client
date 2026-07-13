@@ -452,12 +452,12 @@ class AdvancedPianoRollPainter extends CustomPainter {
     bool modeChanged = oldDelegate.isXrayMode != isXrayMode;
     
     // 2. Did new X-Ray trace lines just arrive from the API?
-    bool xrayDataArrived = oldDelegate.dawState.allStemsContinuousXray.length != 
-                           dawState.allStemsContinuousXray.length;
+    bool xrayDataArrived = oldDelegate.allStemsContinuousXray.length != 
+                           allStemsContinuousXray.length;
                            
     // 3. Did the notes themselves get added, deleted, or restored?
-    bool notesChanged = oldDelegate.dawState.notes.length != 
-                        dawState.notes.length;
+    bool notesChanged = oldDelegate.notes.length != 
+                        notes.length;
 
     // Repaint if ANY of these conditions are met
     return oldDelegate.zoomX != zoomX ||
