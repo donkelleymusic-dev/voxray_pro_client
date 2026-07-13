@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 import '../main.dart';
+import 'auth_screen.dart';
 
 class AccountSettingsScreen extends StatefulWidget {
   final bool isForcedPaywall; // If true, the user MUST subscribe to continue
@@ -124,7 +125,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                   onPressed: () async {
                     await BackendService.signOut();
                     if (mounted) {
-                       Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const AuthScreen()), (route) => false);
+                       Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => AuthScreen()), (route) => false);
                     }
                   },
                   icon: const Icon(Icons.logout),
