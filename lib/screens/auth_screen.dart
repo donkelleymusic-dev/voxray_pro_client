@@ -4,6 +4,7 @@ import '../services/supabase_service.dart'; // Adjust path if needed
 
 // IMPORTANT: Adjust this import to point to the file where VoxrayDAW is located!
 import '../main.dart'; 
+import 'account_settings_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({Key? key}) : super(key: key);
@@ -98,7 +99,7 @@ class _AuthScreenState extends State<AuthScreen> {
         Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const VoxrayDAW()));
       } else {
         // Send them to the Paywall and hide the back button
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AccountSettingsScreen(isForcedPaywall: true)));
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => AccountSettingsScreen(isForcedPaywall: true)));
       }
       
     } on AuthException catch (e) {
