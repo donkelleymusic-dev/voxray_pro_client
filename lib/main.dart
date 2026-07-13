@@ -345,8 +345,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   ChannelState getChannelState(String key) {
     if (!mixerState.containsKey(key)) {
       final newState = ChannelState();
-      // Default to muted for synth and instrumental
-      if (key == 'instrumental' || key == 'synth') {
+      // Default to muted for synth and instrumental and original "mix"
+      if (key == 'instrumental' || key == 'synth' || key == 'original') {
         newState.isMuted = true;
       }
       mixerState[key] = newState;
