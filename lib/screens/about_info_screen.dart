@@ -1,4 +1,8 @@
+import 'package:flutter/material.dart';
+import '../services/supabase_service.dart';
+
 class AboutInfoScreen extends StatelessWidget {
+// ... rest of the file
   final String contentKey; // Pass 'about_me', 'faq', or 'tutorial'
   final String pageTitle;
 
