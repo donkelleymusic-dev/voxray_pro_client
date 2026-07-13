@@ -205,9 +205,22 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                               initialSemitoneShift: initialSemitoneShift,
                             ),
                           ),
-                          // Moving Vertical Playhead
+                          // Moving Vertical Playhead (Dynamic Viewport Position)
                           Positioned(
-                            left: widget.dawState.currentPosition * widget.dawState.zoomX, 
+                            left: (() {
+                              // Get the visible width of the horizontal viewport safely
+                              double viewportWidth = widget.horizontalScrollController.hasClients
+                                  ? widget.horizontalScrollController.position.viewportDimension
+                                  : 0.0;
+                              double anchorOffset = viewportWidth * 0.35; // Pinned at 35% from the left edge
+                              
+                              // If at the very beginning of the song before scrolling starts:
+                              if (currentScrollX <= 0) {
+                                return widget.dawState.currentPosition * zoomX;
+                              }
+                              // While scrolling through the song, lock it to the 35% anchor visual offset
+                              return currentScrollX + anchorOffset;
+                            })(),
                             top: 0,
                             bottom: 0,
                             child: Container(
