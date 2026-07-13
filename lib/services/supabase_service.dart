@@ -203,14 +203,15 @@ class BackendService {
     }
   }
 
-  /// Get the Checkout URL for starting a new monthly subscription
-  static Future<String> getSubscriptionUrl() async {
+  /// Get the Checkout URL for starting a new subscription (Monthly or Yearly)
+  static Future<String> getSubscriptionUrl({String tier = 'monthly'}) async {
     final session = supabase.auth.currentSession;
     if (session == null) throw Exception('Must be logged in.');
 
     final url = Uri.parse('https://donkelleymusic--voxray-pro-api-api.modal.run/create-subscription-session');
     final response = await http.post(url, headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: {
       'access_token': session.accessToken,
+      'tier': tier, // Passes 'monthly' or 'yearly' to Python
     });
     if (response.statusCode == 200) {
       return jsonDecode(response.body)['checkout_url'];
