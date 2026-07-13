@@ -234,6 +234,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       originalFilePath   = result.files.single.path ?? '';
       isProjectLoaded    = true;
       hasBeenSaved       = false;
+      isXrayMode = false;
       dirtyStems.clear();
       cachedStemPaths.clear();
       for (var h in stemHandles.values) SoLoud.instance.stop(h);
