@@ -2371,7 +2371,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 Expanded(
                   child: Column(children: [
                     Row(children: [
-                      Row(children: [
                       Container(
                         width: 46, 
                         height: 45, 
