@@ -448,24 +448,12 @@ class AdvancedPianoRollPainter extends CustomPainter {
   
   @override 
   bool shouldRepaint(covariant AdvancedPianoRollPainter oldDelegate) {
-    // 1. Did the X-Ray button toggle?
-    bool modeChanged = oldDelegate.isXrayMode != isXrayMode;
-    
-    // 2. Did new X-Ray trace lines just arrive from the API?
-    bool xrayDataArrived = oldDelegate.allStemsContinuousXray.length != 
-                           allStemsContinuousXray.length;
-                           
-    // 3. Did the notes themselves get added, deleted, or restored?
-    bool notesChanged = oldDelegate.notes.length != 
-                        notes.length;
-
-    // Repaint if ANY of these conditions are met
+    // Repaint if ANY of these conditions are met:
     return oldDelegate.zoomX != zoomX ||
            oldDelegate.zoomY != zoomY ||
            oldDelegate.currentScrollX != currentScrollX ||
            oldDelegate.draggingNoteIndex != draggingNoteIndex ||
-           modeChanged ||
-           xrayDataArrived ||
-           notesChanged;
+           oldDelegate.isXrayMode != isXrayMode ||
+           oldDelegate.notes != notes; // <--- THIS CATCHES THE NEW X-RAY DATA!
   }
 }
