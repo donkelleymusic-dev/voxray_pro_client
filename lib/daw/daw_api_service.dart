@@ -284,7 +284,13 @@ mixin DawApiService on VoxrayDAWStateBase {
         ..fields['is_test_mode']      = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!,
             filename: result.files.single.name));
-
+      
+      // Attach the Auth Token!
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        request.fields['access_token'] = session.accessToken;
+      }
+      
       var response = await request.send();
       if (response.statusCode != 200) throw Exception('Server rejected file upload');
 
