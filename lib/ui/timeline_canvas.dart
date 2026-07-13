@@ -112,7 +112,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                       if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
                         // Dynamically calculate 35% of the current screen width
                         double viewportWidth = notification.metrics.viewportDimension;
-                        double anchorOffset = viewportWidth * 0.35;
+                        double anchorOffset = viewportWidth * 0.30;
                         
                         double seekTime = (notification.metrics.pixels + anchorOffset) / widget.dawState.zoomX;
                         widget.dawState.setState(() => widget.dawState.currentPosition = seekTime.clamp(0.0, widget.dawState.songDuration));
@@ -212,7 +212,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                               double viewportWidth = widget.horizontalScrollController.hasClients
                                   ? widget.horizontalScrollController.position.viewportDimension
                                   : 0.0;
-                              double anchorOffset = viewportWidth * 0.35; // Pinned at 35% from the left edge
+                              double anchorOffset = viewportWidth * 0.30; // Pinned at 35% from the left edge
                               
                               // If at the very beginning of the song before scrolling starts:
                               if (currentScrollX <= 0) {
