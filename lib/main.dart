@@ -1855,6 +1855,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
               title: Text('Stem Select Tree'))),
       const PopupMenuDivider(),
       const PopupMenuItem(
+          value: 'account_settings',
+          child: ListTile(
+              leading: Icon(Icons.person, color: Colors.blueAccent),
+              title: Text('Account & Billing'))),
+      const PopupMenuItem(
+          value: 'about_info',
+          child: ListTile(
+              leading: Icon(Icons.info_outline, color: Colors.white54),
+              title: Text('About / FAQ'))),
+      const PopupMenuDivider(),
+      const PopupMenuItem(
           value: 'load',
           child: ListTile(
               leading: Icon(Icons.folder_open), title: Text('Load Project'))),
@@ -1963,6 +1974,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
       case 'live_mode':       setState(() => isLiveModeActive = !isLiveModeActive); break;
       case 'reprocess':       forceReprocessXray(context); break;
       case 'test_mode':       setState(() => isTestModeActive = !isTestModeActive); break;
+      case 'account_settings':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountSettingsScreen()));
+        break;
+      case 'about_info':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutInfoScreen(contentKey: 'about_me', pageTitle: 'About voXRAY')));
+        break;
     }
   }
 
