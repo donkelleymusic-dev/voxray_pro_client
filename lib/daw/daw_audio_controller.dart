@@ -151,8 +151,13 @@ mixin DawAudioController on VoxrayDAWStateBase {
         stemHandles.remove(stemName);
       }
 
-      // Read audio dynamically from disk (Streaming, not loading into RAM)
-      stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
+      // Read audio dynamically from disk (Streaming, not loading into RAM):
+      stemSources[stemName] = await SoLoud.instance.loadFile(
+        cachedStemPaths[stemName]!,
+        mode: LoadMode.disk, // <--- THIS PREVENTS RAM CRASHES!
+      );
+      // Read audio into RAM and then play:
+      //stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
 
       // Setup playback parameters
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
