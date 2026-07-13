@@ -61,7 +61,7 @@ class _AuthScreenState extends State<AuthScreen> {
         Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const VoxrayDAW()));
       } else {
         // Send them to the Paywall and hide the back button
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AccountSettingsScreen(isForcedPaywall: true)));
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => AccountSettingsScreen(isForcedPaywall: true)));
       }
       
     } on AuthException catch (e) {
