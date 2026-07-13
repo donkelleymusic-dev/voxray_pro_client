@@ -2,6 +2,7 @@ name: Clean Old Workflow Runs
 on:
   schedule:
     - cron: '0 0 * * 0' # Runs every Sunday at midnight
+  workflow_dispatch: # Allows you to manually trigger it for testing
 
 jobs:
   delete-runs:
