@@ -342,4 +342,52 @@ mixin DawAudioController on VoxrayDAWStateBase {
       logToSupabase('Preview error: $e');
     }
   }
+  // Drop this into your main State class
+  void updateStemDSP(String stemName, String pluginName, bool isEnabled) {
+    // 1. Get the currently playing voice handle for this stem
+    final handle = stemHandles[stemName];
+    
+    if (handle == null || !SoLoud.instance.getIsValidVoiceHandle(handle)) {
+      // If the track isn't loaded or playing, we don't need to do anything. 
+      // The Zero-Wet default will apply next time it loads!
+      return; 
+    }
+  
+    // 2. Route the UI interaction to the correct SoLoud Filter parameter
+    try {
+      switch (pluginName) {
+        case 'Reverb':
+          // If enabled, push Wet mix to 1.0 (or whatever your preferred max is)
+          // If disabled, drop it to 0.0 (Bypassed)
+          final targetWetness = isEnabled ? 0.8 : 0.0;
+          
+          // Note: Check your specific flutter_soloud version for the exact syntax.
+          // It is typically accessed via the filter itself or the setFilterParameter method:
+          SoLoud.instance.filters.freeverbFilter.setFilterParameter(
+            handle, 
+            0, // 0 is usually the attribute ID for 'Wet' in Freeverb
+            targetWetness
+          );
+          break;
+  
+        case 'Compressor':
+          // A bypassed compressor usually has a ratio of 1:1 and a high threshold
+          final targetRatio = isEnabled ? 4.0 : 1.0; 
+          
+          SoLoud.instance.filters.compressorFilter.setFilterParameter(
+            handle, 
+            2, // Example attribute ID for Ratio
+            targetRatio
+          );
+          break;
+          
+        // Add other DSPs like EQ, Delay, etc., here!
+      }
+      
+      logToSupabase("DSP Real-Time Update: [$stemName] -> $pluginName (Enabled: $isEnabled)");
+      
+    } catch (e) {
+      logToSupabase("Failed to update DSP on the fly for [$stemName]: $e");
+    }
+  }
 }
