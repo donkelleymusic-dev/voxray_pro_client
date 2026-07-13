@@ -15,5 +15,5 @@ jobs:
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
-          retain_days: 14 # Keeps runs from the last 14 days
-          keep_minimum_runs: 3 # Always ensures the last 3 runs are saved
+          retain_days: 3 # Keeps runs from the last 3 days
+          keep_minimum_runs: 6 # Always ensures the last 6 runs are saved
