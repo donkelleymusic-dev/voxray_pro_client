@@ -60,6 +60,8 @@ import 'audio/vox_synth.dart';
 import 'services/supabase_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/wallet_screen.dart';
+import 'screens/account_settings_screen.dart';
+import 'screens/about_info_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTRY POINT
