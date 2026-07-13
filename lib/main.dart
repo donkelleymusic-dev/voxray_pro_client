@@ -77,14 +77,78 @@ Future<void> main() async {
   );
   await SoLoud.instance.init();
   runApp(MaterialApp(
-    home: const AuthScreen(),
+    home: const AppGatekeeper(),
     theme: ThemeData(brightness: Brightness.dark),
   ));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOP-LEVEL WIDGET
+// TOP-LEVEL WIDGETS
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP GATEKEEPER (Checks for saved login session on startup)
+// ─────────────────────────────────────────────────────────────────────────────
+class AppGatekeeper extends StatefulWidget {
+  const AppGatekeeper({Key? key}) : super(key: key);
+
+  @override
+  State<AppGatekeeper> createState() => _AppGatekeeperState();
+}
+
+class _AppGatekeeperState extends State<AppGatekeeper> {
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialState();
+  }
+
+  Future<void> _checkInitialState() async {
+    // 1. Did Supabase automatically restore a session from local storage?
+    final session = Supabase.instance.client.auth.currentSession;
+    
+    if (session == null) {
+      // No saved session. Send to Login.
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => AuthScreen()),
+      );
+    } else {
+      // 2. Session exists! Now check their subscription status.
+      final isSubbed = await BackendService.isSubscriptionActive();
+      
+      if (!mounted) return;
+      if (isSubbed) {
+        // Active Sub: Send straight into the DAW
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const VoxrayDAW()),
+        );
+      } else {
+        // Inactive Sub: Send to Paywall
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => AccountSettingsScreen(isForcedPaywall: true)),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // A simple loading screen while it routes the user
+    return const Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.graphic_eq, size: 80, color: Colors.blue),
+            SizedBox(height: 24),
+            CircularProgressIndicator(color: Colors.tealAccent),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class VoxrayDAW extends StatefulWidget {
   const VoxrayDAW({Key? key}) : super(key: key);
