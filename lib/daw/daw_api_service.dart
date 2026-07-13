@@ -151,6 +151,59 @@ mixin DawApiService on VoxrayDAWStateBase {
     );
   }
 
+  Future<String?> _showAcousticProfileDialog() async {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        String selectedProfile = 'standard';
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.grey[900],
+              title: const Text("Select Acoustic Profile", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  RadioListTile<String>(
+                    title: const Text("Standard / Pop / Modern", style: TextStyle(color: Colors.white)),
+                    subtitle: const Text("Optimized for Vocals, Drums, Guitars, Synths", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    value: 'standard',
+                    groupValue: selectedProfile,
+                    activeColor: Colors.tealAccent,
+                    onChanged: (val) => setDialogState(() => selectedProfile = val!),
+                  ),
+                  RadioListTile<String>(
+                    title: const Text("Classical / Orchestral", style: TextStyle(color: Colors.white)),
+                    subtitle: const Text("Optimized for Piano, Strings, Woodwinds, Brass", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    value: 'classical',
+                    groupValue: selectedProfile,
+                    activeColor: Colors.tealAccent,
+                    onChanged: (val) => setDialogState(() => selectedProfile = val!),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null), 
+                  child: const Text("Cancel", style: TextStyle(color: Colors.white54))
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                  onPressed: () => Navigator.pop(context, selectedProfile), 
+                  child: const Text("Process Audio")
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+  
+
   Future<void> loadFileAndAnalyze(BuildContext context) async {
     FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
     if (result == null) return;
