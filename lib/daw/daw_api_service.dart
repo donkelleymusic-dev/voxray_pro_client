@@ -730,7 +730,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       showSaveConfirmation('Connection error: $e');
       setState(() { isXrayMode = false; isXrayProcessing = false; });
     } finally {
-      playAllPlayers(); 
+      //playAllPlayers(); // why was it playing after xray completed?
     }
   }
 
