@@ -1975,10 +1975,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
       case 'reprocess':       forceReprocessXray(context); break;
       case 'test_mode':       setState(() => isTestModeActive = !isTestModeActive); break;
       case 'account_settings':
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountSettingsScreen()));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => AccountSettingsScreen()));
         break;
       case 'about_info':
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutInfoScreen(contentKey: 'about_me', pageTitle: 'About voXRAY')));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => AboutInfoScreen(contentKey: 'about_me', pageTitle: 'About voXRAY')));
         break;
     }
   }
