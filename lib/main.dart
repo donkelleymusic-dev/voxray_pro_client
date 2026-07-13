@@ -343,7 +343,14 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // ── Base Methods & Abstract Mixin Signatures ──────────────────────────────
   
   ChannelState getChannelState(String key) {
-    if (!mixerState.containsKey(key)) mixerState[key] = ChannelState();
+    if (!mixerState.containsKey(key)) {
+      final newState = ChannelState();
+      // Default to muted for synth and instrumental
+      if (key == 'instrumental' || key == 'synth') {
+        newState.isMuted = true;
+      }
+      mixerState[key] = newState;
+    }
     return mixerState[key]!;
   }
 
@@ -1013,36 +1020,31 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
 
                   // Volume fader
                   Expanded(
-                    child: RotatedBox(
-                      quarterTurns: 3,
-                      child: SliderTheme(
-                        data: SliderThemeData(
-                          trackHeight: 4,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                          overlayShape: SliderComponentShape.noOverlay,
-                          activeTrackColor: highlight,
-                          inactiveTrackColor: Colors.white10,
-                        ),
-                        child: Slider(
-                          value: state.volume,
-                          min: 0.0, max: 1.5,
-                          onChanged: (v) {
-                            setMixerState(() => state.volume = v);
-                            this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                            if (state.isMuted) return;
-                            if (key == 'master') {
-                              SoLoud.instance.setGlobalVolume(v);
-                            } else if (key == 'original') {
-                              if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!))
-                                SoLoud.instance.setVolume(masterHandle!, v);
-                            } else if (key == 'synth') {
-                              if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!))
-                                SoLoud.instance.setVolume(synthHandle!, v);
-                            } else if (stemHandles.containsKey(key)) {
-                              if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!))
-                                SoLoud.instance.setVolume(stemHandles[key]!, v);
-                            }
-                          },
+                    child: GestureDetector(
+                      onDoubleTap: () {
+                        setMixerState(() => state.volume = 1.0);
+                        this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                        if (state.isMuted) return;
+                        if (key == 'master') SoLoud.instance.setGlobalVolume(1.0);
+                        else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, 1.0); }
+                        else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, 1.0); }
+                        else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setVolume(stemHandles[key]!, 1.0); }
+                      },
+                      child: RotatedBox(
+                        quarterTurns: 3,
+                        child: SliderTheme(
+                          data: SliderThemeData(
+                            trackHeight: 4,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                            overlayShape: SliderComponentShape.noOverlay,
+                            activeTrackColor: highlight,
+                            inactiveTrackColor: Colors.white10,
+                          ),
+                          child: Slider(
+                            value: state.volume,
+                            min: 0.0, max: 1.5,
+                            onChanged: (v) { /* ... keep your existing onChanged logic here ... */ }
+                          ),
                         ),
                       ),
                     ),
@@ -1055,38 +1057,30 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   // Pan slider
                   SizedBox(
                     height: 16,
-                    child: SliderTheme(
-                      data: SliderThemeData(
-                        trackHeight: 2,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                        overlayShape: SliderComponentShape.noOverlay,
-                        activeTrackColor: highlight,
-                        inactiveTrackColor: Colors.white10,
-                      ),
-                      child: Slider(
-                        value: state.pan, min: -1.0, max: 1.0,
-                        onChanged: (v) {
-                          setMixerState(() => state.pan = v);
-                          this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                          if (key == 'master') {
-                            if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!))
-                              SoLoud.instance.setPan(masterHandle!, v);
-                            if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!))
-                              SoLoud.instance.setPan(synthHandle!, v);
-                            for (var h in stemHandles.values) {
-                              if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, v);
-                            }
-                          } else if (key == 'original') {
-                            if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!))
-                              SoLoud.instance.setPan(masterHandle!, v);
-                          } else if (key == 'synth') {
-                            if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!))
-                              SoLoud.instance.setPan(synthHandle!, v);
-                          } else if (stemHandles.containsKey(key)) {
-                            if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!))
-                              SoLoud.instance.setPan(stemHandles[key]!, v);
-                          }
-                        },
+                    child: GestureDetector(
+                      onDoubleTap: () {
+                        setMixerState(() => state.pan = 0.0);
+                        this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                        if (key == 'master') {
+                          if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
+                          if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
+                          for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, 0.0);
+                        } else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
+                        } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
+                        } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, 0.0); }
+                      },
+                      child: SliderTheme(
+                        data: SliderThemeData(
+                          trackHeight: 2,
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                          overlayShape: SliderComponentShape.noOverlay,
+                          activeTrackColor: highlight,
+                          inactiveTrackColor: Colors.white10,
+                        ),
+                        child: Slider(
+                          value: state.pan, min: -1.0, max: 1.0,
+                          onChanged: (v) { /* ... keep your existing onChanged logic here ... */ }
+                        ),
                       ),
                     ),
                   ),
@@ -1134,14 +1128,21 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     children: [
+                      buildChannelStrip('MASTER', 'master', Colors.redAccent, isMaster: true),
+                      const SizedBox(width: 12),
+                      
                       if (isOriginalMixAvailable)
                         buildChannelStrip('MIX', 'original', Colors.blueGrey),
-                      buildChannelStrip('SYNTH', 'synth', Colors.purpleAccent),
-                      ...targetStemsSelection.map((stem) =>
-                          buildChannelStrip(stem.toUpperCase(), stem, Colors.tealAccent)),
+                        
+                      ...targetStemsSelection
+                          .where((stem) => stem != 'instrumental')
+                          .map((stem) => buildChannelStrip(stem.toUpperCase(), stem, Colors.tealAccent)),
+                          
+                      if (targetStemsSelection.contains('instrumental'))
+                        buildChannelStrip('INSTRUMENTAL', 'instrumental', Colors.deepOrangeAccent),
+                        
                       const SizedBox(width: 12),
-                      buildChannelStrip('MASTER', 'master', Colors.redAccent,
-                          isMaster: true),
+                      buildChannelStrip('SYNTH', 'synth', Colors.purpleAccent),
                     ],
                   ),
                 ),
@@ -1894,32 +1895,63 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   // =========================================================================
 
   List<PopupMenuEntry<String>> _buildMainMenu() {
-    bool canSave   = isProjectLoaded && (!hasBeenSaved || dirtyStems.isNotEmpty || undoStack.isNotEmpty);
     bool canSaveAs = isProjectLoaded;
 
     return [
       const PopupMenuItem(
-          value: 'new_project',
-          child: ListTile(
-              leading: Icon(Icons.insert_drive_file, color: Colors.redAccent),
-              title: Text('New Project'))),
-      const PopupMenuDivider(),
-      const PopupMenuItem(
           value: 'upload',
           child: ListTile(
               leading: Icon(Icons.cloud_upload, color: Colors.tealAccent),
-              title: Text('Upload Audio Mix'))),
+              title: Text('Load Audio'))),
+      const PopupMenuItem(
+          value: 'load',
+          child: ListTile(
+              leading: Icon(Icons.folder_open), title: Text('Load Project'))),
+      PopupMenuItem(
+          value: 'save_as',
+          enabled: canSaveAs,
+          child: ListTile(
+              leading: Icon(Icons.save_as, color: canSaveAs ? Colors.white : Colors.white38),
+              title: Text('Save Project As...', style: TextStyle(color: canSaveAs ? Colors.white : Colors.white38)))),
+      
+      const PopupMenuDivider(),
+      
+      const PopupMenuItem(
+          value: 'synth_settings',
+          child: ListTile(
+              leading: Icon(Icons.piano, color: Colors.purpleAccent),
+              title: Text('Synth Audio Settings'))),
+      PopupMenuItem(
+          value: 'scrub_toggle',
+          child: ListTile(
+              leading: Icon(Icons.touch_app, color: isScrubMode ? Colors.amberAccent : Colors.white54),
+              title: Text(isScrubMode ? 'Play from Selected Note' : 'Play Continuous (Scrub off)'))),
+      
+      const PopupMenuDivider(),
+      
+      const PopupMenuItem(
+          value: 'show_dossier',
+          child: ListTile(
+              leading: Icon(Icons.assessment, color: Colors.greenAccent),
+              title: Text('View GUI Dossier'))),
+      const PopupMenuItem(
+          value: 'downloads',
+          child: ListTile(
+              leading: Icon(Icons.download, color: Colors.blueAccent),
+              title: Text('Advanced Downloads'))),
       const PopupMenuItem(
           value: 'import_stem',
           child: ListTile(
               leading: Icon(Icons.file_open, color: Colors.tealAccent),
               title: Text('Import Individual Track'))),
       const PopupMenuItem(
-          value: 'stem_tree',
+          value: 'export_stems',
           child: ListTile(
-              leading: Icon(Icons.account_tree, color: Colors.purpleAccent),
-              title: Text('Stem Select Tree'))),
+              leading: Icon(Icons.unarchive, color: Colors.amberAccent),
+              title: Text('Export Stems Archive'))),
+      
       const PopupMenuDivider(),
+      
       const PopupMenuItem(
           value: 'account_settings',
           child: ListTile(
@@ -1930,94 +1962,36 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
           child: ListTile(
               leading: Icon(Icons.info_outline, color: Colors.white54),
               title: Text('About / FAQ'))),
+      
       const PopupMenuDivider(),
-      const PopupMenuItem(
-          value: 'load',
-          child: ListTile(
-              leading: Icon(Icons.folder_open), title: Text('Load Project'))),
-      PopupMenuItem(
-          value: 'save',
-          enabled: canSave,
-          child: ListTile(
-              leading: Icon(Icons.save,
-                  color: canSave ? Colors.blueAccent : Colors.white38),
-              title: Text('Save Project (Overwrite)',
-                  style: TextStyle(
-                      color: canSave ? Colors.white : Colors.white38)))),
-      PopupMenuItem(
-          value: 'save_as',
-          enabled: canSaveAs,
-          child: ListTile(
-              leading: Icon(Icons.save_as,
-                  color: canSaveAs ? Colors.white : Colors.white38),
-              title: Text('Save Project As...',
-                  style: TextStyle(
-                      color: canSaveAs ? Colors.white : Colors.white38)))),
-      const PopupMenuDivider(),
-      PopupMenuItem(
-          value: 'processing_mode',
-          child: ListTile(
-              leading: Icon(
-                  processingMode == 'advanced'
-                      ? Icons.auto_awesome
-                      : Icons.blur_linear,
-                  color: Colors.purpleAccent),
-              title: Text(
-                  processingMode == 'advanced'
-                      ? 'Mode: ADVANCED'
-                      : 'Mode: NORMAL',
-                  style: const TextStyle(color: Colors.purpleAccent)))),
-      const PopupMenuItem(
-          value: 'synth_settings',
-          child: ListTile(
-              leading: Icon(Icons.piano, color: Colors.purpleAccent),
-              title: Text('Synth Audio Settings'))),
-      const PopupMenuItem(
-          value: 'show_dossier',
-          child: ListTile(
-              leading: Icon(Icons.assessment, color: Colors.greenAccent),
-              title: Text('View GUI Dossier'))),
-      const PopupMenuDivider(),
-      const PopupMenuItem(
-          value: 'downloads',
-          child: ListTile(
-              leading: Icon(Icons.download, color: Colors.blueAccent),
-              title: Text('Advanced Downloads'))),
-      const PopupMenuItem(
-          value: 'export_stems',
-          child: ListTile(
-              leading: Icon(Icons.unarchive, color: Colors.amberAccent),
-              title: Text('Export Stems Archive'))),
+      
       PopupMenuItem(
           value: 'live_mode',
           child: ListTile(
-              leading: Icon(Icons.mic_external_on,
-                  color: isLiveModeActive ? Colors.redAccent : Colors.white),
-              title: Text(
-                  isLiveModeActive
-                      ? 'Disable Live Pedagogy'
-                      : 'Enable Live Pedagogy',
-                  style: TextStyle(
-                      color:
-                          isLiveModeActive ? Colors.redAccent : Colors.white)))),
+              leading: Icon(Icons.mic_external_on, color: isLiveModeActive ? Colors.redAccent : Colors.white),
+              title: Text(isLiveModeActive ? 'Disable Live Pedagogy' : 'Enable Live Pedagogy',
+                  style: TextStyle(color: isLiveModeActive ? Colors.redAccent : Colors.white)))),
+      
+      const PopupMenuDivider(),
+      
+      // Debug Section
+      const PopupMenuItem(enabled: false, child: Text('    DEBUG USE', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold))),
       const PopupMenuItem(
           value: 'reprocess',
           child: ListTile(
               leading: Icon(Icons.sync_problem, color: Colors.orangeAccent),
-              title: Text('Reprocess X-Ray',
-                  style: TextStyle(color: Colors.orangeAccent)))),
-      const PopupMenuDivider(),
+              title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)))),
       PopupMenuItem(
           value: 'test_mode',
           child: ListTile(
-              leading: Icon(Icons.bug_report,
-                  color: isTestModeActive ? Colors.redAccent : Colors.white38),
-              title: Text(
-                  isTestModeActive
-                      ? 'Disable MOCK API Mode'
-                      : 'Enable MOCK API Mode',
-                  style: TextStyle(
-                      color: isTestModeActive ? Colors.redAccent : Colors.white)))),
+              leading: Icon(Icons.bug_report, color: isTestModeActive ? Colors.redAccent : Colors.white38),
+              title: Text(isTestModeActive ? 'Disable MOCK API Mode' : 'Enable MOCK API Mode',
+                  style: TextStyle(color: isTestModeActive ? Colors.redAccent : Colors.white)))),
+      
+      // HIDDEN ITEMS
+      // const PopupMenuItem(value: 'stem_tree', child: ListTile(leading: Icon(Icons.account_tree), title: Text('Stem Select Tree'))),
+      // PopupMenuItem(value: 'save', enabled: canSave, child: ListTile(leading: Icon(Icons.save), title: Text('Save Project (Overwrite)'))),
+      // PopupMenuItem(value: 'processing_mode', child: ListTile(title: Text('Mode: ADVANCED'))),
     ];
   }
 
@@ -2031,6 +2005,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
       case 'save':            saveVoxrayProject(); break;
       case 'save_as':         saveVoxrayProjectAs(); break;
       case 'export_stems':    exportStemsAsZip(); break;
+      case 'scrub_toggle':    setState(() => isScrubMode = !isScrubMode); break;
       case 'processing_mode':
         setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic');
         break;
@@ -2176,229 +2151,200 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 // ── Tool strip ───────────────────────────────────────────────
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0, vertical: 4.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                   color: Colors.black26,
-                  child: Wrap(
-                    spacing: 8.0,
-                    runSpacing: 4.0,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    alignment: WrapAlignment.start,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      IconButton(
-                          icon: const Icon(Icons.undo),
-                          tooltip: 'Undo',
-                          onPressed: undoStack.isNotEmpty ? _undo : null),
-                      IconButton(
-                          icon: const Icon(Icons.redo),
-                          tooltip: 'Redo',
-                          onPressed: redoStack.isNotEmpty ? _redo : null),
+                      // ROW 1
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            // 1. Current Track Dropdown
+                            if (targetStemsSelection.isNotEmpty)
+                              Container(
+                                height: 32,
+                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                decoration: BoxDecoration(
+                                  color: Colors.black45,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: targetStemsSelection.contains(activeEditableStem) && activeEditableStem.isNotEmpty ? activeEditableStem : null,
+                                    dropdownColor: Colors.grey[900],
+                                    hint: const Text('No Stems Available', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                                    icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
+                                    style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                                    items: targetStemsSelection.map((String stemKey) {
+                                      bool isSuggested = suggestedStems.contains(stemKey);
+                                      return DropdownMenuItem<String>(
+                                        value: stemKey,
+                                        child: Row(children: [
+                                          Text(stemKey.toUpperCase(), style: TextStyle(color: isSuggested ? Colors.yellowAccent : Colors.white)),
+                                          if (isSuggested) const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
+                                          if (!generatedStems.contains(stemKey)) const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38)),
+                                        ]),
+                                      );
+                                    }).toList(),
+                                    onChanged: (String? newSelection) {
+                                      if (newSelection != null && newSelection != activeEditableStem) {
+                                        setState(() {
+                                          activeEditableStem = newSelection;
+                                          isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
+                                        });
+                                        if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
+                                          generateStemOnDemand(newSelection);
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(width: 8),
 
-                      Tooltip(
-                        message: 'Preview pitch/DSP edits',
-                        child: IconButton(
-                          icon: const Icon(Icons.preview,
-                              color: Colors.deepPurpleAccent, size: 24),
-                          onPressed: (rawNotes.isNotEmpty &&
-                                  originalAudioBytes != null &&
-                                  !isPreviewing &&
-                                  !isExporting &&
-                                  dirtyStems.contains(activeEditableStem))
-                              ? () => renderStemEdits(activeEditableStem)
-                              : null,
+                            // 2. Studio Mixer
+                            IconButton(
+                              icon: const Icon(Icons.tune, color: Colors.orangeAccent, size: 22),
+                              tooltip: 'Studio Mixer',
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              onPressed: _showStudioMixer
+                            ),
+                            const SizedBox(width: 8),
+
+                            // 3. Edit Tools Group (Drag Mode & Render)
+                            Container(
+                              height: 32,
+                              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
+                              child: Row(
+                                children: [
+                                  PopupMenuButton<DragMode>(
+                                    padding: EdgeInsets.zero,
+                                    icon: Icon(Icons.pan_tool, size: 18, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
+                                    tooltip: 'Drag Pitch Mode',
+                                    onSelected: (val) => setState(() => currentDragMode = val),
+                                    itemBuilder: (context) => const [
+                                      PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
+                                      PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
+                                      PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
+                                    ],
+                                  ),
+                                  Tooltip(
+                                    message: 'Preview pitch/DSP edits',
+                                    child: IconButton(
+                                      icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 20),
+                                      onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem))
+                                          ? () => renderStemEdits(activeEditableStem)
+                                          : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // 4. X-Ray Button
+                            isXrayProcessing
+                                ? const Padding(padding: EdgeInsets.symmetric(horizontal: 12.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)))
+                                : IconButton(
+                                    icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 22),
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null
+                                  ),
+                            const SizedBox(width: 8),
+
+                            // 5. Undo/Redo Group
+                            Container(
+                              height: 32,
+                              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
+                              child: Row(
+                                children: [
+                                  IconButton(
+                                      icon: const Icon(Icons.undo, size: 18),
+                                      tooltip: 'Undo',
+                                      onPressed: undoStack.isNotEmpty ? _undo : null),
+                                  IconButton(
+                                      icon: const Icon(Icons.redo, size: 18),
+                                      tooltip: 'Redo',
+                                      onPressed: redoStack.isNotEmpty ? _redo : null),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                      const SizedBox(height: 6),
 
-                      const SizedBox(width: 8),
-                      IconButton(
-                          icon: const Icon(Icons.tune, color: Colors.orangeAccent),
-                          tooltip: 'Studio Mixer',
-                          onPressed: _showStudioMixer),
-                      IconButton(
-                          icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow,
-                              size: 26),
-                          onPressed: _toggleMasterTransport),
+                      // ROW 2 (Transport / Timeline Tools)
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            // 1. Loop Toggle
+                            IconButton(
+                                icon: Icon(Icons.loop, color: isLoopModeActive ? Colors.tealAccent : Colors.white38, size: 20),
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                onPressed: () => setState(() => isLoopModeActive = !isLoopModeActive)),
+                            
+                            // 2. Add Marker
+                            IconButton(
+                                icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent),
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                onPressed: addMarkerAtCurrentPlayhead),
 
-                      if (targetStemsSelection.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: DropdownButton<String>(
-                            value: targetStemsSelection.contains(activeEditableStem) &&
-                                    activeEditableStem.isNotEmpty
-                                ? activeEditableStem
-                                : null,
-                            dropdownColor: Colors.grey[900],
-                            underline: const SizedBox(),
-                            hint: const Text('No Stems Available',
-                                style: TextStyle(
-                                    color: Colors.white38, fontSize: 12)),
-                            icon: const Icon(Icons.arrow_drop_down,
-                                color: Colors.tealAccent),
-                            style: const TextStyle(
-                                color: Colors.tealAccent,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13),
-                            items: targetStemsSelection.map((String stemKey) {
-                              bool isSuggested =
-                                  suggestedStems.contains(stemKey);
-                              return DropdownMenuItem<String>(
-                                value: stemKey,
-                                child: Row(children: [
-                                  Text(stemKey.toUpperCase(),
-                                      style: TextStyle(
-                                          color: isSuggested
-                                              ? Colors.yellowAccent
-                                              : Colors.white)),
-                                  if (isSuggested)
-                                    const Padding(
-                                        padding: EdgeInsets.only(left: 4.0),
-                                        child: Icon(Icons.star,
-                                            size: 12,
-                                            color: Colors.yellowAccent)),
-                                  if (!generatedStems.contains(stemKey))
-                                    const Padding(
-                                        padding: EdgeInsets.only(left: 8.0),
-                                        child: Icon(Icons.hourglass_empty,
-                                            size: 14, color: Colors.white38)),
-                                ]),
-                              );
-                            }).toList(),
-                            onChanged: (String? newSelection) {
-                              if (newSelection != null &&
-                                  newSelection != activeEditableStem) {
-                                setState(() {
-                                  activeEditableStem = newSelection;
-                                  isXrayMode = rawNotes.isNotEmpty &&
-                                      rawNotes.any((n) =>
-                                          n.containsKey('contour') &&
-                                          n['contour'] != null);
-                                });
-                                if (!generatedStems.contains(newSelection) &&
-                                    originalAudioBytes != null &&
-                                    currentTaskId != null &&
-                                    !isLoading) {
-                                  generateStemOnDemand(newSelection);
-                                }
-                              }
-                            },
-                          ),
+                            // 3. Go to Marker Dropdown
+                            if (markers.isNotEmpty)
+                              PopupMenuButton<double>(
+                                icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
+                                padding: EdgeInsets.zero,
+                                tooltip: 'Go to Marker',
+                                itemBuilder: (context) => markers.map((marker) {
+                                  int totalSeconds = (marker['time'] as double).round();
+                                  String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
+                                  return PopupMenuItem<double>(
+                                    value: marker['time'],
+                                    child: Row(children: [
+                                      const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
+                                      const SizedBox(width: 8),
+                                      Text('${marker['label']}  '),
+                                      Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                    ]),
+                                  );
+                                }).toList(),
+                                onSelected: (time) => jumpToTimelinePosition(time),
+                              ),
+
+                            // 4. Set Loop Region Dropdown
+                            if (markers.length >= 2)
+                              PopupMenuButton<String>(
+                                icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
+                                padding: EdgeInsets.zero,
+                                tooltip: 'Set Loop Region',
+                                itemBuilder: (context) {
+                                  List<PopupMenuItem<String>> items = [];
+                                  for (int i = 0; i < markers.length; i++) {
+                                    for (int j = i + 1; j < markers.length; j++) {
+                                      items.add(PopupMenuItem(
+                                        value: '${markers[i]['time']}_${markers[j]['time']}',
+                                        child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
+                                      ));
+                                    }
+                                  }
+                                  return items;
+                                },
+                                onSelected: (val) {
+                                  final parts = val.split('_');
+                                  setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
+                                },
+                              ),
+                          ],
                         ),
-
-                      PopupMenuButton<DragMode>(
-                        icon: Icon(Icons.pan_tool,
-                            color: currentDragMode != DragMode.off
-                                ? Colors.amberAccent
-                                : Colors.white38),
-                        tooltip: 'Drag Pitch Mode',
-                        onSelected: (val) =>
-                            setState(() => currentDragMode = val),
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                              value: DragMode.off, child: Text('Normal (Off)')),
-                          PopupMenuItem(
-                              value: DragMode.semitone,
-                              child: Text('Semitone Drag')),
-                          PopupMenuItem(
-                              value: DragMode.microTuning,
-                              child: Text('Micro-Tuning Drag')),
-                        ],
                       ),
-
-                      IconButton(
-                          icon: Icon(Icons.touch_app,
-                              color: isScrubMode
-                                  ? Colors.amberAccent
-                                  : Colors.white38,
-                              size: 22),
-                          onPressed: () =>
-                              setState(() => isScrubMode = !isScrubMode)),
-
-                      isXrayProcessing
-                          ? const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 12.0),
-                              child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.amberAccent)))
-                          : IconButton(
-                              icon: Icon(Icons.fingerprint,
-                                  color: isXrayMode
-                                      ? Colors.amberAccent
-                                      : Colors.white38,
-                                  size: 22),
-                              onPressed: isCurrentStemGenerated
-                                  ? toggleXrayMode
-                                  : null),
-
-                      IconButton(
-                          icon: Icon(Icons.loop,
-                              color: isLoopModeActive
-                                  ? Colors.tealAccent
-                                  : Colors.white38,
-                              size: 22),
-                          onPressed: () => setState(
-                              () => isLoopModeActive = !isLoopModeActive)),
-
-                      IconButton(
-                          icon: const Icon(Icons.add_location_alt,
-                              size: 20, color: Colors.amberAccent),
-                          onPressed: addMarkerAtCurrentPlayhead),
-
-                      if (markers.isNotEmpty)
-                        PopupMenuButton<double>(
-                          icon: const Icon(Icons.location_on,
-                              color: Colors.amberAccent, size: 20),
-                          tooltip: 'Go to Marker',
-                          itemBuilder: (context) => markers.map((marker) {
-                            int totalSeconds =
-                                (marker['time'] as double).round();
-                            String timestamp =
-                                '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:'
-                                '${(totalSeconds % 60).toString().padLeft(2, '0')}';
-                            return PopupMenuItem<double>(
-                              value: marker['time'],
-                              child: Row(children: [
-                                const Icon(Icons.location_on,
-                                    color: Colors.amberAccent, size: 16),
-                                const SizedBox(width: 8),
-                                Text('${marker['label']}  '),
-                                Text(timestamp,
-                                    style: const TextStyle(
-                                        color: Colors.white54, fontSize: 11)),
-                              ]),
-                            );
-                          }).toList(),
-                          onSelected: (time) => jumpToTimelinePosition(time),
-                        ),
-
-                      if (markers.length >= 2)
-                        PopupMenuButton<String>(
-                          icon: const Icon(Icons.settings_overscan,
-                              size: 18, color: Colors.blueAccent),
-                          tooltip: 'Set Loop Region',
-                          itemBuilder: (context) {
-                            List<PopupMenuItem<String>> items = [];
-                            for (int i = 0; i < markers.length; i++) {
-                              for (int j = i + 1; j < markers.length; j++) {
-                                items.add(PopupMenuItem(
-                                  value:
-                                      '${markers[i]['time']}_${markers[j]['time']}',
-                                  child: Text(
-                                      '${markers[i]['label']} → ${markers[j]['label']}',
-                                      style: const TextStyle(fontSize: 12)),
-                                ));
-                              }
-                            }
-                            return items;
-                          },
-                          onSelected: (val) {
-                            final parts = val.split('_');
-                            setLoopFromMarkers(double.parse(parts[0]),
-                                double.parse(parts[1]));
-                          },
-                        ),
                     ],
                   ),
                 ),
@@ -2425,8 +2371,21 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 Expanded(
                   child: Column(children: [
                     Row(children: [
+                      Row(children: [
                       Container(
-                          width: 46, height: 45, color: Colors.grey[900]),
+                        width: 46, 
+                        height: 45, 
+                        color: Colors.grey[900],
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: Icon(
+                            isPlaying ? Icons.pause : Icons.play_arrow, 
+                            color: Colors.tealAccent, 
+                            size: 28
+                          ),
+                          onPressed: _toggleMasterTransport,
+                        ),
+                      ),
                       Expanded(
                         child: SingleChildScrollView(
                           controller: rulerScrollController,
