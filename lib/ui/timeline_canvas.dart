@@ -101,7 +101,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                       if (!widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
                         // Dynamically calculate 35% of the current screen width
                         double viewportWidth = notification.metrics.viewportDimension;
-                        double anchorOffset = viewportWidth * 0.35;
+                        double anchorOffset = viewportWidth * 0.30;
                         
                         double seekTime = (notification.metrics.pixels + anchorOffset) / widget.dawState.zoomX;
                         widget.dawState.seekAllPlayers(seekTime.clamp(0.0, widget.dawState.songDuration));
