@@ -2177,17 +2177,48 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                     hint: const Text('No Stems Available', style: TextStyle(color: Colors.white38, fontSize: 12)),
                                     icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
                                     style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                                    items: targetStemsSelection.map((String stemKey) {
-                                      bool isSuggested = suggestedStems.contains(stemKey);
-                                      return DropdownMenuItem<String>(
-                                        value: stemKey,
-                                        child: Row(children: [
-                                          Text(stemKey.toUpperCase(), style: TextStyle(color: isSuggested ? Colors.yellowAccent : Colors.white)),
-                                          if (isSuggested) const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
-                                          if (!generatedStems.contains(stemKey)) const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38)),
-                                        ]),
-                                      );
-                                    }).toList(),
+                                    items: () {
+                                      // SORTING LOGIC: Match the mixer's visual order
+                                      List<String> sortedStems = targetStemsSelection.toList();
+                                      sortedStems.sort((a, b) {
+                                        if (a == 'instrumental') return 1; // Push instrumental to the bottom
+                                        if (b == 'instrumental') return -1;
+                                        int idxA = popStems.indexOf(a);
+                                        int idxB = popStems.indexOf(b);
+                                        if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
+                                        if (idxA != -1) return -1;
+                                        if (idxB != -1) return 1;
+                                        return a.compareTo(b);
+                                      });
+
+                                      return sortedStems.map((String stemKey) {
+                                        bool isSuggested = suggestedStems.contains(stemKey);
+                                        bool isMuted = getChannelState(stemKey).isMuted; // Check if muted in mixer
+                                        
+                                        return DropdownMenuItem<String>(
+                                          value: stemKey,
+                                          child: Row(children: [
+                                            if (isMuted)
+                                              const Padding(
+                                                padding: EdgeInsets.only(right: 6.0),
+                                                child: Icon(Icons.volume_off, size: 14, color: Colors.white38),
+                                              ),
+                                            Text(
+                                              stemKey.toUpperCase(), 
+                                              style: TextStyle(
+                                                // "Ghost" the text if muted
+                                                color: isMuted ? Colors.white38 : (isSuggested ? Colors.yellowAccent : Colors.white),
+                                                fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
+                                              )
+                                            ),
+                                            if (isSuggested && !isMuted) 
+                                              const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
+                                            if (!generatedStems.contains(stemKey)) 
+                                              const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38)),
+                                          ]),
+                                        );
+                                      }).toList();
+                                    }(),
                                     onChanged: (String? newSelection) {
                                       if (newSelection != null && newSelection != activeEditableStem) {
                                         setState(() {
