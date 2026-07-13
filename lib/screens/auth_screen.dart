@@ -47,13 +47,22 @@ class _AuthScreenState extends State<AuthScreen> {
 
       await BackendService.signUpEmail(email, password);
       
-      _showMessage('Sign up successful! Welcome to voXRAY.');
+      //_showMessage('Sign up successful! Welcome to voXRAY.');
       // NOTE: Because of our SQL trigger, their wallet with 0 DSP is already created!
       
+      _showMessage('Authentication successful!');
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const VoxrayDAW()),
-      );
+      
+      // Check Subscription Status!
+      bool isSubbed = await BackendService.isSubscriptionActive();
+      
+      if (!mounted) return;
+      if (isSubbed) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const VoxrayDAW()));
+      } else {
+        // Send them to the Paywall and hide the back button
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AccountSettingsScreen(isForcedPaywall: true)));
+      }
       
     } on AuthException catch (e) {
       _showMessage(e.message, isError: true);
@@ -76,12 +85,21 @@ class _AuthScreenState extends State<AuthScreen> {
 
       await BackendService.signInEmail(email, password);
       
-      _showMessage('Welcome back!');
+      //_showMessage('Welcome back!');
+      
+      _showMessage('Authentication successful!');
+      if (!mounted) return;
+      
+      // Check Subscription Status!
+      bool isSubbed = await BackendService.isSubscriptionActive();
       
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const VoxrayDAW()),
-      );
+      if (isSubbed) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const VoxrayDAW()));
+      } else {
+        // Send them to the Paywall and hide the back button
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AccountSettingsScreen(isForcedPaywall: true)));
+      }
       
     } on AuthException catch (e) {
       _showMessage(e.message, isError: true);
