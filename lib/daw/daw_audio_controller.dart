@@ -190,6 +190,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
       SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
       SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
 
+      //Force the DSP state to match the UI immediately!
+      applyStemPlugins(stemName);
+
     } catch (e) {
       logToSupabase('Audio Layer Processing Failure [Track: $stemName]: $e', severity: 'ERROR');
       setState(() => activePlaybackSources.remove(stemName));
@@ -350,25 +353,29 @@ mixin DawAudioController on VoxrayDAWStateBase {
   void applyStemPlugins(String stemName) {
     final state = getChannelState(stemName);
     final source = stemSources[stemName];
+    final handle = stemHandles[stemName]; // 1. GRAB THE ACTIVE HANDLE!
     
     if (source == null) return;
 
     final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
 
     try {
-      // REVERB
-      if (plugins.contains('Reverb')) {
-        double wetness = state.reverbMix > 0 ? state.reverbMix : 0.8;
-        source.filters.freeverbFilter.wet().value = wetness;
-      } else {
-        source.filters.freeverbFilter.wet().value = 0.0;
+      // -- REVERB --
+      double reverbWet = plugins.contains('Reverb') ? (state.reverbMix > 0 ? state.reverbMix : 0.8) : 0.0;
+      
+      // Update the template (for future play calls)
+      source.filters.freeverbFilter.wet().value = reverbWet;
+      
+      // Update the currently playing audio in real-time!
+      if (handle != null) {
+        source.filters.freeverbFilter.wet(handle).value = reverbWet;
       }
 
-      // COMPRESSOR
-      if (plugins.contains('Compressor')) {
-        source.filters.compressorFilter.wet().value = 1.0;
-      } else {
-        source.filters.compressorFilter.wet().value = 0.0;
+      // -- COMPRESSOR --
+      double compWet = plugins.contains('Compressor') ? 1.0 : 0.0;
+      source.filters.compressorFilter.wet().value = compWet;
+      if (handle != null) {
+        source.filters.compressorFilter.wet(handle).value = compWet;
       }
 
     } catch (e) {
