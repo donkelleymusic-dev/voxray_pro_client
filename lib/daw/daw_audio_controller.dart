@@ -165,18 +165,17 @@ mixin DawAudioController on VoxrayDAWStateBase {
         newSource.filters.freeverbFilter.activate();
         newSource.filters.compressorFilter.activate();
         
-        // 2. Immediately bypass them (set wet mix to 0.0)
-        // Note: Adjust parameter access based on your specific flutter_soloud version
-        newSource.filters.freeverbFilter.setWet(0.0);
+        // 2. Immediately bypass them using direct property assignment
+        newSource.filters.freeverbFilter.wet = 0.0;
         
-        // For compressors, bypass usually means 0 wetness, or a 1:1 ratio
-        // newSource.filters.compressorFilter.setWet(0.0); 
+        // For the compressor, bypassing usually means setting wetness to 0, or ratio to 1
+        newSource.filters.compressorFilter.wet = 0.0; 
         
         logToSupabase("DSP Graph compiled & bypassed successfully for track [$stemName]");
       } catch (fxError) {
-        // If a filter fails, we log it but don't crash the track loading
         logToSupabase("Warning: Could not pre-load filters for [$stemName]: $fxError");
       }
+      
       // =======================================================================
 
       // Assign the fully prepped source to your state map
@@ -349,37 +348,35 @@ mixin DawAudioController on VoxrayDAWStateBase {
   
   void _applyStemPlugins(String stemName) {
     final state = getChannelState(stemName);
+    final source = stemSources[stemName];
     final handle = stemHandles[stemName];
 
-    // If the track isn't playing or valid, we don't need to do anything.
-    if (handle == null || !SoLoud.instance.getIsValidVoiceHandle(handle)) return;
+    // If the track isn't loaded or playing, we don't need to do anything.
+    if (source == null || handle == null || !SoLoud.instance.getIsValidVoiceHandle(handle)) return;
 
-    // Grab whatever the user currently has selected in the 4 dropdowns
     final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
 
     try {
       // --- REVERB ---
       if (plugins.contains('Reverb')) {
-        // Assuming Freeverb attribute 0 is 'Wet'
-        // If state.reverbMix is 0 (default), bump it to a sensible default like 0.8 when turned on
+        // If state.reverbMix is 0 (default), bump it to a sensible default like 0.8
         double wetness = state.reverbMix > 0 ? state.reverbMix : 0.8; 
-        SoLoud.instance.filters.freeverbFilter.setFilterParameter(handle, 0, wetness);
+        source.filters.freeverbFilter.wet = wetness;
       } else {
-        // BYPASS: Set Wet to 0.0
-        SoLoud.instance.filters.freeverbFilter.setFilterParameter(handle, 0, 0.0);
+        // BYPASS
+        source.filters.freeverbFilter.wet = 0.0;
       }
 
       // --- COMPRESSOR ---
       if (plugins.contains('Compressor')) {
-        // Assuming attribute 2 is Ratio. Set to an active compression ratio
-        double ratio = state.compressionRatio > 1.0 ? state.compressionRatio : 4.0;
-        SoLoud.instance.filters.compressorFilter.setFilterParameter(handle, 2, ratio);
+        // Turn the compressor's wet signal on (and adjust ratio if applicable in your SoLoud version)
+        source.filters.compressorFilter.wet = 1.0;
+        // If your specific flutter_soloud version exposes ratio, you can uncomment this:
+        // source.filters.compressorFilter.ratio = state.compressionRatio > 1.0 ? state.compressionRatio : 4.0;
       } else {
-        // BYPASS: Set Ratio to 1.0 (No compression)
-        SoLoud.instance.filters.compressorFilter.setFilterParameter(handle, 2, 1.0);
+        // BYPASS
+        source.filters.compressorFilter.wet = 0.0;
       }
-
-      // Add EQ and De-esser here as you map their SoLoud parameters...
 
     } catch (e) {
       logToSupabase('Stem DSP parameter update failed for $stemName: $e', severity: 'ERROR');
