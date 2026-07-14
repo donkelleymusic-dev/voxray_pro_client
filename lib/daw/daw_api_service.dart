@@ -1341,6 +1341,13 @@ mixin DawApiService on VoxrayDAWStateBase {
       await loadSynthSource();
     }
 
+    // Inside your project load function, after stems are loaded into SoLoud:
+    for (String stem in stemSources.keys) {
+      // This forces the audio engine to read the newly loaded JSON state 
+      // and apply the correct EQ, Reverb, and Compressor settings instantly!
+      applyStemPlugins(stem); 
+    }
+
     seekAllPlayers(0.0);
     setState(() { currentPosition = 0.0; isLoading = false; processingMessage = ''; });
     showSaveConfirmation('Project fully restored from offline archive.');
