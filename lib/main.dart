@@ -963,33 +963,33 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   ),
                   const SizedBox(height: 8),
 
-                  // Plugin slots
+                  // 🎛️ PLUGIN SLOTS (Updated to use _applyStemPlugins)
                   _pluginDropdown(state.plugin1, highlight, (val) {
                     if (state.plugin1 != val) {
                       setMixerState(() => state.plugin1 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) renderStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) _applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
                   _pluginDropdown(state.plugin2, highlight, (val) {
                     if (state.plugin2 != val) {
                       setMixerState(() => state.plugin2 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) renderStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) _applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
                   _pluginDropdown(state.plugin3, highlight, (val) {
                     if (state.plugin3 != val) {
                       setMixerState(() => state.plugin3 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) renderStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) _applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
                   _pluginDropdown(state.plugin4, highlight, (val) {
                     if (state.plugin4 != val) {
                       setMixerState(() => state.plugin4 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) renderStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) _applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
                   const SizedBox(height: 4),
@@ -1043,7 +1043,15 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                           child: Slider(
                             value: state.volume,
                             min: 0.0, max: 1.5,
-                            onChanged: (v) { /* ... keep your existing onChanged logic here ... */ }
+                            onChanged: (v) { 
+                              setMixerState(() => state.volume = v);
+                              this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                              if (state.isMuted) return;
+                              if (key == 'master') SoLoud.instance.setGlobalVolume(v);
+                              else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v); }
+                              else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, v); }
+                              else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setVolume(stemHandles[key]!, v); }
+                            }
                           ),
                         ),
                       ),
@@ -1079,7 +1087,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                         ),
                         child: Slider(
                           value: state.pan, min: -1.0, max: 1.0,
-                          onChanged: (v) { /* ... keep your existing onChanged logic here ... */ }
+                          onChanged: (v) { 
+                            setMixerState(() => state.pan = v);
+                            this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                            if (key == 'master') {
+                              if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
+                              if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
+                              for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, v);
+                            } else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
+                            } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
+                            } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, v); }
+                          }
                         ),
                       ),
                     ),
@@ -1149,6 +1167,34 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
               ]),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _pluginDropdown(String currentValue, Color highlightColor,
+      ValueChanged<String?> onChanged) {
+    return Container(
+      height: 20, width: 62,
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      decoration: BoxDecoration(
+          color: Colors.black,
+          border: Border.all(color: Colors.white12),
+          borderRadius: BorderRadius.circular(3)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          dropdownColor: Colors.grey[850],
+          iconSize: 10,
+          style: TextStyle(
+              fontSize: 8,
+              color: currentValue == 'None' ? Colors.white38 : highlightColor),
+          value: currentValue,
+          items: ['None', 'Compressor', 'EQ', 'Reverb', 'De-esser']
+              .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+              .toList(),
+          onChanged: onChanged,
         ),
       ),
     );
