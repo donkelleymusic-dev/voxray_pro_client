@@ -302,7 +302,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       // --- NEW: Poll the server regardless of whether it's a Mix or a Stem ---
       String targetToPoll = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'mix';
       await registerActiveJob(currentJobId!, currentTaskId!, 'INITIAL_STEM_ANALYSIS', targetToPoll);
-      pollForStemData(currentJobId!, targetToPoll);
+      (currentJobId!, targetToPoll);
 
     } catch (e) {
       logToSupabase('Initialization Failed: $e');
@@ -364,7 +364,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       var data = jsonDecode(await res.stream.bytesToString());
       currentTaskId = data['task_id'];
       currentJobId  = data['job_id'];
-      pollForStemData(currentJobId!, chosenIdentity);
+      (currentJobId!, chosenIdentity);
     } catch (e) {
       setState(() { isLoading = false; });
       showSaveConfirmation('Import matrix generation crashed: $e');
@@ -395,21 +395,17 @@ mixin DawApiService on VoxrayDAWStateBase {
             await prefs.remove('active_target_stem');
 
             setState(() {
-              // --- NEW: Handle the pruned list of valid stems from the backend ---
               if (result['valid_stems'] != null) {
                 List<String> returnedStems = List<String>.from(result['valid_stems']);
                 targetStemsSelection = returnedStems.toSet();
                 generatedStems = returnedStems.toSet();
                 
-                // If it's a mix, auto-select the first valid stem to display in the UI
                 if (targetStem == 'mix' && returnedStems.isNotEmpty) {
                     activeEditableStem = returnedStems.first;
                 }
               }
 
-              // Update the pitch data dictionaries
               if (targetStem != 'mix') {
-                 // Single Stem Path
                  final allStemsMap = result['all_stems_notes'];
                  List<dynamic> stemNotes = [];
                  if (allStemsMap != null && allStemsMap[targetStem] != null) {
@@ -422,7 +418,6 @@ mixin DawApiService on VoxrayDAWStateBase {
                  activePlaybackSources.add(targetStem);
                  processingMessage = 'Downloading audio for ${targetStem.toUpperCase()}...';
               } else {
-                 // Full Mix Path
                  if (result['all_stems_notes'] != null) {
                      allStemsNotes = Map<String, List<dynamic>>.from(result['all_stems_notes']);
                  }
@@ -441,9 +436,7 @@ mixin DawApiService on VoxrayDAWStateBase {
               }
             });
 
-            triggerAutoSave();
-
-            // --- NEW: Load audio for all newly generated stems ---
+            // --- AWAIT THE DOWNLOADS FIRST ---
             if (targetStem != 'mix') {
               await loadStemPlayerSource(targetStem, apiBase, currentTaskId!);
             } else {
@@ -451,16 +444,12 @@ mixin DawApiService on VoxrayDAWStateBase {
                   await loadStemPlayerSource(s, apiBase, currentTaskId!);
               }
             }
+            
             if (mounted) setState(() { isLoading = false; processingMessage = ''; });
-
-          } else if (statusData['status'] == 'error') {
-            timer.cancel();
-            setState(() {
-              isLoading = false;
-              processingMessage = 'Error: ${statusData['message']}';
-              activePlaybackSources.remove(targetStem);
-            });
-            showSaveConfirmation('Processing Error: ${statusData['message']}');
+            
+            // --- NOW TRIGGER AUTOSAVE ---
+            // The audio is downloaded, cachedStemPaths is fully populated!
+            triggerAutoSave(); 
           }
         } else {
           timer.cancel();
