@@ -357,21 +357,15 @@ mixin DawAudioController on VoxrayDAWStateBase {
       // REVERB
       if (plugins.contains('Reverb')) {
         double wetness = state.reverbMix > 0 ? state.reverbMix : 0.8;
-        //source.filters.freeverbFilter.setParams(wet: wetness);
         source.filters.freeverbFilter.wet().value = wetness;
       } else {
-        //source.filters.freeverbFilter.setParams(wet: 0.0);
         source.filters.freeverbFilter.wet().value = 0.0;
       }
 
       // COMPRESSOR
       if (plugins.contains('Compressor')) {
-        // If your version supports ratio, use it here. If not, setting wet to 1.0 enables it.
-        //source.filters.compressorFilter.setParams(wet: 1.0);
         source.filters.compressorFilter.wet().value = 1.0;
-        
       } else {
-        //source.filters.compressorFilter.setParams(wet: 0.0);
         source.filters.compressorFilter.wet().value = 0.0;
       }
 
