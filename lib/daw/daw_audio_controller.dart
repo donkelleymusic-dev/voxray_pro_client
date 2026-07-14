@@ -359,16 +359,16 @@ mixin DawAudioController on VoxrayDAWStateBase {
       // REVERB
       if (plugins.contains('Reverb')) {
         double wetness = state.reverbMix > 0 ? state.reverbMix : 0.8;
-        newSource.filters.freeverbFilter.wet().value = wetness;
+        source.filters.freeverbFilter.wet().value = wetness;
       } else {
-        newSource.filters.freeverbFilter.wet().value = 0.0;
+        source.filters.freeverbFilter.wet().value = 0.0;
       }
 
       // COMPRESSOR
       if (plugins.contains('Compressor')) {
-        newSource.filters.compressorFilter.wet().value = 1.0;
+        source.filters.compressorFilter.wet().value = 1.0;
       } else {
-        newSource.filters.compressorFilter.wet().value = 0.0;
+        source.filters.compressorFilter.wet().value = 0.0;
       }
 
     } catch (e) {
