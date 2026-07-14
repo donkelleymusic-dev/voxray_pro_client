@@ -963,33 +963,33 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   ),
                   const SizedBox(height: 8),
 
-                  // 🎛️ PLUGIN SLOTS (Updated to use _applyStemPlugins)
+                  // 🎛️ PLUGIN SLOTS (Updated to use applyStemPlugins)
                   _pluginDropdown(state.plugin1, highlight, (val) {
                     if (state.plugin1 != val) {
                       setMixerState(() => state.plugin1 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) _applyStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
                   _pluginDropdown(state.plugin2, highlight, (val) {
                     if (state.plugin2 != val) {
                       setMixerState(() => state.plugin2 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) _applyStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
                   _pluginDropdown(state.plugin3, highlight, (val) {
                     if (state.plugin3 != val) {
                       setMixerState(() => state.plugin3 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) _applyStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
                   _pluginDropdown(state.plugin4, highlight, (val) {
                     if (state.plugin4 != val) {
                       setMixerState(() => state.plugin4 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) _applyStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
                   const SizedBox(height: 4),
