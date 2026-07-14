@@ -1061,7 +1061,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   const SizedBox(height: 4),
                   Text('${(state.volume * 100).round()}%',
                       style: const TextStyle(fontSize: 9, color: Colors.white54)),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
 
                   // Pan slider
                   SizedBox(
@@ -1111,7 +1111,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                             : 'R ${(state.pan * 100).round()}'),
                     style: const TextStyle(fontSize: 8, color: Colors.white54),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                 ]),
               );
             }
@@ -1776,7 +1776,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 13))),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 4),
                       Expanded(
                           child: ClipRRect(
                         borderRadius: BorderRadius.circular(3),
@@ -1787,7 +1787,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                           minHeight: 6,
                         ),
                       )),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 4),
                       Text('${avg.toStringAsFixed(1)}¢',
                           style: TextStyle(color: c, fontSize: 11)),
                       Text(' ×${entry.value.length}',
@@ -2170,7 +2170,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                       fontSize: 10,
                       color: Colors.white)),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             const Text('Forensic Daw',
                 style: TextStyle(
                     fontWeight: FontWeight.w300,
@@ -2210,7 +2210,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                     children: [
                       Row(children: [
                         const Icon(Icons.audio_file, size: 14, color: Colors.white54),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             originalFileName != 'Unknown File'
@@ -2232,27 +2232,27 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                   fontSize: 12, color: Colors.white38)),
                       ]),
                       if (isLoading) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Row(children: [
                           Expanded(
                               child: LinearProgressIndicator(
                                   value: processingProgress,
                                   color: Colors.tealAccent,
                                   backgroundColor: Colors.grey[800])),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 4),
                           Text(processingMessage,
                               style: const TextStyle(
                                   fontSize: 10, color: Colors.tealAccent)),
                         ]),
                       ] else if (isPreviewing || isExporting || isSynthRendering) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Row(children: [
                           Expanded(
                               child: LinearProgressIndicator(
                                   value: processingProgress,
                                   color: Colors.amberAccent,
                                   backgroundColor: Colors.grey[800])),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 4),
                           Text(
                               exportMessage.isNotEmpty
                                   ? exportMessage
@@ -2268,7 +2268,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 // ── Tool strip ───────────────────────────────────────────────
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
                   color: Colors.black26,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2350,7 +2350,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                   ),
                                 ),
                               ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 4),
 
                             // 2. Studio Mixer
                             IconButton(
@@ -2360,7 +2360,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               onPressed: _showStudioMixer
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 4),
 
                             // 3. Edit Tools Group (Drag Mode & Render)
                             Container(
@@ -2391,7 +2391,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 4),
 
                             // 4. X-Ray Button
                             isXrayProcessing
@@ -2402,7 +2402,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                     padding: const EdgeInsets.symmetric(horizontal: 8),
                                     onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null
                                   ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 4),
 
                             // 5. Undo/Redo Group
                             Container(
@@ -2424,7 +2424,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
 
                       // ROW 2 (Transport / Timeline Tools)
                       SingleChildScrollView(
@@ -2458,7 +2458,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                     value: marker['time'],
                                     child: Row(children: [
                                       const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: 4),
                                       Text('${marker['label']}  '),
                                       Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
                                     ]),
