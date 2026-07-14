@@ -164,12 +164,14 @@ mixin DawAudioController on VoxrayDAWStateBase {
         // Activate
         newSource.filters.freeverbFilter.activate();
         newSource.filters.compressorFilter.activate();
+        newSource.filters.biquadFilter.activate();
         
         // Directly call the method on the filter instance
         //newSource.filters.freeverbFilter.setParams(wet: 0.0);
         //newSource.filters.compressorFilter.setParams(wet: 0.0); 
-        //newSource.filters.freeverbFilter.wet().value = 0.0;
-        //newSource.filters.compressorFilter.wet().value = 0.0;
+        newSource.filters.freeverbFilter.wet().value = 0.0;
+        newSource.filters.compressorFilter.wet().value = 0.0;
+        newSource.filters.biquadFilter.wet().value = 0.0;
         
         logToSupabase("DSP Graph compiled & bypassed successfully for track [$stemName]");
       } catch (fxError) {
@@ -363,34 +365,31 @@ mixin DawAudioController on VoxrayDAWStateBase {
     try {
       // -- REVERB --
       if (plugins.contains('Reverb')) {
-        double roomSize = state.reverbMix; // Using your slider value!
-        
-        // Ensure it's active
-        source.filters.freeverbFilter.wet().value = 1.0; 
-        if (handle != null) source.filters.freeverbFilter.wet(soundHandle: handle).value = 1.0;
-
-        // Modulate the deep parameter (Room Size)
-        source.filters.freeverbFilter.roomSize().value = roomSize;
-        if (handle != null) source.filters.freeverbFilter.roomSize(soundHandle: handle).value = roomSize;
-        
+        source.filters.freeverbFilter.wet().value = state.reverbMix;
+        source.filters.freeverbFilter.roomSize().value = state.reverbRoomSize;
+        if (handle != null) {
+          source.filters.freeverbFilter.wet(soundHandle: handle).value = state.reverbMix;
+          source.filters.freeverbFilter.roomSize(soundHandle: handle).value = state.reverbRoomSize;
+        }
       } else {
         source.filters.freeverbFilter.wet().value = 0.0;
         if (handle != null) source.filters.freeverbFilter.wet(soundHandle: handle).value = 0.0;
       }
 
-      // -- EQ (Biquad Filter) --
+      // -- EQ (Low Pass Filter) --
       if (plugins.contains('EQ')) {
-        // Assume state.eqCutoff is wired to your slider (e.g., 5000 Hz)
-        double cutoff = 5000.0; 
-        
-        // Type 0 = Low Pass
-        source.filters.biquadFilter.type().value = 0; 
-        source.filters.biquadFilter.frequency().value = cutoff;
+        source.filters.biquadFilter.wet().value = 1.0; 
+        source.filters.biquadFilter.type().value = 0; // 0 = Low Pass
+        source.filters.biquadFilter.frequency().value = state.eqCutoff;
         
         if (handle != null) {
+          source.filters.biquadFilter.wet(soundHandle: handle).value = 1.0;
           source.filters.biquadFilter.type(soundHandle: handle).value = 0;
-          source.filters.biquadFilter.frequency(soundHandle: handle).value = cutoff;
+          source.filters.biquadFilter.frequency(soundHandle: handle).value = state.eqCutoff;
         }
+      } else {
+        source.filters.biquadFilter.wet().value = 0.0;
+        if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
 
       // -- COMPRESSOR --
