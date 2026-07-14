@@ -1334,6 +1334,10 @@ mixin DawApiService on VoxrayDAWStateBase {
       if (cachedStemPaths.containsKey(stem)) {
         activePlaybackSources.add(stem);
         await loadStemPlayerSource(stem, apiBase, currentTaskId ?? '');
+        
+        // ── ADD THIS LINE ──
+        // This forces the audio engine to sync with the restored UI mixer state!
+        applyStemPlugins(stem); 
       }
     }
 
@@ -1407,27 +1411,33 @@ mixin DawApiService on VoxrayDAWStateBase {
         return;
       }
 
+      // 1. RECONSTRUCT DYNAMIC PATHS (Fixes the OS Sandbox Bug)
+      final tempDir = await getTemporaryDirectory();
+      Map<String, String> repairedPaths = {};
+      
+      (data['cached_stem_paths'] as Map<String, dynamic>? ?? {}).forEach((key, val) {
+        // Grab just the filename from the saved absolute path (e.g., "song_vocals.ogg")
+        String fileName = val.toString().split('/').last;
+        // Rebuild it using today's valid OS Temporary Directory
+        repairedPaths[key] = '${tempDir.path}/$fileName';
+      });
+
       setState(() {
         isLoading          = true;
         processingMessage  = 'Restoring previous session...';
-        currentTaskId      = data['task_id'];
+        
+        // Ensure variables aren't null so the UI menus wake up
+        currentTaskId      = data['task_id'] ?? 'recovered_task_id';
         currentJobId       = data['job_id'];
-        projectName        = data['project_name'];
-        originalFileName   = data['original_file'];
+        projectName        = data['project_name'] ?? 'Recovered Session';
+        originalFileName   = data['original_file'] ?? 'Recovered Audio';
+        
         songDuration       = data['song_duration'];
         zoomX              = data['zoom_x'] ?? 50.0;
         zoomY              = data['zoom_y'] ?? 8.0;
 
-        // ── WAKE UP THE UI MENUS ─────────────────────────────────────────
-        // This tells the UI that a project is actively loaded but has NOT 
-        // been formally saved by the user yet, ensuring the "Save" button 
-        // is clickable and the "Advanced Downloads" menu knows the Task ID exists.
+        // WAKE UP THE MENUS
         hasBeenSaved = false; 
-        
-        // If your menus rely on a specific boolean like `isProjectOpen`, 
-        // uncomment and add it here:
-        // isProjectOpen = true; 
-        // ─────────────────────────────────────────────────────────────────
 
         if (data['mixer_state'] != null) {
           final ms = data['mixer_state'] as Map<String, dynamic>;
@@ -1442,18 +1452,27 @@ mixin DawApiService on VoxrayDAWStateBase {
         generatedStems
           ..clear()
           ..addAll(Set<String>.from(data['generated_stems']));
+          
         allStemsNotes           = Map<String, List<dynamic>>.from(data['all_stems_notes']);
         allStemsContinuousXray  = Map<String, List<dynamic>>.from(data['all_stems_continuous_xray']);
         activeEditableStem      = data['active_editable_stem'];
 
-        (data['cached_stem_paths'] as Map<String, dynamic>? ?? {})
-            .forEach((k, v) => cachedStemPaths[k] = v.toString());
+        // Assign our repaired paths so the audio engine can actually find the files
+        cachedStemPaths.clear();
+        cachedStemPaths.addAll(repairedPaths);
       });
 
+      // 2. LOAD AUDIO AND SYNC DSP MIXER
       for (String stem in generatedStems) {
         if (cachedStemPaths.containsKey(stem)) {
           activePlaybackSources.add(stem);
+          
+          // Wait for the track to load into memory...
           await loadStemPlayerSource(stem, apiBase, currentTaskId ?? '');
+          
+          // --- FIX THE MIXER BUG ---
+          // Now that it is loaded, instantly force the C++ engine to turn the Reverb/Comp back on!
+          applyStemPlugins(stem); 
         }
       }
 
