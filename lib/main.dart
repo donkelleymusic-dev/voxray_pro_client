@@ -1224,58 +1224,67 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   // 2. The Settings Dialog (Real-time Slider)
   void _showPluginSettingsDialog(String stemKey, String pluginName, Color highlight) {
     final state = getChannelState(stemKey);
-    
-    // Determine which parameter we are adjusting based on the plugin
-    String paramLabel = 'Mix';
-    double currentValue = 0.5;
-    double minVal = 0.0;
-    double maxVal = 1.0;
-
-    if (pluginName == 'Reverb') {
-      paramLabel = 'Room Size';
-      currentValue = state.reverbMix; // Assuming you add reverbSize to ChannelState, using Mix as placeholder
-    } else if (pluginName == 'Compressor') {
-      paramLabel = 'Compression Amount (Ratio)';
-      currentValue = 0.5; // Wire this to state.compressorAmount
-    } else if (pluginName == 'EQ') {
-      paramLabel = 'Low-Pass Cutoff (Hz)';
-      minVal = 200;
-      maxVal = 20000;
-      currentValue = 20000; // Wire this to state.eqCutoff
-    }
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          List<Widget> sliders = [];
+
+          if (pluginName == 'Reverb') {
+            sliders.addAll([
+              const Text('Mix (Wet/Dry)', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              Slider(
+                value: state.reverbMix,
+                min: 0.0, max: 1.0, activeColor: highlight,
+                onChanged: (val) {
+                  setDialogState(() => state.reverbMix = val);
+                  this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                  applyStemPlugins(stemKey); 
+                },
+              ),
+              const SizedBox(height: 12),
+              const Text('Room Size', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              Slider(
+                value: state.reverbRoomSize,
+                min: 0.0, max: 1.0, activeColor: highlight,
+                onChanged: (val) {
+                  setDialogState(() => state.reverbRoomSize = val);
+                  this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                  applyStemPlugins(stemKey); 
+                },
+              ),
+            ]);
+          } 
+          else if (pluginName == 'EQ') {
+            sliders.addAll([
+              const Text('Low-Pass Cutoff (Hz)', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              Slider(
+                value: state.eqCutoff,
+                min: 200, max: 20000, activeColor: highlight,
+                onChanged: (val) {
+                  setDialogState(() => state.eqCutoff = val);
+                  this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                  applyStemPlugins(stemKey); 
+                },
+              ),
+            ]);
+          }
+          // (You can easily add an `else if (pluginName == 'Compressor')` here later!)
+
           return AlertDialog(
             backgroundColor: Colors.grey[900],
             title: Text('$pluginName Settings', style: TextStyle(color: highlight, fontSize: 14)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(paramLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                Slider(
-                  value: currentValue,
-                  min: minVal,
-                  max: maxVal,
-                  activeColor: highlight,
-                  onChanged: (val) {
-                    setDialogState(() => currentValue = val);
-                    
-                    // 1. Save to state
-                    if (pluginName == 'Reverb') state.reverbMix = val;
-                    // if (pluginName == 'Compressor') state.compressorAmount = val;
-                    // if (pluginName == 'EQ') state.eqCutoff = val;
-                    
-                    this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
-                    
-                    // 2. Apply to audio engine instantly!
-                    applyStemPlugins(stemKey); 
-                  },
-                ),
-              ],
+              children: sliders,
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: const Text('Close', style: TextStyle(color: Colors.white54))
+              )
+            ],
           );
         },
       ),
