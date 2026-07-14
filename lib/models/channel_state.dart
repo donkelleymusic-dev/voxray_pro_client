@@ -26,6 +26,8 @@ class ChannelState {
   String plugin4;
 
   double reverbMix;
+  double reverbRoomSize;
+  double eqCutoff;
   double compressionThreshold;
   double compressionRatio;
   double eqLowGain;
@@ -42,6 +44,8 @@ class ChannelState {
     this.plugin3 = 'None',
     this.plugin4 = 'None',
     this.reverbMix = 0.0,
+    this.reverbRoomSize = 0.5,
+    this.eqCutoff = 20000.0,
     this.compressionThreshold = 0.0,
     this.compressionRatio = 1.0,
     this.eqLowGain = 0.0,
@@ -60,6 +64,8 @@ class ChannelState {
     'plugin4': plugin4,
     // ADDED DSP PARAMETERS HERE:
     'reverbMix': reverbMix,
+    'reverbRoomSize': reverbRoomSize,
+    'eqCutoff': eqCutoff,
     'compressionThreshold': compressionThreshold,
     'compressionRatio': compressionRatio,
     'eqLowGain': eqLowGain,
@@ -78,7 +84,10 @@ class ChannelState {
       plugin3: json['plugin3'] ?? 'None',
       plugin4: json['plugin4'] ?? 'None',
       // ADDED DSP PARAMETERS HERE:
+      //: (json[''] ?? 0.0).toDouble(),
       reverbMix: (json['reverbMix'] ?? 0.0).toDouble(),
+      reverbRoomSize: (json['reverbRoomSize'] ?? 0.5).toDouble(),
+      eqCutoff: (json['eqCutoff'] ?? 20000.0).toDouble(),
       compressionThreshold: (json['compressionThreshold'] ?? 0.0).toDouble(),
       compressionRatio: (json['compressionRatio'] ?? 1.0).toDouble(),
       eqLowGain: (json['eqLowGain'] ?? 0.0).toDouble(),
@@ -96,7 +105,7 @@ class ChannelState {
     String? plugin2,
     String? plugin3,
     String? plugin4,
-    double? reverbMix,
+    double? ,
     double? compressionThreshold,
     double? compressionRatio,
     double? eqLowGain,
