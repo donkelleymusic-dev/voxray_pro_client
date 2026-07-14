@@ -1427,6 +1427,8 @@ mixin DawApiService on VoxrayDAWStateBase {
 
         // WAKE UP THE MENUS
         hasBeenSaved = false; 
+        isProjectLoaded = true;
+        isOriginalMixAvailable = data['original_file'] != null; // Optional: helps wake up export menus
 
         if (data['mixer_state'] != null) {
           final ms = data['mixer_state'] as Map<String, dynamic>;
