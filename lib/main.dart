@@ -1200,33 +1200,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
     );
   }
 
-  Widget _pluginDropdown(String currentValue, Color highlightColor,
-      ValueChanged<String?> onChanged) {
-    return Container(
-      height: 20, width: 62,
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      decoration: BoxDecoration(
-          color: Colors.black,
-          border: Border.all(color: Colors.white12),
-          borderRadius: BorderRadius.circular(3)),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          dropdownColor: Colors.grey[850],
-          iconSize: 10,
-          style: TextStyle(
-              fontSize: 8,
-              color: currentValue == 'None' ? Colors.white38 : highlightColor),
-          value: currentValue,
-          items: ['None', 'Compressor', 'EQ', 'Reverb', 'De-esser']
-              .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-              .toList(),
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
 
   // =========================================================================
   // SYNTH SETTINGS DIALOG
