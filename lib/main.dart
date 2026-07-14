@@ -964,28 +964,28 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   const SizedBox(height: 8),
 
                   // 🎛️ PLUGIN SLOTS (Updated to use applyStemPlugins)
-                  _pluginDropdown(state.plugin1, highlight, (val) {
+                  _pluginSlot(key,state.plugin1, highlight, (val) {
                     if (state.plugin1 != val) {
                       setMixerState(() => state.plugin1 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
-                  _pluginDropdown(state.plugin2, highlight, (val) {
+                  _pluginSlot(key,state.plugin2, highlight, (val) {
                     if (state.plugin2 != val) {
                       setMixerState(() => state.plugin2 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
-                  _pluginDropdown(state.plugin3, highlight, (val) {
+                  _pluginSlot(key,state.plugin3, highlight, (val) {
                     if (state.plugin3 != val) {
                       setMixerState(() => state.plugin3 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
                     }
                   }),
-                  _pluginDropdown(state.plugin4, highlight, (val) {
+                  _pluginSlot(key,state.plugin4, highlight, (val) {
                     if (state.plugin4 != val) {
                       setMixerState(() => state.plugin4 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
@@ -1172,30 +1172,112 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
     );
   }
 
-  Widget _pluginDropdown(String currentValue, Color highlightColor,
-      ValueChanged<String?> onChanged) {
+  // 1. The Updated Plugin Slot (Now with a gear icon!)
+  Widget _pluginSlot(String stemKey, String pluginName, Color highlight, ValueChanged<String?> onChanged) {
     return Container(
-      height: 20, width: 62,
+      height: 20,
       margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      decoration: BoxDecoration(
-          color: Colors.black,
-          border: Border.all(color: Colors.white12),
-          borderRadius: BorderRadius.circular(3)),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          dropdownColor: Colors.grey[850],
-          iconSize: 10,
-          style: TextStyle(
-              fontSize: 8,
-              color: currentValue == 'None' ? Colors.white38 : highlightColor),
-          value: currentValue,
-          items: ['None', 'Compressor', 'EQ', 'Reverb', 'De-esser']
-              .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-              .toList(),
-          onChanged: onChanged,
-        ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(color: Colors.white12),
+                  borderRadius: BorderRadius.circular(3)),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  dropdownColor: Colors.grey[850],
+                  iconSize: 10,
+                  style: TextStyle(
+                      fontSize: 8,
+                      color: pluginName == 'None' ? Colors.white38 : highlight),
+                  value: pluginName,
+                  items: ['None', 'Compressor', 'EQ', 'Reverb', 'De-esser']
+                      .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                      .toList(),
+                  onChanged: onChanged,
+                ),
+              ),
+            ),
+          ),
+          // Only show the gear if an effect is active
+          if (pluginName != 'None')
+            GestureDetector(
+              onTap: () => _showPluginSettingsDialog(stemKey, pluginName, highlight),
+              child: Container(
+                width: 16,
+                alignment: Alignment.center,
+                color: Colors.transparent,
+                child: Icon(Icons.settings, size: 10, color: highlight.withOpacity(0.7)),
+              ),
+            )
+          else
+            const SizedBox(width: 16), // Spacer to keep alignment
+        ],
+      ),
+    );
+  }
+
+  // 2. The Settings Dialog (Real-time Slider)
+  void _showPluginSettingsDialog(String stemKey, String pluginName, Color highlight) {
+    final state = getChannelState(stemKey);
+    
+    // Determine which parameter we are adjusting based on the plugin
+    String paramLabel = 'Mix';
+    double currentValue = 0.5;
+    double minVal = 0.0;
+    double maxVal = 1.0;
+
+    if (pluginName == 'Reverb') {
+      paramLabel = 'Room Size';
+      currentValue = state.reverbMix; // Assuming you add reverbSize to ChannelState, using Mix as placeholder
+    } else if (pluginName == 'Compressor') {
+      paramLabel = 'Compression Amount (Ratio)';
+      currentValue = 0.5; // Wire this to state.compressorAmount
+    } else if (pluginName == 'EQ') {
+      paramLabel = 'Low-Pass Cutoff (Hz)';
+      minVal = 200;
+      maxVal = 20000;
+      currentValue = 20000; // Wire this to state.eqCutoff
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: Text('$pluginName Settings', style: TextStyle(color: highlight, fontSize: 14)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(paramLabel, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                Slider(
+                  value: currentValue,
+                  min: minVal,
+                  max: maxVal,
+                  activeColor: highlight,
+                  onChanged: (val) {
+                    setDialogState(() => currentValue = val);
+                    
+                    // 1. Save to state
+                    if (pluginName == 'Reverb') state.reverbMix = val;
+                    // if (pluginName == 'Compressor') state.compressorAmount = val;
+                    // if (pluginName == 'EQ') state.eqCutoff = val;
+                    
+                    this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                    
+                    // 2. Apply to audio engine instantly!
+                    applyStemPlugins(stemKey); 
+                  },
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
