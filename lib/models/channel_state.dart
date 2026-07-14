@@ -58,6 +58,13 @@ class ChannelState {
     'plugin2': plugin2,
     'plugin3': plugin3,
     'plugin4': plugin4,
+    // ADDED DSP PARAMETERS HERE:
+    'reverbMix': reverbMix,
+    'compressionThreshold': compressionThreshold,
+    'compressionRatio': compressionRatio,
+    'eqLowGain': eqLowGain,
+    'eqMidGain': eqMidGain,
+    'eqHighGain': eqHighGain,
   };
 
   factory ChannelState.fromJson(Map<String, dynamic> json) {
@@ -70,6 +77,13 @@ class ChannelState {
       plugin2: json['plugin2'] ?? 'None',
       plugin3: json['plugin3'] ?? 'None',
       plugin4: json['plugin4'] ?? 'None',
+      // ADDED DSP PARAMETERS HERE:
+      reverbMix: (json['reverbMix'] ?? 0.0).toDouble(),
+      compressionThreshold: (json['compressionThreshold'] ?? 0.0).toDouble(),
+      compressionRatio: (json['compressionRatio'] ?? 1.0).toDouble(),
+      eqLowGain: (json['eqLowGain'] ?? 0.0).toDouble(),
+      eqMidGain: (json['eqMidGain'] ?? 0.0).toDouble(),
+      eqHighGain: (json['eqHighGain'] ?? 0.0).toDouble(),
     );
   }
 
@@ -82,6 +96,12 @@ class ChannelState {
     String? plugin2,
     String? plugin3,
     String? plugin4,
+    double? reverbMix,
+    double? compressionThreshold,
+    double? compressionRatio,
+    double? eqLowGain,
+    double? eqMidGain,
+    double? eqHighGain,
   }) {
     return ChannelState(
       volume: volume ?? this.volume,
@@ -92,6 +112,12 @@ class ChannelState {
       plugin2: plugin2 ?? this.plugin2,
       plugin3: plugin3 ?? this.plugin3,
       plugin4: plugin4 ?? this.plugin4,
+      reverbMix: reverbMix ?? this.reverbMix,
+      compressionThreshold: compressionThreshold ?? this.compressionThreshold,
+      compressionRatio: compressionRatio ?? this.compressionRatio,
+      eqLowGain: eqLowGain ?? this.eqLowGain,
+      eqMidGain: eqMidGain ?? this.eqMidGain,
+      eqHighGain: eqHighGain ?? this.eqHighGain,
     );
   }
 }
