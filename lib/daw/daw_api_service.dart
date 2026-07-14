@@ -1418,6 +1418,17 @@ mixin DawApiService on VoxrayDAWStateBase {
         zoomX              = data['zoom_x'] ?? 50.0;
         zoomY              = data['zoom_y'] ?? 8.0;
 
+        // ── WAKE UP THE UI MENUS ─────────────────────────────────────────
+        // This tells the UI that a project is actively loaded but has NOT 
+        // been formally saved by the user yet, ensuring the "Save" button 
+        // is clickable and the "Advanced Downloads" menu knows the Task ID exists.
+        hasBeenSaved = false; 
+        
+        // If your menus rely on a specific boolean like `isProjectOpen`, 
+        // uncomment and add it here:
+        // isProjectOpen = true; 
+        // ─────────────────────────────────────────────────────────────────
+
         if (data['mixer_state'] != null) {
           final ms = data['mixer_state'] as Map<String, dynamic>;
           mixerState
