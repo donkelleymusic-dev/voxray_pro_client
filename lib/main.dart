@@ -363,6 +363,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   void pauseAllPlayers();
   void playAllPlayers();
   void seekAllPlayers(double seconds);
+  void applyStemPlugins(String stemName);
 
 } // <--- This closes VoxrayDAWStateBase!
 
