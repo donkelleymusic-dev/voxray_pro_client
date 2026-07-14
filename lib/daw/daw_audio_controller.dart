@@ -350,6 +350,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
   // =========================================================================
   
   // ── Public DSP method (No underscore) ───────────────────────────────────
+  // ── Public DSP method (No underscore) ───────────────────────────────────
   void applyStemPlugins(String stemName) {
     final state = getChannelState(stemName);
     final source = stemSources[stemName];
@@ -366,16 +367,20 @@ mixin DawAudioController on VoxrayDAWStateBase {
       // Update the template (for future play calls)
       source.filters.freeverbFilter.wet().value = reverbWet;
       
-      // Update the currently playing audio in real-time!
+      // Update the currently playing audio in real-time using the named parameter!
       if (handle != null) {
-        source.filters.freeverbFilter.wet(handle).value = reverbWet;
+        source.filters.freeverbFilter.wet(soundHandle: handle).value = reverbWet;
       }
 
       // -- COMPRESSOR --
       double compWet = plugins.contains('Compressor') ? 1.0 : 0.0;
+      
+      // Update the template
       source.filters.compressorFilter.wet().value = compWet;
+      
+      // Update the currently playing audio in real-time
       if (handle != null) {
-        source.filters.compressorFilter.wet(handle).value = compWet;
+        source.filters.compressorFilter.wet(soundHandle: handle).value = compWet;
       }
 
     } catch (e) {
