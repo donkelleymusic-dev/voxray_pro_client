@@ -168,8 +168,8 @@ mixin DawAudioController on VoxrayDAWStateBase {
         // Directly call the method on the filter instance
         //newSource.filters.freeverbFilter.setParams(wet: 0.0);
         //newSource.filters.compressorFilter.setParams(wet: 0.0); 
-        newSource.filters.freeverbFilter.wet().value = 0.0;
-        newSource.filters.compressorFilter.wet().value = 0.0;
+        //newSource.filters.freeverbFilter.wet().value = 0.0;
+        //newSource.filters.compressorFilter.wet().value = 0.0;
         
         logToSupabase("DSP Graph compiled & bypassed successfully for track [$stemName]");
       } catch (fxError) {
