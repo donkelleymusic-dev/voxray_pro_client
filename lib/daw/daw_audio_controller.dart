@@ -362,14 +362,35 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
     try {
       // -- REVERB --
-      double reverbWet = plugins.contains('Reverb') ? (state.reverbMix > 0 ? state.reverbMix : 0.8) : 0.0;
-      
-      // Update the template (for future play calls)
-      source.filters.freeverbFilter.wet().value = reverbWet;
-      
-      // Update the currently playing audio in real-time using the named parameter!
-      if (handle != null) {
-        source.filters.freeverbFilter.wet(soundHandle: handle).value = reverbWet;
+      if (plugins.contains('Reverb')) {
+        double roomSize = state.reverbMix; // Using your slider value!
+        
+        // Ensure it's active
+        source.filters.freeverbFilter.wet().value = 1.0; 
+        if (handle != null) source.filters.freeverbFilter.wet(soundHandle: handle).value = 1.0;
+
+        // Modulate the deep parameter (Room Size)
+        source.filters.freeverbFilter.roomSize().value = roomSize;
+        if (handle != null) source.filters.freeverbFilter.roomSize(soundHandle: handle).value = roomSize;
+        
+      } else {
+        source.filters.freeverbFilter.wet().value = 0.0;
+        if (handle != null) source.filters.freeverbFilter.wet(soundHandle: handle).value = 0.0;
+      }
+
+      // -- EQ (Biquad Filter) --
+      if (plugins.contains('EQ')) {
+        // Assume state.eqCutoff is wired to your slider (e.g., 5000 Hz)
+        double cutoff = 5000.0; 
+        
+        // Type 0 = Low Pass
+        source.filters.biquadFilter.type().value = 0; 
+        source.filters.biquadFilter.frequency().value = cutoff;
+        
+        if (handle != null) {
+          source.filters.biquadFilter.type(soundHandle: handle).value = 0;
+          source.filters.biquadFilter.frequency(soundHandle: handle).value = cutoff;
+        }
       }
 
       // -- COMPRESSOR --
