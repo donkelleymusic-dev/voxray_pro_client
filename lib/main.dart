@@ -2010,10 +2010,16 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
 
     return [
       const PopupMenuItem(
+          value: 'new_project',
+          child: ListTile(
+              leading: Icon(Icons.add_box, color: Colors.amberAccent),
+              title: Text('New Project (Clear Workspace)'))),
+      const PopupMenuDivider(),
+      const PopupMenuItem(
           value: 'upload',
           child: ListTile(
               leading: Icon(Icons.cloud_upload, color: Colors.tealAccent),
-              title: Text('Load Audio'))),
+              title: Text('Load New Audio'))),
       const PopupMenuItem(
           value: 'load',
           child: ListTile(
