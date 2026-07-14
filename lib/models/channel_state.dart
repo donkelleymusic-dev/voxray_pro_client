@@ -105,12 +105,14 @@ class ChannelState {
     String? plugin2,
     String? plugin3,
     String? plugin4,
-    double? ,
+    double? reverbMix,
+    double? reverbRoomSize,
     double? compressionThreshold,
     double? compressionRatio,
     double? eqLowGain,
     double? eqMidGain,
     double? eqHighGain,
+    double? eqCutoff,
   }) {
     return ChannelState(
       volume: volume ?? this.volume,
@@ -122,11 +124,13 @@ class ChannelState {
       plugin3: plugin3 ?? this.plugin3,
       plugin4: plugin4 ?? this.plugin4,
       reverbMix: reverbMix ?? this.reverbMix,
+      reverbRoomSize: reverbRoomSize ?? this.reverbRoomSize,
       compressionThreshold: compressionThreshold ?? this.compressionThreshold,
       compressionRatio: compressionRatio ?? this.compressionRatio,
       eqLowGain: eqLowGain ?? this.eqLowGain,
       eqMidGain: eqMidGain ?? this.eqMidGain,
       eqHighGain: eqHighGain ?? this.eqHighGain,
+      eqCutoff: eqCutoff ?? this.eqCutoff,
     );
   }
 }
