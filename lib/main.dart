@@ -1463,7 +1463,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   // =========================================================================
 
   void _showAdvancedDownloadsDialog() {
-    if (rawNotes.isEmpty || originalAudioBytes == null) {
+    // Check if we have stems generated OR a valid task ID loaded
+    if (generatedStems.isEmpty && currentTaskId == null) {
       _showSaveConfirmation('No active project to export.');
       return;
     }
