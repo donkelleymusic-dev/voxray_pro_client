@@ -166,8 +166,10 @@ mixin DawAudioController on VoxrayDAWStateBase {
         newSource.filters.compressorFilter.activate();
         
         // Directly call the method on the filter instance
-        newSource.filters.freeverbFilter.setParams(wet: 0.0);
-        newSource.filters.compressorFilter.setParams(wet: 0.0); 
+        //newSource.filters.freeverbFilter.setParams(wet: 0.0);
+        //newSource.filters.compressorFilter.setParams(wet: 0.0); 
+        newSource.filters.freeverbFilter.wet().value = 0.0;
+        newSource.filters.compressorFilter.wet().value = 0.0;
         
         logToSupabase("DSP Graph compiled & bypassed successfully for track [$stemName]");
       } catch (fxError) {
@@ -357,16 +359,16 @@ mixin DawAudioController on VoxrayDAWStateBase {
       // REVERB
       if (plugins.contains('Reverb')) {
         double wetness = state.reverbMix > 0 ? state.reverbMix : 0.8;
-        source.filters.freeverbFilter.wet().value = wetness;
+        newSource.filters.freeverbFilter.wet().value = wetness;
       } else {
-        source.filters.freeverbFilter.wet().value = 0.0;
+        newSource.filters.freeverbFilter.wet().value = 0.0;
       }
 
       // COMPRESSOR
       if (plugins.contains('Compressor')) {
-        source.filters.compressorFilter.wet().value = 1.0;
+        newSource.filters.compressorFilter.wet().value = 1.0;
       } else {
-        source.filters.compressorFilter.wet().value = 0.0;
+        newSource.filters.compressorFilter.wet().value = 0.0;
       }
 
     } catch (e) {
