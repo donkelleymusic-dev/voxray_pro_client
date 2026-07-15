@@ -400,7 +400,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
 
-      // ── COMPRESSOR (RE-ENGINEERED INDICES) ─────────────────────────────────
+      // ── COMPRESSOR (RE-ENGINEERED INDICES FOR v4.0.12) ─────────────────────
       if (plugins.contains('Compressor')) {
         // 1. Activate the filter template
         source.filters.compressorFilter.activate();
@@ -414,22 +414,32 @@ mixin DawAudioController on VoxrayDAWStateBase {
         double linearThreshold = math.pow(10.0, uiThresholdDb / 20.0).toDouble().clamp(0.001, 1.0);
         double compRatio = state.compressorRatio; 
 
-        // 3. Inject directly via index mapping to bypass missing API properties
-        // Soloud::CompressorFilter parameter layout:  THIS IS WRONG LoL (code below is correct)
-        //   - Index 0: Wet/Dry Mix
-        //   - Index 1: Threshold (Linear Amplitude 0.0 - 1.0)
-        //   - Index 2: Attack Time (seconds)
-        //   - Index 3: Release Time (seconds)
-        //   - Index 4: Output Makeup Gain / Ratio multiplier
+        // 3. Set parameters targeting the compressor filter type specifically
         if (handle != null) {
-          // Clean 3-argument signature: (handle, parameterIndex, value)
-          SoLoud.instance.setFilterParameter(handle, 1, linearThreshold); // Index 1 = Threshold
-          SoLoud.instance.setFilterParameter(handle, 2, compRatio);       // Index 2 = Ratio
+          try {
+            // Target the compressorFilter on this specific handle
+            SoLoud.instance.setFilterParameter(
+              FilterType.compressorFilter, 
+              1, 
+              linearThreshold, 
+              soundHandle: handle,
+            ); // Index 1 = Threshold
+            
+            SoLoud.instance.setFilterParameter(
+              FilterType.compressorFilter, 
+              2, 
+              compRatio, 
+              soundHandle: handle,
+            ); // Index 2 = Ratio
+          } catch (paramError) {
+            logToSupabase("SoLoud Live Compressor parameter setting failed: $paramError");
+          }
         }
-        
       } else {
         source.filters.compressorFilter.wet().value = 0.0;
-        if (handle != null) source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
+        if (handle != null) {
+          source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
+        }
       }
 
     } catch (e) {
