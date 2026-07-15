@@ -441,6 +441,20 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double endX = (note['start_time'] + ((note['end_time'] - note['start_time']) * (note['time_ratio'] ?? 1.0))) * zoomX;
       double padding = zoomY * 0.15; 
 
+      // Create the block
+      //Paint notePaint = Paint();
+      //notePaint.color = isXrayMode && i != draggingNoteIndex 
+      //    ? noteColor.withOpacity(0.4) 
+      //    : noteColor;
+      
+      // Calculate the amplitude-based style
+      // for "ghosting" a note that is likely bleed from other instrument/vocal/mic/stem (let's try thinner stroke width on ghost notes)
+      double amplitude = (note['amplitude'] ?? 0.8).toDouble();
+      bool isQuiet = amplitude < 0.15; // Threshold for "ghosting" a note that is likely bleed from other instrument/vocal/mic/stem
+      double strokeWidthAmplitude = isQuiet ? 0.5 : 1.0;
+      //notePaint.style = isQuiet ? PaintingStyle.stroke : PaintingStyle.fill;
+      //notePaint.strokeWidth = 1.0;
+
       int semitoneShift = note['semitone_shift'] ?? 0;
       double currentShiftCents = (note['cents_shift'] ?? 0).toDouble();
       double effectiveMidi = actualMidi + semitoneShift + (currentShiftCents / 100.0);
@@ -495,7 +509,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
         if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
         if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
 
-        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), const Radius.circular(4)), Paint()..color = isXrayMode && i != draggingNoteIndex ? noteColor.withOpacity(0.4) : noteColor);
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), const Radius.circular(4)), Paint()..color = isXrayMode && i != draggingNoteIndex ? noteColor.withOpacity(0.4) : noteColor
+                        ..style = PaintingStyle.stroke..strokeWdith = strokeWidthAmplitude);
 
         String labelText = '${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
         TextPainter tp = TextPainter(text: TextSpan(text: labelText, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
