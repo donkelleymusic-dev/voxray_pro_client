@@ -410,17 +410,17 @@ mixin DawAudioController on VoxrayDAWStateBase {
         
         // 2. Setup DSP Variables
         double uiThresholdDb = -50;//state.compressorThreshold; 
-        double compRatio = 4.0f;//state.compressorRatio; 
+        double compRatio = 4.0;//state.compressorRatio; 
         
         // Note: Double-check your specific SoLoud wrapper's documentation. 
         // Some wrappers expect seconds (0.002) instead of milliseconds (2.0).
-        double attackValue = 2.0;  
-        double releaseValue = 50.0; 
+        //double attackValue = 2.0;  
+        //double releaseValue = 50.0; 
         
         try {
           // -- BASE TEMPLATE (For the next time you hit play) --
-          source.filters.compressorFilter.attack().value = attackValue;
-          source.filters.compressorFilter.release().value = releaseValue;
+          //source.filters.compressorFilter.attack().value = attackValue;
+          //source.filters.compressorFilter.release().value = releaseValue;
           
           // Fixed: Restored to uiThresholdDb. (If testing extremes, use -50, not 50)
           source.filters.compressorFilter.threshold().value = uiThresholdDb; 
