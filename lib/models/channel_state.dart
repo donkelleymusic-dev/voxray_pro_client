@@ -47,7 +47,7 @@ class ChannelState {
     this.plugin4 = 'None',
     this.reverbMix = 0.0,
     this.reverbRoomSize = 0.5,
-    this.eqCutoff = 20000.0,
+    this.eqCutoff = 1.0,
     this.eqLowGain = 0.0,
     this.eqMidGain = 0.0,
     this.eqHighGain = 0.0,
@@ -76,6 +76,8 @@ class ChannelState {
   };
 
   factory ChannelState.fromJson(Map<String, dynamic> json) {
+    double loadedEq = (json['eqCutoff'] ?? 1.0).toDouble();
+    if (loadedEq > 1.0) loadedEq = 1.0;
     return ChannelState(
       volume: (json['volume'] ?? 1.0).toDouble(),
       pan: (json['pan'] ?? 0.0).toDouble(),
@@ -87,7 +89,7 @@ class ChannelState {
       plugin4: json['plugin4'] ?? 'None',
       reverbMix: (json['reverbMix'] ?? 0.0).toDouble(),
       reverbRoomSize: (json['reverbRoomSize'] ?? 0.5).toDouble(),
-      eqCutoff: (json['eqCutoff'] ?? 20000.0).toDouble(),
+      eqCutoff: loadedEq,
       eqLowGain: (json['eqLowGain'] ?? 0.0).toDouble(),
       eqMidGain: (json['eqMidGain'] ?? 0.0).toDouble(),
       eqHighGain: (json['eqHighGain'] ?? 0.0).toDouble(),
