@@ -782,7 +782,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..fields['upload_type']      = 'stem'
           ..fields['stem_target']      = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
-          ..fields['acoustic_profile']  = 'standard' // <-- ADD THIS FIELD TO MATCH THE FASTAPI SIGNATURE
+          ..fields['acoustic_profile']  = 'standard' 
           ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
           
         var sessionRes = await sessionReq.send();
@@ -794,17 +794,22 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['edit_manifest'] = jsonEncode({
-          'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-          'edits': enrichManifestWithPolyphonicContext(rawNotes),
-          'solo_stem': activeStem,
-          'processing_mode': processingMode,
-        })
         ..fields['task_id']      = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+        // FIX: Add the JSON configuration as a FILE instead of a text field
+        ..files.add(http.MultipartFile.fromString(
+          'render_data_file',
+          jsonEncode({
+            'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
+            'edits': enrichManifestWithPolyphonicContext(rawNotes),
+            'solo_stem': activeStem,
+            'processing_mode': processingMode,
+          }),
+          filename: 'render_data.json',
+        ))
+        // Attach audio file
+        ..files.add(http.MultipartFile.fromBytes('audio_stems', originalAudioBytes!, filename: 'audio.wav'));
 
-      // FIX 3: Add a 120-second timeout to the upload
       var response = await request.send().timeout(const Duration(seconds: 120), onTimeout: () {
         throw TimeoutException('Upload timed out. Connection is too slow.');
       });
@@ -817,7 +822,6 @@ mixin DawApiService on VoxrayDAWStateBase {
       if (result['status'] == 'success') {
         String jobId = result['job_id'];
         
-        // FIX 4: Get the JSON map, then trigger a separate HTTP GET for the audio
         final renderResult = await pollRenderJob(jobId);
         if (renderResult == null) throw Exception('Render polling failed.');
         
@@ -873,7 +877,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..fields['upload_type']      = 'stem'
           ..fields['stem_target']      = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
-          ..fields['acoustic_profile']  = 'standard' // <-- ADD THIS FIELD TO MATCH THE FASTAPI SIGNATURE
+          ..fields['acoustic_profile']  = 'standard' 
           ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
           
         var sessionRes = await sessionReq.send();
@@ -885,15 +889,21 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['edit_manifest'] = jsonEncode({
-          'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-          'edits': enrichManifestWithPolyphonicContext(allStemsNotes[stem] ?? []),
-          'solo_stem': stem,
-          'processing_mode': processingMode,
-        })
         ..fields['task_id']      = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[stem]!));
+        // FIX: Add the JSON configuration as a FILE instead of a text field
+        ..files.add(http.MultipartFile.fromString(
+          'render_data_file',
+          jsonEncode({
+            'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
+            'edits': enrichManifestWithPolyphonicContext(allStemsNotes[stem] ?? []),
+            'solo_stem': stem,
+            'processing_mode': processingMode,
+          }),
+          filename: 'render_data.json',
+        ))
+        // Attach audio file
+        ..files.add(await http.MultipartFile.fromPath('audio_stems', cachedStemPaths[stem]!));
 
       var response = await request.send().timeout(const Duration(seconds: 120));
       var responseData = await http.Response.fromStream(response);
@@ -956,7 +966,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..fields['upload_type']      = 'stem'
           ..fields['stem_target']      = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
-          ..fields['acoustic_profile']  = 'standard' // <-- ADD THIS FIELD TO MATCH THE FASTAPI SIGNATURE
+          ..fields['acoustic_profile']  = 'standard' 
           ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
           
         var sessionRes = await sessionReq.send();
@@ -968,15 +978,21 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['edit_manifest'] = json.encode({
-          'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-          'all_stems_notes': enrichedStemsNotesMap,
-          'processing_mode': processingMode,
-        })
         ..fields['task_id']       = currentTaskId!
         ..fields['export_format'] = format
         ..fields['is_test_mode']  = isTestModeActive.toString()
-        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+        // FIX: Add the JSON configuration as a FILE instead of a text field
+        ..files.add(http.MultipartFile.fromString(
+          'render_data_file',
+          jsonEncode({
+            'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
+            'all_stems_notes': enrichedStemsNotesMap,
+            'processing_mode': processingMode,
+          }),
+          filename: 'render_data.json',
+        ))
+        // Attach audio file
+        ..files.add(http.MultipartFile.fromBytes('audio_stems', originalAudioBytes!, filename: 'master.wav'));
 
       var response = await request.send().timeout(const Duration(seconds: 120));
       var responseData = await http.Response.fromStream(response);
@@ -987,7 +1003,6 @@ mixin DawApiService on VoxrayDAWStateBase {
       var data = jsonDecode(responseData.body);
       if (data['status'] == 'success') {
         
-        // FIX 5: Get the JSON map, then trigger a separate HTTP GET for the final mix file
         final renderResult = await pollRenderJob(data['job_id']);
         if (renderResult == null) throw Exception('Master render polling failed.');
         
