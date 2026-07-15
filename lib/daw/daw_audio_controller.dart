@@ -421,14 +421,14 @@ mixin DawAudioController on VoxrayDAWStateBase {
               FilterType.compressorFilter, 
               1, 
               linearThreshold, 
-              handle: handle, // <-- Changed from soundHandle: to handle:
+              handle, // <-- Pass as 4th positional argument
             );
             
             SoLoud.instance.setFilterParameter(
               FilterType.compressorFilter, 
               2, 
               compRatio, 
-              handle: handle, // <-- Changed from soundHandle: to handle:
+              handle, // <-- Pass as 4th positional argument
             );
           } catch (paramError) {
             logToSupabase("SoLoud Live Compressor parameter setting failed: $paramError");
