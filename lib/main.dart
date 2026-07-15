@@ -1276,10 +1276,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
               const Text('Threshold (dB)', style: TextStyle(color: Colors.white70, fontSize: 12)),
               Slider(
                 // SoLoud uses roughly -60dB to 0dB for threshold
-                value: state.compressionThreshold,
+                value: state.compressorThreshold,
                 min: -60.0, max: 0.0, activeColor: highlight,
                 onChanged: (val) {
-                  setDialogState(() => state.compressionThreshold = val);
+                  setDialogState(() => state.compressorThreshold = val);
                   this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
                   applyStemPlugins(stemKey); 
                 },
@@ -1287,10 +1287,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
               const SizedBox(height: 12),
               const Text('Ratio (X:1)', style: TextStyle(color: Colors.white70, fontSize: 12)),
               Slider(
-                value: state.compressionRatio,
+                value: state.compressorRatio,
                 min: 1.0, max: 20.0, activeColor: highlight,
                 onChanged: (val) {
-                  setDialogState(() => state.compressionRatio = val);
+                  setDialogState(() => state.compressorRatio = val);
                   this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
                   applyStemPlugins(stemKey); 
                 },
