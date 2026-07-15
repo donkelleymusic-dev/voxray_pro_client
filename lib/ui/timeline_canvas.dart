@@ -468,7 +468,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
         
         // Draw the bright, sharp transient center
         canvas.drawCircle(
-          Offset(startX + blobRadius, visualY + (zoomY / 2)),
+          Offset(startX, visualY + (zoomY / 2)),// was startX + blobRadius
           blobRadius * 0.4,
           Paint()..color = Colors.white.withOpacity(0.9)
         );
@@ -504,6 +504,11 @@ class AdvancedPianoRollPainter extends CustomPainter {
         }
       }
 
+      // Define a latency constant (in seconds)
+      // This value depends on your hop_length (256) and sr (22050)
+      // You may need to tune this by +/- 0.02 until it looks perfect.
+      double latencyOffset = 0.045;
+      
       // Draw the squiggly contour line for ALL objects (Real notes AND Continuous X-Ray lines)
       if (isXrayMode && note['contour'] != null && (note['contour'] as List).isNotEmpty) {
         Path contourPath = Path();
@@ -511,7 +516,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
         double stepX = (endX - startX) / (contour.length > 1 ? contour.length - 1 : 1);
         double vibrato = (note['vibrato_scale'] ?? 1.0).toDouble();
         for (int j = 0; j < contour.length; j++) {
-          double px = startX + (j * stepX);
+          //double px = (time - latencyOffset) * zoomX; // sample of how to use latencyOffset, but not specific to this api. change accordingly (DonK)
+          double px = (startX - latencyOffset) + (j * stepX);
           double pointMidi = actualMidi.round().toDouble() + semitoneShift + ((contour[j].toDouble() * vibrato) + currentShiftCents) / 100.0;
           double py = (maxMidi - pointMidi) * zoomY + (zoomY / 2);
           if (j == 0) contourPath.moveTo(px, py); else contourPath.lineTo(px, py);
