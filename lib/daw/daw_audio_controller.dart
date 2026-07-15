@@ -414,25 +414,26 @@ mixin DawAudioController on VoxrayDAWStateBase {
         double linearThreshold = math.pow(10.0, uiThresholdDb / 20.0).toDouble().clamp(0.001, 1.0);
         double compRatio = state.compressorRatio; 
 
-        // 3. Apply standard, object-oriented parameters
         try {
           // -- BASE TEMPLATE --
           source.filters.compressorFilter.threshold().value = linearThreshold;
           source.filters.compressorFilter.ratio().value = compRatio;
           
-          // Force aggressive time constants & makeup gain so you can hear the squash
-          source.filters.compressorFilter.makeup().value = 2.0;    // +6dB of makeup gain
-          source.filters.compressorFilter.attack().value = 0.005;  // 5ms attack (fast clamp)
-          source.filters.compressorFilter.release().value = 0.050; // 50ms release (fast pump)
-
           // -- REAL-TIME VOICE UPDATE --
           if (handle != null) {
             source.filters.compressorFilter.threshold(soundHandle: handle).value = linearThreshold;
             source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
             
-            source.filters.compressorFilter.makeup(soundHandle: handle).value = 2.0;
-            source.filters.compressorFilter.attack(soundHandle: handle).value = 0.005;
-            source.filters.compressorFilter.release(soundHandle: handle).value = 0.050;
+            // 3. CUSTOM AUTO-MAKEUP GAIN (Bypassing the missing C++ parameter)
+            // Calculate how much gain reduction is roughly happening, and boost the fader.
+            double makeupDb = uiThresholdDb.abs() * (1.0 - (1.0 / compRatio)) * 0.4; // 0.4 is the recovery envelope scale
+            double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
+            
+            // Clamp to avoid blowing out the speakers on massive ratios
+            double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
+            
+            // Push the amplified volume directly to the active SoLoud voice handle
+            SoLoud.instance.setVolume(handle, finalVolume);
           }
         } catch (paramError) {
           logToSupabase("Compressor update failed: $paramError");
@@ -441,6 +442,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
         source.filters.compressorFilter.wet().value = 0.0;
         if (handle != null) {
           source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
+          
+          // Reset the channel volume to normal when the compressor is bypassed
+          SoLoud.instance.setVolume(handle, state.isMuted ? 0.0 : state.volume);
         }
       }
 
