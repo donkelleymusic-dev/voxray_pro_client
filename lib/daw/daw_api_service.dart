@@ -292,7 +292,10 @@ mixin DawApiService on VoxrayDAWStateBase {
         request.fields['access_token'] = session.accessToken;
       }
       
-      var response = await request.send();
+      // ADDED 60-SECOND TIMEOUT TO PREVENT SILENT FRONTEND FREEZES
+      var response = await request.send().timeout(const Duration(seconds: 60), onTimeout: () {
+        throw TimeoutException('File upload timed out. The server took too long to respond.');
+      });
       if (response.statusCode != 200) throw Exception('Server rejected file upload');
 
       var data = json.decode(await response.stream.bytesToString());
