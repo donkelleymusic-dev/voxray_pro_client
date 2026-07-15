@@ -34,6 +34,9 @@ class ChannelState {
   double eqMidGain;
   double eqHighGain;
 
+  double compressorThreshold = -24.0; // Default -24 dB
+  double compressorRatio = 3.5;       // Default 3.5:1
+
   ChannelState({
     this.volume = 1.0,
     this.pan = 0.0,
@@ -71,6 +74,8 @@ class ChannelState {
     'eqLowGain': eqLowGain,
     'eqMidGain': eqMidGain,
     'eqHighGain': eqHighGain,
+    'compressor_threshold': compressorThreshold,
+    'compressor_ratio': compressorRatio,
   };
 
   factory ChannelState.fromJson(Map<String, dynamic> json) {
@@ -93,6 +98,8 @@ class ChannelState {
       eqLowGain: (json['eqLowGain'] ?? 0.0).toDouble(),
       eqMidGain: (json['eqMidGain'] ?? 0.0).toDouble(),
       eqHighGain: (json['eqHighGain'] ?? 0.0).toDouble(),
+      compressor_threshold: (json['compressorThreshold'] ?? 0.0).toDouble(),
+      compressor_ratio: (json['compressorRatio'] ?? 0.0).toDouble(),
     );
   }
 
