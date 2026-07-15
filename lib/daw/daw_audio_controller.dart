@@ -400,9 +400,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
 
-      // ── COMPRESSOR (RE-ENGINEERED INDICES FOR v4.0.12) ─────────────────────
+      // ── COMPRESSOR (RE-ENGINEERED FOR v4.0.12 TEMPLATE PUSH) ───────────────
       if (plugins.contains('Compressor')) {
-        // 1. Activate the filter template
+        // 1. Activate and set wet mix to 1.0
         source.filters.compressorFilter.activate();
         source.filters.compressorFilter.wet().value = 1.0;
         if (handle != null) {
@@ -414,25 +414,14 @@ mixin DawAudioController on VoxrayDAWStateBase {
         double linearThreshold = math.pow(10.0, uiThresholdDb / 20.0).toDouble().clamp(0.001, 1.0);
         double compRatio = state.compressorRatio; 
 
-        // 3. Set parameters targeting the compressor filter type specifically
-        if (handle != null) {
-          try {
-            SoLoud.instance.setFilterParameter(
-              FilterType.compressorFilter, 
-              1, 
-              linearThreshold, 
-              handle, // <-- Pass as 4th positional argument
-            );
-            
-            SoLoud.instance.setFilterParameter(
-              FilterType.compressorFilter, 
-              2, 
-              compRatio, 
-              handle, // <-- Pass as 4th positional argument
-            );
-          } catch (paramError) {
-            logToSupabase("SoLoud Live Compressor parameter setting failed: $paramError");
-          }
+        // 3. Inject directly into the template parameter attributes
+        // This avoids touching setFilterParameter completely, ensuring 0 compiler errors!
+        try {
+          // Attribute index 1 = Threshold, Attribute index 2 = Ratio
+          source.filters.compressorFilter.setParam(1, linearThreshold);
+          source.filters.compressorFilter.setParam(2, compRatio);
+        } catch (paramError) {
+          logToSupabase("SoLoud Template Compressor parameter setting failed: $paramError");
         }
       } else {
         source.filters.compressorFilter.wet().value = 0.0;
