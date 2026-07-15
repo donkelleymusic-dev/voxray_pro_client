@@ -305,7 +305,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       // --- NEW: Poll the server regardless of whether it's a Mix or a Stem ---
       String targetToPoll = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'mix';
       await registerActiveJob(currentJobId!, currentTaskId!, 'INITIAL_STEM_ANALYSIS', targetToPoll);
-      (currentJobId!, targetToPoll);
+      pollForStemData(currentJobId!, targetToPoll);
 
     } catch (e) {
       logToSupabase('Initialization Failed: $e');
@@ -367,7 +367,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       var data = jsonDecode(await res.stream.bytesToString());
       currentTaskId = data['task_id'];
       currentJobId  = data['job_id'];
-      (currentJobId!, chosenIdentity);
+      pollForStemData(currentJobId!, chosenIdentity);
     } catch (e) {
       setState(() { isLoading = false; });
       showSaveConfirmation('Import matrix generation crashed: $e');
