@@ -794,31 +794,26 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['task_id']       = currentTaskId!
-        ..fields['export_format'] = format
-        ..fields['is_test_mode']  = isTestModeActive.toString()
+        ..fields['task_id']      = currentTaskId!
+        ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromString(
           'render_data_file',
           jsonEncode({
             'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-            'all_stems_notes': enrichedStemsNotesMap,
+            'edits': enrichManifestWithPolyphonicContext(rawNotes),
+            'solo_stem': activeStem,
             'processing_mode': processingMode,
           }),
           filename: 'render_data.json',
-        )); // <--- ADD THIS SEMICOLON RIGHT HERE!
+        )); // <-- SEMICOLON CLOSES THE CASCADE
 
-      // Attach ALL cached stems directly from the device so the server never has to guess
+      // Attach ALL cached stems directly from the device
       for (var entry in cachedStemPaths.entries) {
-        String stemName = entry.key;
-        String localPath = entry.value;
-        
-        String serverFileName = 'stems_${currentTaskId}_$stemName.ogg'; 
-        
-        request.files.add( // <--- Notice we use 'request.files', not '..files' here
+        request.files.add(
           await http.MultipartFile.fromPath(
             'audio_stems', 
-            localPath, 
-            filename: serverFileName
+            entry.value, 
+            filename: 'stems_${currentTaskId}_${entry.key}.ogg'
           )
         );
       }
@@ -904,7 +899,6 @@ mixin DawApiService on VoxrayDAWStateBase {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['task_id']      = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
-        // FIX: Add the JSON configuration as a FILE instead of a text field
         ..files.add(http.MultipartFile.fromString(
           'render_data_file',
           jsonEncode({
@@ -914,9 +908,18 @@ mixin DawApiService on VoxrayDAWStateBase {
             'processing_mode': processingMode,
           }),
           filename: 'render_data.json',
-        ))
-        // Attach audio file
-        ..files.add(await http.MultipartFile.fromPath('audio_stems', cachedStemPaths[stem]!));
+        )); // <-- SEMICOLON CLOSES THE CASCADE
+
+      // Attach ALL cached stems directly from the device
+      for (var entry in cachedStemPaths.entries) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'audio_stems', 
+            entry.value, 
+            filename: 'stems_${currentTaskId}_${entry.key}.ogg'
+          )
+        );
+      }
 
       var response = await request.send().timeout(const Duration(seconds: 120));
       var responseData = await http.Response.fromStream(response);
@@ -994,7 +997,6 @@ mixin DawApiService on VoxrayDAWStateBase {
         ..fields['task_id']       = currentTaskId!
         ..fields['export_format'] = format
         ..fields['is_test_mode']  = isTestModeActive.toString()
-        // FIX: Add the JSON configuration as a FILE instead of a text field
         ..files.add(http.MultipartFile.fromString(
           'render_data_file',
           jsonEncode({
@@ -1003,21 +1005,15 @@ mixin DawApiService on VoxrayDAWStateBase {
             'processing_mode': processingMode,
           }),
           filename: 'render_data.json',
-        )
-      );
-      // Attach ALL cached stems directly from the device so the server never has to guess
+        )); // <-- SEMICOLON CLOSES THE CASCADE
+
+      // Attach ALL cached stems directly from the device
       for (var entry in cachedStemPaths.entries) {
-        String stemName = entry.key;
-        String localPath = entry.value;
-        
-        // We name the file EXACTLY what the Python worker will be looking for
-        String serverFileName = 'stems_${currentTaskId}_$stemName.ogg'; 
-        
         request.files.add(
           await http.MultipartFile.fromPath(
             'audio_stems', 
-            localPath, 
-            filename: serverFileName
+            entry.value, 
+            filename: 'stems_${currentTaskId}_${entry.key}.ogg'
           )
         );
       }
