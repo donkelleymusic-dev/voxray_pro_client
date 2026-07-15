@@ -30,6 +30,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
 
   int get minMidi {
     switch (widget.dawState.activeEditableStem) {
+      case 'drums': return 35; // GM Drum Map starts around here
       case 'bass': case 'contrabass': case 'tuba': return 24;
       case 'violin': case 'flute': return 55;
       case 'piano': case 'original': return 21;
@@ -39,6 +40,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
 
   int get maxMidi {
     switch (widget.dawState.activeEditableStem) {
+      case 'drums': return 59; // Covers up to Crash/Ride cymbals
       case 'bass': case 'contrabass': case 'tuba': return 72;
       case 'violin': case 'flute': return 108;
       case 'piano': case 'original': return 108;
@@ -88,10 +90,18 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              //Container(
+              //  width: 30, height: totalHeight,
+              // decoration: const BoxDecoration(border: Border(right: BorderSide(color: Colors.black, width: 2))),
+              //child: CustomPaint(painter: PianoKeysPainter(minMidi: minMidi, maxMidi: maxMidi, zoomY: widget.dawState.zoomY)),
+              //),
               Container(
                 width: 30, height: totalHeight,
                 decoration: const BoxDecoration(border: Border(right: BorderSide(color: Colors.black, width: 2))),
-                child: CustomPaint(painter: PianoKeysPainter(minMidi: minMidi, maxMidi: maxMidi, zoomY: widget.dawState.zoomY)),
+                child: CustomPaint(painter: PianoKeysPainter(
+                  minMidi: minMidi, maxMidi: maxMidi, zoomY: widget.dawState.zoomY,
+                  isDrumsMode: widget.dawState.activeEditableStem == 'drums' // Pass flag here
+                )),
               ),
               Expanded(
                 child: NotificationListener<ScrollNotification>(
@@ -202,7 +212,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                               minMidi: minMidi, maxMidi: maxMidi, 
                               isXrayMode: widget.dawState.isXrayMode,
                               draggingNoteIndex: draggingNoteIndex, 
-                              initialSemitoneShift: initialSemitoneShift,
+                              initialSemitoneShift: initialSemitoneShift,,
+                              isDrumsMode: widget.dawState.activeEditableStem == 'drums' // Pass flag here
                             ),
                           ),
                           // Moving Vertical Playhead (Dynamic Viewport Position)
@@ -246,15 +257,29 @@ class PianoKeysPainter extends CustomPainter {
   final int minMidi; 
   final int maxMidi; 
   final double zoomY;
+  final bool isDrumsMode;
   
-  PianoKeysPainter({required this.minMidi, required this.maxMidi, required this.zoomY});
+  PianoKeysPainter({required this.minMidi, required this.maxMidi, required this.zoomY, this.isDrumsMode = false});
 
   bool isBlackKey(int midi) { 
+    if (isDrumsMode) return false; // Drum tracks just use uniform lanes
     int note = midi % 12; 
     return note == 1 || note == 3 || note == 6 || note == 8 || note == 10; 
   }
   
   String getNoteName(int midi) { 
+    if (isDrumsMode) {
+      switch(midi) {
+        case 36: return 'KICK';
+        case 38: return 'SNARE';
+        case 42: return 'CH HAT';
+        case 46: return 'OH HAT';
+        case 41: case 43: case 45: case 47: case 50: return 'TOM';
+        case 49: case 55: case 57: return 'CRASH';
+        case 51: case 53: case 59: return 'RIDE';
+        default: return ''; // Hide unused GM keys to reduce visual clutter
+      }
+    }
     const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']; 
     return '${noteNames[midi % 12]}${(midi ~/ 12) - 1}'; 
   }
@@ -263,25 +288,27 @@ class PianoKeysPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (int i = maxMidi; i >= minMidi; i--) {
       double topY = (maxMidi - i) * zoomY;
-      Paint keyPaint = Paint()..color = isBlackKey(i) ? Colors.black87 : Colors.white;
+      
+      // Drum mode uses alternating lane colors instead of black/white keys
+      Paint keyPaint = Paint()..color = isDrumsMode 
+          ? (i % 2 == 0 ? Colors.grey[850]! : Colors.grey[900]!) 
+          : (isBlackKey(i) ? Colors.black87 : Colors.white);
+          
       canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), keyPaint);
       
-      if (!isBlackKey(i)) {
+      if (!isBlackKey(i) && !isDrumsMode) {
         canvas.drawLine(Offset(0, topY + zoomY), Offset(size.width, topY + zoomY), Paint()..color = Colors.grey[400]!);
       }
       
-      if (i % 12 == 0) {
-        // Calculate font size to be ~75% of the key height.
-        // Clamp it so it never goes smaller than 5.0, and never larger than 10.0.
+      String label = getNoteName(i);
+      if (label.isNotEmpty) {
         double dynamicFontSize = (zoomY * 0.75).clamp(5.0, 10.0);
-
-        // Lower the cutoff threshold. Only stop rendering if the key is smaller than 5 pixels high.
         if (zoomY >= 5.0) {
           TextPainter tp = TextPainter(
             text: TextSpan(
-              text: getNoteName(i), 
+              text: label, 
               style: TextStyle(
-                color: isBlackKey(i) ? Colors.white : Colors.black, 
+                color: isDrumsMode ? Colors.amberAccent : (isBlackKey(i) ? Colors.white : Colors.black), 
                 fontSize: dynamicFontSize, 
                 fontWeight: FontWeight.bold
               )
@@ -308,6 +335,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
   final bool isXrayMode;
   final int? draggingNoteIndex;
   final int initialSemitoneShift;
+  final bool isDrumsMode;
 
   AdvancedPianoRollPainter({
     required this.notes, 
@@ -399,6 +427,43 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double effectiveMidi = actualMidi + semitoneShift + (currentShiftCents / 100.0);
       double visualY = (maxMidi - effectiveMidi) * zoomY;
 
+
+      double visualY = (maxMidi - effectiveMidi) * zoomY;
+
+      // ==========================================
+      // THE DRUM BLOB INTERCEPTOR
+      // ==========================================
+      bool isDrumHit = note['type'] == 'drum_hit' || isDrumsMode;
+
+      if (isDrumHit) {
+        // Map the amplitude/velocity to opacity and slight size changes
+        double amplitude = (note['amplitude'] ?? 0.8).toDouble();
+        Color drumColor = Colors.deepOrangeAccent.withOpacity((0.3 + (amplitude * 0.7)).clamp(0.0, 1.0));
+        
+        // Blobs fit inside the lane height
+        double blobRadius = zoomY * 0.45; 
+        
+        // Draw the outer velocity aura
+        canvas.drawCircle(
+          Offset(startX + blobRadius, visualY + (zoomY / 2)),
+          blobRadius,
+          Paint()..color = drumColor
+        );
+        
+        // Draw the bright, sharp transient center
+        canvas.drawCircle(
+          Offset(startX + blobRadius, visualY + (zoomY / 2)),
+          blobRadius * 0.4,
+          Paint()..color = Colors.white.withOpacity(0.9)
+        );
+
+        // DRUMS DO NOT RENDER PIANO ROLL BLOCKS OR CONTOURS
+        continue; 
+      }
+      
+      // ... [Keep your existing Ghost Rectangles and Solid Blocks logic here] ...
+
+      
       // Only process Ghost Rectangles and Solid Blocks for real notes
       if (!isXrayLine) {
         if (i == draggingNoteIndex) {
