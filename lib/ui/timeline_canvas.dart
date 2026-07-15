@@ -455,6 +455,9 @@ class AdvancedPianoRollPainter extends CustomPainter {
       //notePaint.style = isQuiet ? PaintingStyle.stroke : PaintingStyle.fill;
       //notePaint.strokeWidth = 1.0;
 
+      //notePaint.color = noteColor.withOpacity(isQuiet ? 0.2 : 0.8);
+      //notePaint.style = PaintingStyle.fill;
+
       int semitoneShift = note['semitone_shift'] ?? 0;
       double currentShiftCents = (note['cents_shift'] ?? 0).toDouble();
       double effectiveMidi = actualMidi + semitoneShift + (currentShiftCents / 100.0);
