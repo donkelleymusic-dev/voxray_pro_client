@@ -1004,7 +1004,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           }),
           filename: 'render_data.json',
         )
-      )
+      );
       // Attach ALL cached stems directly from the device so the server never has to guess
       for (var entry in cachedStemPaths.entries) {
         String stemName = entry.key;
