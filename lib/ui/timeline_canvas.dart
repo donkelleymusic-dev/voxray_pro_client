@@ -64,6 +64,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
 
     double totalHeight = (maxMidi - minMidi + 1) * zoomY;
     double timelineWidth = duration * zoomX;
+    
+    bool isDrums = widget.dawState.activeEditableStem == 'drums';
 
     // Get current scroll position for the painter's culling logic
     double currentScrollX = widget.horizontalScrollController.hasClients 
@@ -90,18 +92,17 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              //Container(
-              //  width: 30, height: totalHeight,
-              // decoration: const BoxDecoration(border: Border(right: BorderSide(color: Colors.black, width: 2))),
-              //child: CustomPaint(painter: PianoKeysPainter(minMidi: minMidi, maxMidi: maxMidi, zoomY: widget.dawState.zoomY)),
-              //),
               Container(
                 width: 30, height: totalHeight,
                 decoration: const BoxDecoration(border: Border(right: BorderSide(color: Colors.black, width: 2))),
-                child: CustomPaint(painter: PianoKeysPainter(
-                  minMidi: minMidi, maxMidi: maxMidi, zoomY: widget.dawState.zoomY,
-                  isDrumsMode: widget.dawState.activeEditableStem == 'drums' // Pass flag here
-                )),
+                child: CustomPaint(
+                  painter: PianoKeysPainter(
+                    minMidi: minMidi, 
+                    maxMidi: maxMidi, 
+                    zoomY: widget.dawState.zoomY,
+                    isDrumsMode: isDrums,
+                  )
+                ),
               ),
               Expanded(
                 child: NotificationListener<ScrollNotification>(
@@ -205,31 +206,28 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                             size: Size(timelineWidth, totalHeight),
                             painter: AdvancedPianoRollPainter(
                               notes: processedNotes, 
-                              continuousXray: widget.dawState.continuousXray, // Passed via constructor
-                              currentScrollX: currentScrollX,                 // Passed via constructor
+                              continuousXray: widget.dawState.continuousXray,
+                              currentScrollX: currentScrollX,                 
                               zoomX: widget.dawState.zoomX, 
                               zoomY: widget.dawState.zoomY,
                               minMidi: minMidi, maxMidi: maxMidi, 
                               isXrayMode: widget.dawState.isXrayMode,
+                              isDrumsMode: isDrums,
                               draggingNoteIndex: draggingNoteIndex, 
-                              initialSemitoneShift: initialSemitoneShift,,
-                              isDrumsMode: widget.dawState.activeEditableStem == 'drums' // Pass flag here
+                              initialSemitoneShift: initialSemitoneShift,
                             ),
                           ),
                           // Moving Vertical Playhead (Dynamic Viewport Position)
                           Positioned(
                             left: (() {
-                              // Get the visible width of the horizontal viewport safely
                               double viewportWidth = widget.horizontalScrollController.hasClients
                                   ? widget.horizontalScrollController.position.viewportDimension
                                   : 0.0;
-                              double anchorOffset = viewportWidth * 0.30; // Pinned at 35% from the left edge
+                              double anchorOffset = viewportWidth * 0.30; 
                               
-                              // If at the very beginning of the song before scrolling starts:
                               if (currentScrollX <= 0) {
                                 return widget.dawState.currentPosition * zoomX;
                               }
-                              // While scrolling through the song, lock it to the 35% anchor visual offset
                               return currentScrollX + anchorOffset;
                             })(),
                             top: 0,
@@ -333,9 +331,9 @@ class AdvancedPianoRollPainter extends CustomPainter {
   final double zoomX; final double zoomY;
   final int minMidi; final int maxMidi;
   final bool isXrayMode;
+  final bool isDrumsMode;
   final int? draggingNoteIndex;
   final int initialSemitoneShift;
-  final bool isDrumsMode;
 
   AdvancedPianoRollPainter({
     required this.notes, 
@@ -346,6 +344,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
     required this.minMidi, 
     required this.maxMidi, 
     this.isXrayMode = false, 
+    this.isDrumsMode = false,
     this.draggingNoteIndex, 
     this.initialSemitoneShift = 0
   });
@@ -357,14 +356,14 @@ class AdvancedPianoRollPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (int i = maxMidi; i >= minMidi; i--) {
       double topY = (maxMidi - i) * zoomY;
-      if (isBlackKey(i)) canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), Paint()..color = Colors.white.withOpacity(0.02));
+      if (isBlackKey(i) && !isDrumsMode) canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), Paint()..color = Colors.white.withOpacity(0.02));
       canvas.drawLine(Offset(0, topY), Offset(size.width, topY), Paint()..color = Colors.white.withOpacity(0.05));
     }
 
     // =========================================================================
     // LAYER 1: DRAW GLOBAL CONTINUOUS VISUAL X-RAY TRACKING LINE
     // =========================================================================
-    if (isXrayMode && continuousXray.isNotEmpty) {
+    if (isXrayMode && continuousXray.isNotEmpty && !isDrumsMode) {
       final xrayPaint = Paint()
         ..color = Colors.tealAccent.withOpacity(0.35)
         ..style = PaintingStyle.stroke
@@ -389,9 +388,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
           continue;
         }
 
-        // THE MAGIC GAP DETECTOR:
-        // Python extracts frames every ~23ms. If the gap between points is > 50ms, 
-        // it means we hit an unvoiced consonant, a breath, or absolute silence. Break the line!
+        // THE MAGIC GAP DETECTOR
         if (isPathStarted && (time - lastTime) > 0.05) {
           isPathStarted = false;
         }
@@ -409,7 +406,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
     }
 
     // =========================================================================
-    // LAYER 2: DRAW ANALYTICAL BLOCKS AND LOCAL RE-TUNING GUIDES
+    // LAYER 2: DRAW ANALYTICAL BLOCKS, TRANSIENT BLOBS, AND LOCAL RE-TUNING GUIDES
     // =========================================================================
     for (int i = 0; i < notes.length; i++) {
       var note = notes[i];
@@ -425,9 +422,6 @@ class AdvancedPianoRollPainter extends CustomPainter {
       int semitoneShift = note['semitone_shift'] ?? 0;
       double currentShiftCents = (note['cents_shift'] ?? 0).toDouble();
       double effectiveMidi = actualMidi + semitoneShift + (currentShiftCents / 100.0);
-      double visualY = (maxMidi - effectiveMidi) * zoomY;
-
-
       double visualY = (maxMidi - effectiveMidi) * zoomY;
 
       // ==========================================
@@ -460,11 +454,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
         // DRUMS DO NOT RENDER PIANO ROLL BLOCKS OR CONTOURS
         continue; 
       }
-      
-      // ... [Keep your existing Ghost Rectangles and Solid Blocks logic here] ...
 
-      
-      // Only process Ghost Rectangles and Solid Blocks for real notes
+      // Only process Ghost Rectangles and Solid Blocks for real pitched notes
       if (!isXrayLine) {
         if (i == draggingNoteIndex) {
           double ghostEffectiveMidi = actualMidi + initialSemitoneShift + (currentShiftCents / 100.0);
@@ -513,12 +504,12 @@ class AdvancedPianoRollPainter extends CustomPainter {
   
   @override 
   bool shouldRepaint(covariant AdvancedPianoRollPainter oldDelegate) {
-    // Repaint if ANY of these conditions are met:
     return oldDelegate.zoomX != zoomX ||
            oldDelegate.zoomY != zoomY ||
            oldDelegate.currentScrollX != currentScrollX ||
            oldDelegate.draggingNoteIndex != draggingNoteIndex ||
            oldDelegate.isXrayMode != isXrayMode ||
-           oldDelegate.notes != notes; // <--- THIS CATCHES THE NEW X-RAY DATA!
+           oldDelegate.isDrumsMode != isDrumsMode ||
+           oldDelegate.notes != notes; 
   }
 }
