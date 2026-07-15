@@ -990,9 +990,24 @@ mixin DawApiService on VoxrayDAWStateBase {
             'processing_mode': processingMode,
           }),
           filename: 'render_data.json',
-        ))
-        // Attach audio file
-        ..files.add(http.MultipartFile.fromBytes('audio_stems', originalAudioBytes!, filename: 'master.wav'));
+        )
+      )
+      // Attach ALL cached stems directly from the device so the server never has to guess
+      for (var entry in cachedStemPaths.entries) {
+        String stemName = entry.key;
+        String localPath = entry.value;
+        
+        // We name the file EXACTLY what the Python worker will be looking for
+        String serverFileName = 'stems_${currentTaskId}_$stemName.ogg'; 
+        
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'audio_stems', 
+            localPath, 
+            filename: serverFileName
+          )
+        );
+      }
 
       var response = await request.send().timeout(const Duration(seconds: 120));
       var responseData = await http.Response.fromStream(response);
