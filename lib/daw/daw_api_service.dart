@@ -794,21 +794,34 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
-        ..fields['task_id']      = currentTaskId!
-        ..fields['is_test_mode'] = isTestModeActive.toString()
-        // FIX: Add the JSON configuration as a FILE instead of a text field
+        ..fields['task_id']       = currentTaskId!
+        ..fields['export_format'] = format
+        ..fields['is_test_mode']  = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromString(
           'render_data_file',
           jsonEncode({
             'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
-            'edits': enrichManifestWithPolyphonicContext(rawNotes),
-            'solo_stem': activeStem,
+            'all_stems_notes': enrichedStemsNotesMap,
             'processing_mode': processingMode,
           }),
           filename: 'render_data.json',
-        ))
-        // Attach audio file
-        ..files.add(http.MultipartFile.fromBytes('audio_stems', originalAudioBytes!, filename: 'audio.wav'));
+        )); // <--- ADD THIS SEMICOLON RIGHT HERE!
+
+      // Attach ALL cached stems directly from the device so the server never has to guess
+      for (var entry in cachedStemPaths.entries) {
+        String stemName = entry.key;
+        String localPath = entry.value;
+        
+        String serverFileName = 'stems_${currentTaskId}_$stemName.ogg'; 
+        
+        request.files.add( // <--- Notice we use 'request.files', not '..files' here
+          await http.MultipartFile.fromPath(
+            'audio_stems', 
+            localPath, 
+            filename: serverFileName
+          )
+        );
+      }
 
       var response = await request.send().timeout(const Duration(seconds: 120), onTimeout: () {
         throw TimeoutException('Upload timed out. Connection is too slow.');
