@@ -400,28 +400,42 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
 
-      // ── COMPRESSOR (RE-ENGINEERED FOR v4.0.12 TEMPLATE PUSH) ───────────────
+      // ── COMPRESSOR ─────────────────────────────────────────────────────────
       if (plugins.contains('Compressor')) {
-        // 1. Activate and set wet mix to 1.0
+        // 1. Activate the filter template
         source.filters.compressorFilter.activate();
         source.filters.compressorFilter.wet().value = 1.0;
         if (handle != null) {
           source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
         }
 
-        // 2. Convert dB slider to linear C++ thresholds (e.g. -24dB -> ~0.063)
+        // 2. Convert dB slider to linear C++ thresholds
         double uiThresholdDb = state.compressorThreshold; 
         double linearThreshold = math.pow(10.0, uiThresholdDb / 20.0).toDouble().clamp(0.001, 1.0);
         double compRatio = state.compressorRatio; 
 
-        // 3. Inject directly into the template parameter attributes
-        // This avoids touching setFilterParameter completely, ensuring 0 compiler errors!
+        // 3. Apply standard, object-oriented parameters
         try {
-          // Attribute index 1 = Threshold, Attribute index 2 = Ratio
-          source.filters.compressorFilter.setParam(1, linearThreshold);
-          source.filters.compressorFilter.setParam(2, compRatio);
+          // -- BASE TEMPLATE --
+          source.filters.compressorFilter.threshold().value = linearThreshold;
+          source.filters.compressorFilter.ratio().value = compRatio;
+          
+          // Force aggressive time constants & makeup gain so you can hear the squash
+          source.filters.compressorFilter.makeup().value = 2.0;    // +6dB of makeup gain
+          source.filters.compressorFilter.attack().value = 0.005;  // 5ms attack (fast clamp)
+          source.filters.compressorFilter.release().value = 0.050; // 50ms release (fast pump)
+
+          // -- REAL-TIME VOICE UPDATE --
+          if (handle != null) {
+            source.filters.compressorFilter.threshold(soundHandle: handle).value = linearThreshold;
+            source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
+            
+            source.filters.compressorFilter.makeup(soundHandle: handle).value = 2.0;
+            source.filters.compressorFilter.attack(soundHandle: handle).value = 0.005;
+            source.filters.compressorFilter.release(soundHandle: handle).value = 0.050;
+          }
         } catch (paramError) {
-          logToSupabase("SoLoud Template Compressor parameter setting failed: $paramError");
+          logToSupabase("Compressor update failed: $paramError");
         }
       } else {
         source.filters.compressorFilter.wet().value = 0.0;
