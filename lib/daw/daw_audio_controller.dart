@@ -414,8 +414,8 @@ mixin DawAudioController on VoxrayDAWStateBase {
         
         // Note: Double-check your specific SoLoud wrapper's documentation. 
         // Some wrappers expect seconds (0.002) instead of milliseconds (2.0).
-        double attackValue = 2.0;  
-        double releaseValue = 50.0; 
+        //double attackValue = 2.0;  
+        //double releaseValue = 50.0; 
         
         try {
           // -- BASE TEMPLATE (For the next time you hit play) --
@@ -433,8 +433,8 @@ mixin DawAudioController on VoxrayDAWStateBase {
           // -- REAL-TIME VOICE UPDATE (For audio currently playing) --
           if (handle != null) {
             // Fixed: Added real-time updates for attack and release
-            source.filters.compressorFilter.attack(soundHandle: handle).value = attackValue;
-            source.filters.compressorFilter.release(soundHandle: handle).value = releaseValue;
+            //source.filters.compressorFilter.attack(soundHandle: handle).value = attackValue;
+            //source.filters.compressorFilter.release(soundHandle: handle).value = releaseValue;
             
             source.filters.compressorFilter.threshold(soundHandle: handle).value = uiThresholdDb;
             source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
