@@ -1555,7 +1555,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               subtitle: const Text('Lossless / Studio Quality',
                   style: TextStyle(color: Colors.white54, fontSize: 12)),
-              onTap: () { Navigator.pop(context); exportFinalMaster('wav'); },
+              onTap: () async { 
+                Navigator.pop(context); 
+                await exportFinalMaster('wav'); 
+              },
             ),
             const Divider(color: Colors.white24),
             ListTile(
@@ -1565,7 +1568,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               subtitle: const Text('Lossless / Compressed Size',
                   style: TextStyle(color: Colors.white54, fontSize: 12)),
-              onTap: () { Navigator.pop(context); exportFinalMaster('flac'); },
+              onTap: () async { 
+                Navigator.pop(context); 
+                await exportFinalMaster('flac'); 
+              },
             ),
             const Divider(color: Colors.white24),
             ListTile(
@@ -1574,7 +1580,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               subtitle: const Text('Standard / Web Optimized',
                   style: TextStyle(color: Colors.white54, fontSize: 12)),
-              onTap: () { Navigator.pop(context); exportFinalMaster('mp3'); },
+              onTap: () async { 
+                Navigator.pop(context); 
+                await exportFinalMaster('mp3'); 
+              },
             ),
           ],
         ),
