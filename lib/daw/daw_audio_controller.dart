@@ -415,17 +415,18 @@ mixin DawAudioController on VoxrayDAWStateBase {
         double compRatio = state.compressorRatio; 
 
         // 3. Inject directly via index mapping to bypass missing API properties
-        // Soloud::CompressorFilter parameter layout:
+        // Soloud::CompressorFilter parameter layout:  THIS IS WRONG LoL (code below is correct)
         //   - Index 0: Wet/Dry Mix
         //   - Index 1: Threshold (Linear Amplitude 0.0 - 1.0)
         //   - Index 2: Attack Time (seconds)
         //   - Index 3: Release Time (seconds)
         //   - Index 4: Output Makeup Gain / Ratio multiplier
         if (handle != null) {
-          // Update the parameters directly on the live playhead voice register
-          SoLoud.instance.setFilterParameter(handle, source, 1, 1, linearThreshold); // 1 = Threshold
-          SoLoud.instance.setFilterParameter(handle, source, 1, 4, compRatio);       // 4 = Ratio
+          // Clean 3-argument signature: (handle, parameterIndex, value)
+          SoLoud.instance.setFilterParameter(handle, 1, linearThreshold); // Index 1 = Threshold
+          SoLoud.instance.setFilterParameter(handle, 2, compRatio);       // Index 2 = Ratio
         }
+        
       } else {
         source.filters.compressorFilter.wet().value = 0.0;
         if (handle != null) source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
