@@ -1001,6 +1001,37 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
   }
 
+  Future<void> exportSynthAudio(String stem) async {
+    if (rawNotes.isEmpty) return;
+    setState(() { isSynthRendering = true; synthMessage = 'Rendering synth audio...'; });
+    try {
+      final Uint8List wavBytes = renderNotesToWavBytes(
+          notes: rawNotes, duration: songDuration, settings: synthSettings);
+
+      String defaultName = originalFileName.contains('.')
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : (originalFileName.isNotEmpty ? originalFileName : projectName);
+      defaultName = '${defaultName}_synth';
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: defaultName, bytes: wavBytes, fileExtension: 'wav',
+          mimeType: MimeType.custom, customMimeType: 'audio/wav');
+        showSaveConfirmation('Synth audio exported as WAV.');
+      } else {
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultName, bytes: wavBytes, fileExtension: 'wav',
+          mimeType: MimeType.custom, customMimeType: 'audio/wav');
+        showSaveConfirmation(path != null && path.isNotEmpty
+            ? 'Synth audio exported as WAV.' : 'Export cancelled.');
+      }
+    } catch (e) {
+      showSaveConfirmation('Synth export failed: $e');
+    } finally {
+      setState(() { isSynthRendering = false; synthMessage = ''; });
+    }
+  }
+  
   Future<void> exportStemsAsZip() async {
     if (cachedStemPaths.isEmpty) {
       showSaveConfirmation('No extracted audio stems available to export.');
