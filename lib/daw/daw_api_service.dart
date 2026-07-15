@@ -772,17 +772,25 @@ mixin DawApiService on VoxrayDAWStateBase {
 
     try {
       if (currentTaskId == null) {
-        if (!cachedStemPaths.containsKey(activeStem)) throw Exception('Audio data not found in cache.');
-        showSaveConfirmation('Establishing new server session for Preview...');
+        String lookupStem = activeEditableStem.isNotEmpty ? activeEditableStem
+            : (cachedStemPaths.isNotEmpty ? cachedStemPaths.keys.first : '');
+        if (lookupStem.isEmpty || !cachedStemPaths.containsKey(lookupStem)) {
+          throw Exception('No valid track state found in cache.');
+        }
+        showSaveConfirmation('Establishing server architecture link for Master Mix...');
         var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
           ..fields['upload_type']      = 'stem'
-          ..fields['stem_target']      = activeStem
-          ..fields['instruments_json'] = jsonEncode([activeStem])
-          ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
+          ..fields['stem_target']      = lookupStem
+          ..fields['instruments_json'] = jsonEncode([lookupStem])
+          ..fields['acoustic_profile']  = 'standard' // <-- ADD THIS FIELD TO MATCH THE FASTAPI SIGNATURE
+          ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+          
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
           currentTaskId = jsonDecode(await sessionRes.stream.bytesToString())['task_id'];
-        } else throw Exception('Could not establish background server session.');
+        } else {
+          throw Exception('Could not build a backend framework pipeline target session.');
+        }
       }
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
@@ -855,17 +863,25 @@ mixin DawApiService on VoxrayDAWStateBase {
 
     try {
       if (currentTaskId == null) {
-        if (!cachedStemPaths.containsKey(stem)) throw Exception('Audio data not found in cache.');
-        showSaveConfirmation('Establishing new server session for Plugin Render...');
+        String lookupStem = activeEditableStem.isNotEmpty ? activeEditableStem
+            : (cachedStemPaths.isNotEmpty ? cachedStemPaths.keys.first : '');
+        if (lookupStem.isEmpty || !cachedStemPaths.containsKey(lookupStem)) {
+          throw Exception('No valid track state found in cache.');
+        }
+        showSaveConfirmation('Establishing server architecture link for Master Mix...');
         var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
           ..fields['upload_type']      = 'stem'
-          ..fields['stem_target']      = stem
-          ..fields['instruments_json'] = jsonEncode([stem])
-          ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[stem]!));
+          ..fields['stem_target']      = lookupStem
+          ..fields['instruments_json'] = jsonEncode([lookupStem])
+          ..fields['acoustic_profile']  = 'standard' // <-- ADD THIS FIELD TO MATCH THE FASTAPI SIGNATURE
+          ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+          
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
           currentTaskId = jsonDecode(await sessionRes.stream.bytesToString())['task_id'];
-        } else throw Exception('Could not establish background server session.');
+        } else {
+          throw Exception('Could not build a backend framework pipeline target session.');
+        }
       }
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
@@ -940,11 +956,15 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..fields['upload_type']      = 'stem'
           ..fields['stem_target']      = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
+          ..fields['acoustic_profile']  = 'standard' // <-- ADD THIS FIELD TO MATCH THE FASTAPI SIGNATURE
           ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+          
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
           currentTaskId = jsonDecode(await sessionRes.stream.bytesToString())['task_id'];
-        } else throw Exception('Could not build a backend framework pipeline target session.');
+        } else {
+          throw Exception('Could not build a backend framework pipeline target session.');
+        }
       }
 
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
