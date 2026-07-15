@@ -1007,21 +1007,29 @@ mixin DawApiService on VoxrayDAWStateBase {
       return;
     }
     setState(() { isExporting = true; exportMessage = 'Packing unmixed multi-track stems archive...'; });
+    
     try {
       Archive arch = Archive();
       for (var entry in cachedStemPaths.entries) {
         final bytes = await File(entry.value).readAsBytes();
-        arch.addFile(ArchiveFile('${projectName}_stem_${entry.key}.ogg', bytes.length, bytes));
+        
+        // FIX 1: Dynamically grab the actual file extension (.wav or .ogg)
+        String actualExtension = entry.value.split('.').last;
+        
+        arch.addFile(ArchiveFile('${projectName}_stem_${entry.key}.$actualExtension', bytes.length, bytes));
       }
+      
       Uint8List zip = Uint8List.fromList(ZipEncoder().encode(arch)!);
       await FileSaver.instance.saveAs(
           name: '${projectName}_stems', bytes: zip,
           fileExtension: 'zip', mimeType: MimeType.zip);
+          
       showSaveConfirmation('All tracks exported successfully as unmixed multi-track stems.');
     } catch (e) {
       showSaveConfirmation('Stem tree generation failed: $e');
     } finally {
-      setState(() { isExporting = false; });
+      // FIX 2: Clear the export message!
+      setState(() { isExporting = false; exportMessage = ''; });
     }
   }
 
