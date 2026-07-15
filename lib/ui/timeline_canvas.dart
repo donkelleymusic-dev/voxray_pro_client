@@ -256,8 +256,32 @@ class PianoKeysPainter extends CustomPainter {
   final int maxMidi; 
   final double zoomY;
   final bool isDrumsMode;
+
+  // 1. Define the Map here for clean lookups and easy editing
+  static const Map<int, String> drumMap = {
+    36: 'KICK',
+    38: 'SNARE',
+    41: 'TOM',
+    42: 'CH HAT',
+    43: 'TOM',
+    45: 'TOM',
+    46: 'OH HAT',
+    47: 'TOM',
+    49: 'CRASH',
+    50: 'TOM',
+    51: 'RIDE',
+    53: 'RIDE',
+    55: 'CRASH',
+    57: 'CRASH',
+    59: 'RIDE',
+  };
   
-  PianoKeysPainter({required this.minMidi, required this.maxMidi, required this.zoomY, this.isDrumsMode = false});
+  PianoKeysPainter({
+    required this.minMidi, 
+    required this.maxMidi, 
+    required this.zoomY, 
+    this.isDrumsMode = false
+  });
 
   bool isBlackKey(int midi) { 
     if (isDrumsMode) return false; // Drum tracks just use uniform lanes
@@ -267,16 +291,8 @@ class PianoKeysPainter extends CustomPainter {
   
   String getNoteName(int midi) { 
     if (isDrumsMode) {
-      switch(midi) {
-        case 36: return 'KICK';
-        case 38: return 'SNARE';
-        case 42: return 'CH HAT';
-        case 46: return 'OH HAT';
-        case 41: case 43: case 45: case 47: case 50: return 'TOM';
-        case 49: case 55: case 57: return 'CRASH';
-        case 51: case 53: case 59: return 'RIDE';
-        default: return ''; // Hide unused GM keys to reduce visual clutter
-      }
+      // Returns the label if found, otherwise returns an empty string
+      return drumMap[midi] ?? ''; 
     }
     const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']; 
     return '${noteNames[midi % 12]}${(midi ~/ 12) - 1}'; 
@@ -295,10 +311,16 @@ class PianoKeysPainter extends CustomPainter {
       canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), keyPaint);
       
       if (!isBlackKey(i) && !isDrumsMode) {
-        canvas.drawLine(Offset(0, topY + zoomY), Offset(size.width, topY + zoomY), Paint()..color = Colors.grey[400]!);
+        canvas.drawLine(
+          Offset(0, topY + zoomY), 
+          Offset(size.width, topY + zoomY), 
+          Paint()..color = Colors.grey[400]!
+        );
       }
       
       String label = getNoteName(i);
+      
+      // 2. Only attempt to draw text if the label isn't blank
       if (label.isNotEmpty) {
         double dynamicFontSize = (zoomY * 0.75).clamp(5.0, 10.0);
         if (zoomY >= 5.0) {
