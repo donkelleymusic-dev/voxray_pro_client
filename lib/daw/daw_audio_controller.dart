@@ -197,7 +197,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       logToSupabase("DSP Configuration: Channel track [$stemName] initialized with volume level: ${state.volume}");
       SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
       SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
-
+      
       //Force the DSP state to match the UI immediately!
       applyStemPlugins(stemName);
 
@@ -400,40 +400,51 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
 
-      // ── COMPRESSOR ─────────────────────────────────────────────────────────
       if (plugins.contains('Compressor')) {
-        // 1. Activate the filter template
-        source.filters.compressorFilter.activate();
-        source.filters.compressorFilter.wet().value = 1.0;
+      // 1. Activate the filter template
+      source.filters.compressorFilter.activate();
+      source.filters.compressorFilter.wet().value = 1.0;
+      if (handle != null) {
+        source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
+      }
+      
+      // 2. Setup DSP Variables
+      double uiThresholdDb = -50;//state.compressorThreshold; 
+      double compRatio = 4.0f;//state.compressorRatio; 
+      
+      // Note: Double-check your specific SoLoud wrapper's documentation. 
+      // Some wrappers expect seconds (0.002) instead of milliseconds (2.0).
+      double attackValue = 2.0;  
+      double releaseValue = 50.0; 
+      
+      try {
+        // -- BASE TEMPLATE (For the next time you hit play) --
+        source.filters.compressorFilter.attack().value = attackValue;
+        source.filters.compressorFilter.release().value = releaseValue;
+        
+        // Fixed: Restored to uiThresholdDb. (If testing extremes, use -50, not 50)
+        source.filters.compressorFilter.threshold().value = uiThresholdDb; 
+        source.filters.compressorFilter.ratio().value = compRatio;
+        
+        // -- REAL-TIME VOICE UPDATE (For audio currently playing) --
         if (handle != null) {
-          source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
-        }
-      
-        // 2. Pass dB values directly! (No linear conversion needed for SoLoud)
-        double uiThresholdDb = state.compressorThreshold; 
-        double compRatio = state.compressorRatio; 
-      
-        try {
-          // -- BASE TEMPLATE --
-          source.filters.compressorFilter.threshold().value = uiThresholdDb;
-          source.filters.compressorFilter.ratio().value = compRatio;
+          // Fixed: Added real-time updates for attack and release
+          source.filters.compressorFilter.attack(soundHandle: handle).value = attackValue;
+          source.filters.compressorFilter.release(soundHandle: handle).value = releaseValue;
           
-          // -- REAL-TIME VOICE UPDATE --
-          if (handle != null) {
-            source.filters.compressorFilter.threshold(soundHandle: handle).value = uiThresholdDb;
-            source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
-            
-            // 3. CUSTOM AUTO-MAKEUP GAIN
-            double makeupDb = uiThresholdDb.abs() * (1.0 - (1.0 / compRatio)) * 0.4;
-            double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-            
-            double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
-            
-            SoLoud.instance.setVolume(handle, finalVolume);
-          }
-        } catch (paramError) {
-          logToSupabase("Compressor update failed: $paramError");
+          source.filters.compressorFilter.threshold(soundHandle: handle).value = uiThresholdDb;
+          source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
+          
+          // 3. CUSTOM AUTO-MAKEUP GAIN
+          double makeupDb = uiThresholdDb.abs() * (1.0 - (1.0 / compRatio)) * 0.4;
+          double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
+          
+          double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
+          
+          SoLoud.instance.setVolume(handle, finalVolume);
         }
+      } catch (paramError) {
+        logToSupabase("Compressor update failed: $paramError");
       }
 
     } catch (e) {
