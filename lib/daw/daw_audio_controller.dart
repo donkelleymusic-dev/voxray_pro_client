@@ -29,7 +29,11 @@ import '../models/channel_state.dart';
 import '../audio/vox_synth.dart';
 import '../main.dart'; // Gives access to VoxrayDAWStateBase
 
-
+double sliderToFrequency(double sliderValue) {
+  const double minFreq = 20.0;
+  const double maxFreq = 20000.0;
+  return minFreq * math.pow(maxFreq / minFreq, sliderValue);
+}
 
 /// Drop this mixin onto VoxrayDAWState.
 /// All methods call [setState] via the mixin's inherited binding.
@@ -382,7 +386,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       if (plugins.contains('EQ')) {
         source.filters.biquadFilter.wet().value = 1.0; 
         source.filters.biquadFilter.type().value = 0; // 0 = Low Pass
-        source.filters.biquadFilter.frequency().value = state.eqCutoff;
+        source.filters.biquadFilter.frequency().value = sliderToFrequency(state.eqCutoff);
         
         if (handle != null) {
           source.filters.biquadFilter.wet(soundHandle: handle).value = 1.0;
