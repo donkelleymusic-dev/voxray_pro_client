@@ -408,43 +408,31 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (handle != null) {
           source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
         }
-
-        // 2. Convert dB slider to linear C++ thresholds
+      
+        // 2. Pass dB values directly! (No linear conversion needed for SoLoud)
         double uiThresholdDb = state.compressorThreshold; 
-        double linearThreshold = math.pow(10.0, uiThresholdDb / 20.0).toDouble().clamp(0.001, 1.0);
         double compRatio = state.compressorRatio; 
-
+      
         try {
           // -- BASE TEMPLATE --
-          source.filters.compressorFilter.threshold().value = linearThreshold;
+          source.filters.compressorFilter.threshold().value = uiThresholdDb;
           source.filters.compressorFilter.ratio().value = compRatio;
           
           // -- REAL-TIME VOICE UPDATE --
           if (handle != null) {
-            source.filters.compressorFilter.threshold(soundHandle: handle).value = linearThreshold;
+            source.filters.compressorFilter.threshold(soundHandle: handle).value = uiThresholdDb;
             source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
             
-            // 3. CUSTOM AUTO-MAKEUP GAIN (Bypassing the missing C++ parameter)
-            // Calculate how much gain reduction is roughly happening, and boost the fader.
-            double makeupDb = uiThresholdDb.abs() * (1.0 - (1.0 / compRatio)) * 0.4; // 0.4 is the recovery envelope scale
+            // 3. CUSTOM AUTO-MAKEUP GAIN
+            double makeupDb = uiThresholdDb.abs() * (1.0 - (1.0 / compRatio)) * 0.4;
             double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
             
-            // Clamp to avoid blowing out the speakers on massive ratios
             double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
             
-            // Push the amplified volume directly to the active SoLoud voice handle
             SoLoud.instance.setVolume(handle, finalVolume);
           }
         } catch (paramError) {
           logToSupabase("Compressor update failed: $paramError");
-        }
-      } else {
-        source.filters.compressorFilter.wet().value = 0.0;
-        if (handle != null) {
-          source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
-          
-          // Reset the channel volume to normal when the compressor is bypassed
-          SoLoud.instance.setVolume(handle, state.isMuted ? 0.0 : state.volume);
         }
       }
 
