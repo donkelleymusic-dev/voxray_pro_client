@@ -406,44 +406,21 @@ mixin DawAudioController on VoxrayDAWStateBase {
           source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
         }
 
-        // 1. CONVERT dB SLIDER TO LINEAR AMPLITUDE FOR THE C++ ENGINE
-        // Standard full-scale range: 0dB (1.0) to -60dB (0.001)
-        double uiThresholdDb = state.compressorThreshold; // e.g. -24.0
+        // Convert dB to linear amplitude for the C++ engine
+        double uiThresholdDb = state.compressorThreshold; 
         double linearThreshold = math.pow(10.0, uiThresholdDb / 20.0).toDouble().clamp(0.001, 1.0);
+        double compRatio = state.compressorRatio; 
 
-        // 2. RATIO / MAKEUP SCALING
-        // In SoLoud, ratios are sometimes driven by scaling factors. If the library
-        // exposes direct ratio values, set them directly.
-        double compRatio = state.compressorRatio; // e.g. 4.0
-
-        // 3. SET TEMPLATE AND REAL-TIME AUDIO HANDLES
-        // Note: Depending on your exact flutter_soloud version compilation,
-        // if these parameter helper getters (like threshold()) are not exposed,
-        // we can fallback to using direct parameter indexes:
-        // Index 1 = Threshold, Index 2 = Attack, Index 3 = Release, etc.
         try {
-          // Setting the Source properties:
-          // source.filters.compressorFilter.threshold().value = linearThreshold;
-          // source.filters.compressorFilter.ratio().value = compRatio;
+          // Update base filter source templates
+          source.filters.compressorFilter.threshold().value = linearThreshold;
+          source.filters.compressorFilter.ratio().value = compRatio;
           
-          // Set real-time voice parameters:
-          // if (handle != null) {
-          //   source.filters.compressorFilter.threshold(soundHandle: handle).value = linearThreshold;
-          //   source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
-          // }
-
-          // FALLBACK SAFEST METHOD (Direct Parameter Indexing)
-          // Parameter 1 is historically 'Threshold' in Soloud::CompressorFilter
-          SoLoud.instance.setFilterParameter(
-            handle ?? SoundHandle(0), // Dummy if null
-            source,
-            1, // Index 1 = Threshold
-            linearThreshold,
-          );
-          
-          // Apply Makeup Gain if your state supports it, otherwise post-amplify
-          // via volume envelope to match.
-          
+          // Update active sound handle voices in real-time
+          if (handle != null) {
+            source.filters.compressorFilter.threshold(soundHandle: handle).value = linearThreshold;
+            source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
+          }
         } catch (paramError) {
           logToSupabase("SoLoud Compressor Parameter Injection failed: $paramError");
         }
