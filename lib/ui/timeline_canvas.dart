@@ -513,7 +513,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
         if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
 
         canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), const Radius.circular(4)), Paint()..color = isXrayMode && i != draggingNoteIndex ? noteColor.withOpacity(0.4) : noteColor
-                        ..style = PaintingStyle.stroke..strokeWdith = strokeWidthAmplitude);
+                        ..style = PaintingStyle.stroke..strokeWidth = strokeWidthAmplitude);
 
         String labelText = '${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
         TextPainter tp = TextPainter(text: TextSpan(text: labelText, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
