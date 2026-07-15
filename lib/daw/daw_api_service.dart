@@ -731,7 +731,12 @@ mixin DawApiService on VoxrayDAWStateBase {
   // RENDER JOBS
   // =========================================================================
 
-  Future<Uint8List?> pollRenderJob(String jobId) async {
+  // =========================================================================
+  // RENDER JOBS
+  // =========================================================================
+
+  // FIX 1: Change return type from Uint8List? to Map<String, dynamic>?
+  Future<Map<String, dynamic>?> pollRenderJob(String jobId) async {
     int retryCount = 0;
     const int maxRetries = 100;
     while (retryCount < maxRetries) {
@@ -741,10 +746,11 @@ mixin DawApiService on VoxrayDAWStateBase {
           final taskData = jsonDecode(res.body);
           setState(() {
             processingProgress = (taskData['progress'] ?? 0).toDouble() / 100.0;
-            if (isPreviewing) exportMessage = taskData['message'] ?? 'Processing...';
+            if (isPreviewing || isExporting) exportMessage = taskData['message'] ?? 'Processing...';
           });
           if (taskData['status'] == 'complete') {
-            return base64Decode(taskData['result']['master_mix_b64']);
+            // FIX 2: Return the JSON dictionary directly! No Base64!
+            return taskData['result']; 
           } else if (taskData['status'] == 'error') {
             throw Exception(taskData['message']);
           }
@@ -790,7 +796,10 @@ mixin DawApiService on VoxrayDAWStateBase {
         ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'audio.wav'));
 
-      var response     = await request.send();
+      // FIX 3: Add a 120-second timeout to the upload
+      var response = await request.send().timeout(const Duration(seconds: 120), onTimeout: () {
+        throw TimeoutException('Upload timed out. Connection is too slow.');
+      });
       var responseData = await http.Response.fromStream(response);
       if (responseData.statusCode != 200) {
         throw Exception('Server error ${responseData.statusCode}: ${responseData.body}');
@@ -798,8 +807,20 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       var result = jsonDecode(responseData.body);
       if (result['status'] == 'success') {
-        String jobId        = result['job_id'];
-        Uint8List previewBytes = await pollRenderJob(jobId) ?? Uint8List(0);
+        String jobId = result['job_id'];
+        
+        // FIX 4: Get the JSON map, then trigger a separate HTTP GET for the audio
+        final renderResult = await pollRenderJob(jobId);
+        if (renderResult == null) throw Exception('Render polling failed.');
+        
+        setState(() => exportMessage = 'Downloading preview audio...');
+        String fileId = renderResult['file_id'];
+        String rFormat = renderResult['format'];
+        
+        var dlRes = await http.get(Uri.parse('$apiBase/api/download-mix/$fileId?format=$rFormat')).timeout(const Duration(seconds: 60));
+        if (dlRes.statusCode != 200) throw Exception('Failed to download preview audio.');
+        
+        Uint8List previewBytes = dlRes.bodyBytes;
 
         if (stemHandles.containsKey(activeStem) &&
             SoLoud.instance.getIsValidVoiceHandle(stemHandles[activeStem]!)) {
@@ -858,13 +879,24 @@ mixin DawApiService on VoxrayDAWStateBase {
         ..fields['is_test_mode'] = isTestModeActive.toString()
         ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[stem]!));
 
-      var response     = await request.send();
+      var response = await request.send().timeout(const Duration(seconds: 120));
       var responseData = await http.Response.fromStream(response);
       if (responseData.statusCode == 200) {
         var result = jsonDecode(responseData.body);
         if (result['status'] == 'success') {
-          String jobId        = result['job_id'];
-          Uint8List previewBytes = await pollRenderJob(jobId) ?? Uint8List(0);
+          String jobId = result['job_id'];
+          
+          final renderResult = await pollRenderJob(jobId);
+          if (renderResult == null) throw Exception('Render polling failed.');
+          
+          setState(() => exportMessage = 'Downloading plugin audio...');
+          String fileId = renderResult['file_id'];
+          String rFormat = renderResult['format'];
+          
+          var dlRes = await http.get(Uri.parse('$apiBase/api/download-mix/$fileId?format=$rFormat')).timeout(const Duration(seconds: 60));
+          if (dlRes.statusCode != 200) throw Exception('Failed to download plugin audio.');
+          
+          Uint8List previewBytes = dlRes.bodyBytes;
 
           if (stemHandles.containsKey(stem) && SoLoud.instance.getIsValidVoiceHandle(stemHandles[stem]!)) {
             SoLoud.instance.stop(stemHandles[stem]!);
@@ -888,37 +920,6 @@ mixin DawApiService on VoxrayDAWStateBase {
   // =========================================================================
   // EXPORT
   // =========================================================================
-
-  Future<void> exportSynthAudio(String stem) async {
-    if (rawNotes.isEmpty) return;
-    setState(() { isSynthRendering = true; synthMessage = 'Rendering synth audio...'; });
-    try {
-      final Uint8List wavBytes = renderNotesToWavBytes(
-          notes: rawNotes, duration: songDuration, settings: synthSettings);
-
-      String defaultName = originalFileName.contains('.')
-          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-          : (originalFileName.isNotEmpty ? originalFileName : projectName);
-      defaultName = '${defaultName}_synth';
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: defaultName, bytes: wavBytes, fileExtension: 'wav',
-          mimeType: MimeType.custom, customMimeType: 'audio/wav');
-        showSaveConfirmation('Synth audio exported as WAV.');
-      } else {
-        String? path = await FileSaver.instance.saveAs(
-          name: defaultName, bytes: wavBytes, fileExtension: 'wav',
-          mimeType: MimeType.custom, customMimeType: 'audio/wav');
-        showSaveConfirmation(path != null && path.isNotEmpty
-            ? 'Synth audio exported as WAV.' : 'Export cancelled.');
-      }
-    } catch (e) {
-      showSaveConfirmation('Synth export failed: $e');
-    } finally {
-      setState(() { isSynthRendering = false; synthMessage = ''; });
-    }
-  }
 
   Future<void> exportFinalMaster(String format) async {
     if (originalAudioBytes == null) return;
@@ -957,7 +958,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         ..fields['is_test_mode']  = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
 
-      var response     = await request.send();
+      var response = await request.send().timeout(const Duration(seconds: 120));
       var responseData = await http.Response.fromStream(response);
       if (responseData.statusCode != 200) {
         throw Exception('Server error ${responseData.statusCode}: ${responseData.body}');
@@ -965,7 +966,20 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       var data = jsonDecode(responseData.body);
       if (data['status'] == 'success') {
-        final Uint8List bytes = await pollRenderJob(data['job_id']) ?? Uint8List(0);
+        
+        // FIX 5: Get the JSON map, then trigger a separate HTTP GET for the final mix file
+        final renderResult = await pollRenderJob(data['job_id']);
+        if (renderResult == null) throw Exception('Master render polling failed.');
+        
+        setState(() => exportMessage = 'Downloading final master...');
+        String fileId = renderResult['file_id'];
+        String rFormat = renderResult['format'];
+        
+        var dlRes = await http.get(Uri.parse('$apiBase/api/download-mix/$fileId?format=$rFormat')).timeout(const Duration(seconds: 120));
+        if (dlRes.statusCode != 200) throw Exception('Failed to download final master audio.');
+        
+        final Uint8List bytes = dlRes.bodyBytes;
+
         final mimeMap = {'wav': 'audio/wav', 'mp3': 'audio/mpeg', 'flac': 'audio/flac', 'opus': 'audio/ogg'};
         final fileExt = format == 'opus' ? 'ogg' : format;
         String defaultName = originalFileName.contains('.')
