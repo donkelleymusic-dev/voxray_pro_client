@@ -1262,7 +1262,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
               const Text('Low-Pass Cutoff (Hz)', style: TextStyle(color: Colors.white70, fontSize: 12)),
               Slider(
                 value: state.eqCutoff,
-                min: 200, max: 20000, activeColor: highlight,
+                min: 0.0, max: 1.0, activeColor: highlight, // Changed from 200 - 20000
                 onChanged: (val) {
                   setDialogState(() => state.eqCutoff = val);
                   this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
