@@ -358,18 +358,17 @@ mixin DawAudioController on VoxrayDAWStateBase {
   // =========================================================================
   
   // ── Public DSP method (No underscore) ───────────────────────────────────
-  // ── Public DSP method (No underscore) ───────────────────────────────────
   void applyStemPlugins(String stemName) {
     final state = getChannelState(stemName);
     final source = stemSources[stemName];
-    final handle = stemHandles[stemName]; // 1. GRAB THE ACTIVE HANDLE!
+    final handle = stemHandles[stemName];
     
     if (source == null) return;
 
     final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
 
     try {
-      // -- REVERB --
+      // ── REVERB ─────────────────────────────────────────────────────────────
       if (plugins.contains('Reverb')) {
         source.filters.freeverbFilter.wet().value = state.reverbMix;
         source.filters.freeverbFilter.roomSize().value = state.reverbRoomSize;
@@ -382,54 +381,54 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (handle != null) source.filters.freeverbFilter.wet(soundHandle: handle).value = 0.0;
       }
 
-      // -- EQ (Low Pass Filter) --
+      // ── EQ (Low Pass Filter) ────────────────────────────────────────────────
       if (plugins.contains('EQ')) {
         source.filters.biquadFilter.wet().value = 1.0; 
         source.filters.biquadFilter.type().value = 0; // 0 = Low Pass
-        source.filters.biquadFilter.frequency().value = sliderToFrequency(state.eqCutoff);
+        
+        // Logarithmic frequency conversion for smooth EQ sweeps
+        double targetFrequency = sliderToFrequency(state.eqCutoff);
+        source.filters.biquadFilter.frequency().value = targetFrequency;
         
         if (handle != null) {
           source.filters.biquadFilter.wet(soundHandle: handle).value = 1.0;
           source.filters.biquadFilter.type(soundHandle: handle).value = 0;
-          source.filters.biquadFilter.frequency(soundHandle: handle).value = state.eqCutoff;
+          source.filters.biquadFilter.frequency(soundHandle: handle).value = targetFrequency;
         }
       } else {
         source.filters.biquadFilter.wet().value = 0.0;
         if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
 
-      // -- COMPRESSOR --
+      // ── COMPRESSOR (RE-ENGINEERED INDICES) ─────────────────────────────────
       if (plugins.contains('Compressor')) {
-        // Enable the filter
+        // 1. Activate the filter template
+        source.filters.compressorFilter.activate();
         source.filters.compressorFilter.wet().value = 1.0;
         if (handle != null) {
           source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
         }
 
-        // Convert dB to linear amplitude for the C++ engine
+        // 2. Convert dB slider to linear C++ thresholds (e.g. -24dB -> ~0.063)
         double uiThresholdDb = state.compressorThreshold; 
         double linearThreshold = math.pow(10.0, uiThresholdDb / 20.0).toDouble().clamp(0.001, 1.0);
         double compRatio = state.compressorRatio; 
 
-        try {
-          // Update base filter source templates
-          source.filters.compressorFilter.threshold().value = linearThreshold;
-          source.filters.compressorFilter.ratio().value = compRatio;
-          
-          // Update active sound handle voices in real-time
-          if (handle != null) {
-            source.filters.compressorFilter.threshold(soundHandle: handle).value = linearThreshold;
-            source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
-          }
-        } catch (paramError) {
-          logToSupabase("SoLoud Compressor Parameter Injection failed: $paramError");
+        // 3. Inject directly via index mapping to bypass missing API properties
+        // Soloud::CompressorFilter parameter layout:
+        //   - Index 0: Wet/Dry Mix
+        //   - Index 1: Threshold (Linear Amplitude 0.0 - 1.0)
+        //   - Index 2: Attack Time (seconds)
+        //   - Index 3: Release Time (seconds)
+        //   - Index 4: Output Makeup Gain / Ratio multiplier
+        if (handle != null) {
+          // Update the parameters directly on the live playhead voice register
+          SoLoud.instance.setFilterParameter(handle, source, 1, 1, linearThreshold); // 1 = Threshold
+          SoLoud.instance.setFilterParameter(handle, source, 1, 4, compRatio);       // 4 = Ratio
         }
       } else {
-        // Disable the filter
         source.filters.compressorFilter.wet().value = 0.0;
-        if (handle != null) {
-          source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
-        }
+        if (handle != null) source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
       }
 
     } catch (e) {
