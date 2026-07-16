@@ -364,6 +364,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   void playAllPlayers();
   void seekAllPlayers(double seconds);
   void applyStemPlugins(String stemName);
+  void applyMasterPlugins();
 
 } // <--- This closes VoxrayDAWStateBase!
 
@@ -1239,9 +1240,15 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 value: state.reverbMix,
                 min: 0.0, max: 1.0, activeColor: highlight,
                 onChanged: (val) {
-                  setDialogState(() => state.reverbMix = val);
+                  setDialogState(() => state.reverbMix = val); // (Make sure this matches the specific variable for each slider)
                   this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
-                  applyStemPlugins(stemKey); 
+                  
+                  // THE FIX: Route to the correct audio engine method!
+                  if (stemKey == 'master') {
+                    applyMasterPlugins();
+                  } else {
+                    applyStemPlugins(stemKey); 
+                  }
                 },
               ),
               const SizedBox(height: 12),
@@ -1252,7 +1259,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 onChanged: (val) {
                   setDialogState(() => state.reverbRoomSize = val);
                   this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
-                  applyStemPlugins(stemKey); 
+                  if (stemKey == 'master') {
+                    applyMasterPlugins();
+                  } else {
+                    applyStemPlugins(stemKey); 
+                  }
                 },
               ),
             ]);
@@ -1266,7 +1277,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 onChanged: (val) {
                   setDialogState(() => state.eqCutoff = val);
                   this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
-                  applyStemPlugins(stemKey); 
+                  if (stemKey == 'master') {
+                    applyMasterPlugins();
+                  } else {
+                    applyStemPlugins(stemKey); 
+                  } 
                 },
               ),
             ]);
@@ -1281,7 +1296,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 onChanged: (val) {
                   setDialogState(() => state.compressorThreshold = val);
                   this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
-                  applyStemPlugins(stemKey); 
+                  if (stemKey == 'master') {
+                    applyMasterPlugins();
+                  } else {
+                    applyStemPlugins(stemKey); 
+                  } 
                 },
               ),
               const SizedBox(height: 12),
@@ -1292,7 +1311,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 onChanged: (val) {
                   setDialogState(() => state.compressorRatio = val);
                   this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
-                  applyStemPlugins(stemKey); 
+                  if (stemKey == 'master') {
+                    applyMasterPlugins();
+                  } else {
+                    applyStemPlugins(stemKey); 
+                  }
                 },
               ),
             ]);
