@@ -107,30 +107,45 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
               Expanded(
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
-                    if (notification is UserScrollNotification) {
-                      widget.dawState.isUserScrolling = notification.direction != ScrollDirection.idle;
-                      if (!widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
-                        // Dynamically calculate 35% of the current screen width
-                        double viewportWidth = notification.metrics.viewportDimension;
-                        double anchorOffset = viewportWidth * 0.30;
-                        
-                        double seekTime = (notification.metrics.pixels + anchorOffset) / widget.dawState.zoomX;
-                        widget.dawState.seekAllPlayers(seekTime.clamp(0.0, widget.dawState.songDuration));
-                      }
-                    } else if (notification is ScrollUpdateNotification) {
-                      setState(() {}); 
+                  if (notification is UserScrollNotification) {
+                    widget.dawState.isUserScrolling = notification.direction != ScrollDirection.idle;
+                  } else if (notification is ScrollUpdateNotification) {
+                    // Trigger a repaint so the playhead visually moves
+                    setState(() {}); 
+                    
+                    if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
+                      double viewportWidth = notification.metrics.viewportDimension;
+                      double maxScroll = notification.metrics.maxScrollExtent;
                       
-                      if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
-                        // Dynamically calculate 35% of the current screen width
-                        double viewportWidth = notification.metrics.viewportDimension;
-                        double anchorOffset = viewportWidth * 0.30;
-                        
-                        double seekTime = (notification.metrics.pixels + anchorOffset) / widget.dawState.zoomX;
-                        widget.dawState.setState(() => widget.dawState.currentPosition = seekTime.clamp(0.0, widget.dawState.songDuration));
+                      // Clamp pixels to prevent over-scroll bouncing from breaking the math
+                      double pixels = notification.metrics.pixels.clamp(0.0, maxScroll);
+                      
+                      // The target 25% anchor you requested
+                      double anchorOffset = viewportWidth * 0.25; 
+                      double dynamicAnchor = anchorOffset;
+
+                      // STATE 1: Smoothly collapse the anchor to 0% as we hit the left edge
+                      if (pixels < anchorOffset) {
+                        dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
+                      } 
+                      // STATE 3: Smoothly push the anchor to 100% as we hit the right edge
+                      else {
+                        double rightZone = viewportWidth * 0.75;
+                        if (pixels > maxScroll - rightZone) {
+                          double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
+                          dynamicAnchor = anchorOffset + (fraction * rightZone);
+                        }
                       }
+                      
+                      // Calculate the exact time and seek the audio engine
+                      double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
+                      widget.dawState.setState(() {
+                        widget.dawState.currentPosition = seekTime.clamp(0.0, widget.dawState.songDuration);
+                      });
                     }
-                    return false;
-                  },
+                  }
+                  return false;
+                },
 
                   child: SingleChildScrollView(
                     controller: widget.horizontalScrollController,
@@ -219,17 +234,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                           ),
                           // Moving Vertical Playhead (Dynamic Viewport Position)
                           Positioned(
-                            left: (() {
-                              double viewportWidth = widget.horizontalScrollController.hasClients
-                                  ? widget.horizontalScrollController.position.viewportDimension
-                                  : 0.0;
-                              double anchorOffset = viewportWidth * 0.30; 
-                              
-                              if (currentScrollX <= 0) {
-                                return widget.dawState.currentPosition * zoomX;
-                              }
-                              return currentScrollX + anchorOffset;
-                            })(),
+                            // It naturally stays anchored to the 25% screen coordinate because 
+                            // the scrub math/audio ticker handles the scroll offset!
+                            left: widget.dawState.currentPosition * widget.dawState.zoomX,
                             top: 0,
                             bottom: 0,
                             child: Container(
