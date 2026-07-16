@@ -409,7 +409,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
         
         // Force the DSP graph to rebuild if already playing
         if (handle != null) {
-          double currentTime = SoLoud.instance.getPosition(handle);
+          final Duration positionDuration = SoLoud.instance.getPosition(handle);
+          double currentTime = positionDuration.inMilliseconds / 1000.0;
+          //double currentTime = SoLoud.instance.getPosition(handle);
 
           try {
             // Stop the current handle
