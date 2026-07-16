@@ -191,13 +191,15 @@ mixin DawAudioController on VoxrayDAWStateBase {
           if (taskId.isEmpty) {
             throw Exception('Cannot fetch stem: no valid server Task ID or offline cache path available.');
           }
-          final dir = await getTemporaryDirectory();
-          final String networkFilePath = '${dir.path}/${taskId}_$stemName.ogg';
-          
-          logToSupabase("Local cache missing for track [$stemName]. Streaming from remote node deployment...");
-          final bytes = await fetchStemBytes(stemName, apiBase, taskId);
-          await File(networkFilePath).writeAsBytes(bytes);
-          cachedStemPaths[stemName] = networkFilePath;
+          if (!kIsWeb) {
+            final dir = await getTemporaryDirectory();
+            final String networkFilePath = '${dir.path}/${taskId}_$stemName.ogg';
+            
+            logToSupabase("Local cache missing for track [$stemName]. Streaming from remote node deployment...");
+            final bytes = await fetchStemBytes(stemName, apiBase, taskId);
+            await File(networkFilePath).writeAsBytes(bytes);
+            cachedStemPaths[stemName] = networkFilePath;
+          }
         } else {
           logToSupabase("Cache verified. Streaming [$stemName] directly from storage path: ${cachedStemPaths[stemName]}");
         }
