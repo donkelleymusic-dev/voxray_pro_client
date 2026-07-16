@@ -822,7 +822,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   // STUDIO MIXER DSP
   // =========================================================================
 
-  void () {
+  void _applyMasterPlugins() {
     final state   = getChannelState('master');
     final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
     try {
