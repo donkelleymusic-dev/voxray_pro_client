@@ -1245,13 +1245,21 @@ mixin DawApiService on VoxrayDAWStateBase {
           'original_audio.dat', originalAudioBytes!.length, originalAudioBytes));
     }
 
-    for (var entry in cachedStemPaths.entries) {
-      try {
-        final bytes = await File(entry.value).readAsBytes();
-        archive.addFile(ArchiveFile('${entry.key}.ogg', bytes.length, bytes));
-      } catch (e) {
-        logToSupabase('Skipping missing file for package: ${entry.key}');
-      }
+    // App version (commented to test FIX below for web):
+    //for (var entry in cachedStemPaths.entries) {
+    //  try {
+    //    final bytes = await File(entry.value).readAsBytes();
+    //    archive.addFile(ArchiveFile('${entry.key}.ogg', bytes.length, bytes));
+    //  } catch (e) {
+    //    logToSupabase('Skipping missing file for package: ${entry.key}');
+    //  }
+    //}
+    // --- FIX: Store bytes in memory rather than reading from File path ---
+    // Ensure your controller has a Map<String, Uint8List> called 'cachedStemBytes' 
+    // that you populate when downloading stems.
+    // This might work for all.  if not, try it for web only, leaving app version above otherwise
+    for (var entry in cachedStemBytes.entries) {
+        archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
     }
 
     return Uint8List.fromList(ZipEncoder().encode(archive)!);
@@ -1343,16 +1351,38 @@ mixin DawApiService on VoxrayDAWStateBase {
     Map<String, dynamic> projectData = {};
     final tempDir = await getTemporaryDirectory();
 
+    // FOR APP USE (commented until we see if web use version below works for all):
+    //for (ArchiveFile file in archive) {
+    //  if (file.name == 'project.json') {
+    //    projectData = json.decode(utf8.decode(file.content as List<int>));
+    //  } else if (file.name == 'original_audio.dat') {
+    //    originalAudioBytes = file.content as Uint8List;
+    //  } else if (file.name.endsWith('.ogg')) {
+    //    String stemName   = file.name.replaceAll('.ogg', '');
+    //    String extractPath = '${tempDir.path}/imported_$stemName.ogg';
+    //    await File(extractPath).writeAsBytes(file.content as List<int>);
+    //    cachedStemPaths[stemName] = extractPath;
+    //  }
+    //}
+    // Instead of writing to File(extractPath)... FOR WEB USE:
     for (ArchiveFile file in archive) {
       if (file.name == 'project.json') {
         projectData = json.decode(utf8.decode(file.content as List<int>));
       } else if (file.name == 'original_audio.dat') {
         originalAudioBytes = file.content as Uint8List;
       } else if (file.name.endsWith('.ogg')) {
-        String stemName   = file.name.replaceAll('.ogg', '');
-        String extractPath = '${tempDir.path}/imported_$stemName.ogg';
-        await File(extractPath).writeAsBytes(file.content as List<int>);
-        cachedStemPaths[stemName] = extractPath;
+        String stemName = file.name.replaceAll('.ogg', '');
+        
+        // --- FIX: Keep the bytes in memory for the web ---
+        cachedStemBytes[stemName] = file.content as Uint8List;
+        
+        // If not on web, you can still write to temp directory for platform compatibility
+        if (!kIsWeb) {
+          final tempDir = await getTemporaryDirectory();
+          String extractPath = '${tempDir.path}/imported_$stemName.ogg';
+          await File(extractPath).writeAsBytes(file.content as List<int>);
+          cachedStemPaths[stemName] = extractPath;
+        }
       }
     }
 
