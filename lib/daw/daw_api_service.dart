@@ -1370,22 +1370,15 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
 
     Map<String, dynamic> projectData = {};
-    //final tempDir = await getTemporaryDirectory();//works for apps but not for web
 
-    // FOR APP USE (commented until we see if web use version below works for all):
-    //for (ArchiveFile file in archive) {
-    //  if (file.name == 'project.json') {
-    //    projectData = json.decode(utf8.decode(file.content as List<int>));
-    //  } else if (file.name == 'original_audio.dat') {
-    //    originalAudioBytes = file.content as Uint8List;
-    //  } else if (file.name.endsWith('.ogg')) {
-    //    String stemName   = file.name.replaceAll('.ogg', '');
-    //    String extractPath = '${tempDir.path}/imported_$stemName.ogg';
-    //    await File(extractPath).writeAsBytes(file.content as List<int>);
-    //    cachedStemPaths[stemName] = extractPath;
-    //  }
-    //}
-    // Instead of writing to File(extractPath)... FOR WEB USE:
+    // 1. Safely grab the temp directory path ONLY if we are not on the web.
+    String? tempDirPath;
+    if (!kIsWeb) {
+      final tDir = await getTemporaryDirectory();
+      tempDirPath = tDir.path;
+    }
+
+    // 2. Unpack the archive
     for (ArchiveFile file in archive) {
       if (file.name == 'project.json') {
         projectData = json.decode(utf8.decode(file.content as List<int>));
@@ -1394,12 +1387,12 @@ mixin DawApiService on VoxrayDAWStateBase {
       } else if (file.name.endsWith('.ogg')) {
         String stemName = file.name.replaceAll('.ogg', '');
         
-        // 1. WEB & MOBILE: Always load into RAM for instant playback
+        // WEB & MOBILE: Always load into RAM for instant playback
         cachedStemBytes[stemName] = file.content as Uint8List;
         
-        // 2. MOBILE ONLY: Write to disk to save RAM
-        if (!kIsWeb && tempDir != null) {
-          String extractPath = '${tempDir.path}/imported_$stemName.ogg';
+        // MOBILE ONLY: Write to disk to save RAM
+        if (!kIsWeb && tempDirPath != null) {
+          String extractPath = '$tempDirPath/imported_$stemName.ogg';
           await File(extractPath).writeAsBytes(file.content as List<int>);
           cachedStemPaths[stemName] = extractPath;
         }
