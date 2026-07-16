@@ -401,46 +401,35 @@ mixin DawAudioController on VoxrayDAWStateBase {
       }
 
       if (plugins.contains('Compressor')) {
-        // 1. Activate the filter template
+        // 1. Activate on the source template
         source.filters.compressorFilter.activate();
         source.filters.compressorFilter.wet().value = 1.0;
+        
+        // 2. Force the DSP graph to rebuild if already playing
         if (handle != null) {
-          source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
-        }
+          // Capture the exact playback position
+          double currentTime = SoLoud.instance.getPosition(handle);
+
+          try {
+            // Stop the current handle
+            SoLoud.instance.stop(handle);
+            
+            // Restart the audio (it will now inherit the newly activated compressor)
+            handle = SoLoud.instance.play(source);
+            SoLoud.instance.seek(handle, currentTime); // Jump back to where we were
+            // 2. Setup DSP Variables
+            //double uiThresholdDb = -50;//state.compressorThreshold; 
+            //double compRatio = 4.0;//state.compressorRatio; 
         
-        // 2. Setup DSP Variables
-        double uiThresholdDb = -50;//state.compressorThreshold; 
-        double compRatio = 4.0;//state.compressorRatio; 
-        
-        // Note: Double-check your specific SoLoud wrapper's documentation. 
-        // Some wrappers expect seconds (0.002) instead of milliseconds (2.0).
-        //double attackValue = 2.0;  
-        //double releaseValue = 50.0; 
-        
-        try {
-          // -- BASE TEMPLATE (For the next time you hit play) --
-          //source.filters.compressorFilter.attack().value = attackValue;
-          //source.filters.compressorFilter.release().value = releaseValue;
-          //source.filters.compressorFilter.attack(soundHandle: handle).value = attackValue;
-          //source.filters.compressorFilter.release(soundHandle: handle).value = releaseValue;
-          
-          //source.filters.compressorFilter.threshold(soundHandle: handle).value = uiThresholdDb;
-          //source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
-          // Fixed: Restored to uiThresholdDb. (If testing extremes, use -50, not 50)
-          //source.filters.compressorFilter.threshold().value = uiThresholdDb; 
-          //source.filters.compressorFilter.ratio().value = compRatio;
-          
-          // -- REAL-TIME VOICE UPDATE (For audio currently playing) --
-          if (handle != null) {
             // Fixed: Added real-time updates for attack and release
             //source.filters.compressorFilter.attack(soundHandle: handle).value = attackValue;
             //source.filters.compressorFilter.release(soundHandle: handle).value = releaseValue;
             
-            source.filters.compressorFilter.threshold(soundHandle: handle).value = uiThresholdDb;
-            source.filters.compressorFilter.ratio(soundHandle: handle).value = compRatio;
+            source.filters.compressorFilter.threshold(soundHandle: handle).value = state.compressorThreshold;
+            source.filters.compressorFilter.ratio(soundHandle: handle).value = state.compressorRatio;
             
             // 3. CUSTOM AUTO-MAKEUP GAIN
-            double makeupDb = uiThresholdDb.abs() * (1.0 - (1.0 / compRatio)) * 0.4;
+            double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
             double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
             
             double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
