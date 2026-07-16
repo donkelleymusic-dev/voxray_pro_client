@@ -57,7 +57,6 @@ mixin DawAudioController on VoxrayDAWStateBase {
   }
 
   void playAllPlayers() {
-    // If that prints FALSE or NULL even though you just loaded a file, you have a disconnected State. issue.
     logToSupabase("DEBUG: MasterHandle valid? ${masterHandle != null ? SoLoud.instance.getIsValidVoiceHandle(masterHandle!) : 'NULL'}");
     setState(() => isPlaying = true);
 
@@ -77,11 +76,22 @@ mixin DawAudioController on VoxrayDAWStateBase {
       }
     }
 
+    // 1. Revive all dead handles (which creates the Zombie Reverbs)
     masterHandle = revive(masterHandle, masterSource, 'original');
     synthHandle  = revive(synthHandle,  synthSource,  'synth');
+    
     for (String key in stemSources.keys) {
       stemHandles[key] = revive(stemHandles[key], stemSources[key], key)!;
     }
+
+    // 2. KILL THE ZOMBIE REVERB! 🧟‍♂️🔫
+    // Now that the handles are officially saved in the map, force the DSP to sync.
+    for (String key in stemSources.keys) {
+      applyStemPlugins(key); 
+    }
+    
+    // (Optional) If you have a master/mix bus DSP function, you can call it here too:
+    // _applyMasterPlugins(); 
   }
 
   void pauseAllPlayers() {
