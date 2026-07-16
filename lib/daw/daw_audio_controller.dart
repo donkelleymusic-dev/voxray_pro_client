@@ -450,46 +450,46 @@ mixin DawAudioController on VoxrayDAWStateBase {
     final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
 
     try {
-      // ── MASTER REVERB ───────────────────────────────────────────────────
+      // ── MASTER REVERB (Index 0) ──────────────────────────────────────────
       if (plugins.contains('Reverb')) {
-        double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
-        // Global filters are managed by the SoLoud instance directly
         SoLoud.instance.filters.freeverbFilter.activate();
-        SoLoud.instance.filters.freeverbFilter.wet = safeMix; // Direct property assignment
-        SoLoud.instance.filters.freeverbFilter.roomSize = state.reverbRoomSize;
+        // Use setParams to update the values
+        SoLoud.instance.filters.freeverbFilter.setParams(
+          wet: state.reverbMix > 0.0 ? state.reverbMix : 0.5,
+          roomSize: state.reverbRoomSize,
+        );
       } else {
-        SoLoud.instance.filters.freeverbFilter.wet = 0.0;
+        SoLoud.instance.filters.freeverbFilter.setParams(wet: 0.0);
       }
 
-      // ── MASTER EQ (Biquad) ───────────────────────────────────────────────
+      // ── MASTER EQ (Index 1) ─────────────────────────────────────────────
       if (plugins.contains('EQ')) {
-        SoLoud.instance.filters.biquadFilter.activate();
-        SoLoud.instance.filters.biquadFilter.wet = 1.0;
-        SoLoud.instance.filters.biquadFilter.type = 0; // Low Pass
-        SoLoud.instance.filters.biquadFilter.frequency = sliderToFrequency(state.eqCutoff);
+        SoLoud.instance.filters.eqFilter.activate();
+        SoLoud.instance.filters.eqFilter.setParams(
+          wet: 1.0,
+          frequency: sliderToFrequency(state.eqCutoff),
+        );
       } else {
-        SoLoud.instance.filters.biquadFilter.wet = 0.0;
+        SoLoud.instance.filters.eqFilter.setParams(wet: 0.0);
       }
 
-      // ── MASTER COMPRESSOR ───────────────────────────────────────────────
+      // ── MASTER COMPRESSOR (Index 2) ─────────────────────────────────────
       if (plugins.contains('Compressor')) {
         SoLoud.instance.filters.compressorFilter.activate();
-        SoLoud.instance.filters.compressorFilter.wet = 1.0;
-        SoLoud.instance.filters.compressorFilter.threshold = state.compressorThreshold;
-        SoLoud.instance.filters.compressorFilter.ratio = state.compressorRatio;
+        SoLoud.instance.filters.compressorFilter.setParams(
+          wet: 1.0,
+          threshold: state.compressorThreshold,
+          ratio: state.compressorRatio,
+        );
         
-        // Master Bus Makeup Gain
+        // Apply Global Makeup Gain
         double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
         double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-        double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
-        
-        SoLoud.instance.setGlobalVolume(finalVolume);
+        SoLoud.instance.setGlobalVolume(state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0));
       } else {
-        SoLoud.instance.filters.compressorFilter.wet = 0.0;
-        // Return to normal global volume
+        SoLoud.instance.filters.compressorFilter.setParams(wet: 0.0);
         SoLoud.instance.setGlobalVolume(state.isMuted ? 0.0 : state.volume);
       }
-
     } catch (e) {
       logToSupabase('Master DSP update failed: $e', severity: 'ERROR');
     }
