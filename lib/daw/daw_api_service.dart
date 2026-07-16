@@ -1233,6 +1233,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       'all_stems_continuous_xray': allStemsContinuousXray,
       'active_editable_stem': activeEditableStem,
       'history': {'undo_stack': undoStack, 'redo_stack': redoStack},
+      'markers': markers,
     };
 
     List<int> jsonBytes = utf8.encode(json.encode(projectData));
@@ -1382,10 +1383,20 @@ mixin DawApiService on VoxrayDAWStateBase {
         songDuration = maxTime;
       }
 
+      // 1. Load the markers from the file first! (Fixed variable name)
+      if (projectData['markers'] != null) {
+        markers.clear();
+        // Safely cast the JSON list back into your Dart List<Map> structure
+        markers.addAll(List<Map<String, dynamic>>.from(
+            projectData['markers'].map((m) => Map<String, dynamic>.from(m))
+        ));
+      }
+
+      // 2. Now adjust the loop boundary based on the loaded markers/duration
       loopEndBoundary = songDuration;
       int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
       if (endIdx != -1) markers[endIdx]['time'] = songDuration;
-
+      
       if (projectData['mixer_state'] != null) {
         Map<String, dynamic> ms = projectData['mixer_state'];
         mixerState
@@ -1488,6 +1499,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         'active_editable_stem': activeEditableStem,
         'cached_stem_paths': cachedStemPaths,
         'zoom_x': zoomX, 'zoom_y': zoomY,
+        'markers': markers,
       };
       await file.writeAsString(jsonEncode(data));
       logToSupabase('Auto-saved to disk silently.');
@@ -1543,6 +1555,15 @@ mixin DawApiService on VoxrayDAWStateBase {
         // WAKE UP THE MENUS
         hasBeenSaved = false; 
         isProjectLoaded = true;
+
+        if (data['markers'] != null) {
+          markers.clear();
+          // Safely cast the JSON list back into your Dart List<Map> structure
+          markers.addAll(List<Map<String, dynamic>>.from(
+              data['markers'].map((m) => Map<String, dynamic>.from(m))
+          ));
+        }
+        
         isOriginalMixAvailable = data['original_file'] != null; // Optional: helps wake up export menus
 
         if (data['mixer_state'] != null) {
