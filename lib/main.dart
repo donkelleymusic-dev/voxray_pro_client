@@ -97,60 +97,59 @@ class AppGatekeeper extends StatefulWidget {
 }
 
 class _AppGatekeeperState extends State<AppGatekeeper> {
+  bool? _isLoggedIn;
+  bool? _isSubscribed;
+
   @override
   void initState() {
     super.initState();
-    //_checkInitialState();
-    // Delay the state check until after the initial widget tree is built (otherwise slower browsers etc might get permanent loading spinner on launch)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkInitialState();
-    });
+    _listenToAuthChanges();
   }
 
-  Future<void> _checkInitialState() async {
-    // 1. Did Supabase automatically restore a session from local storage?
-    final session = Supabase.instance.client.auth.currentSession;
-    
-    if (session == null) {
-      // No saved session. Send to Login.
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => AuthScreen()),
-      );
-    } else {
-      // 2. Session exists! Now check their subscription status.
-      final isSubbed = await BackendService.isSubscriptionActive();
-      
-      if (!mounted) return;
-      if (isSubbed) {
-        // Active Sub: Send straight into the DAW
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const VoxrayDAW()),
-        );
+  void _listenToAuthChanges() {
+    // Listen directly to Supabase session state changes
+    BackendService.supabase.auth.onAuthStateChange.listen((data) async {
+      final session = data.session;
+      if (session == null) {
+        if (mounted) {
+          setState(() {
+            _isLoggedIn = false;
+            _isSubscribed = false;
+          });
+        }
       } else {
-        // Inactive Sub: Send to Paywall
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => AccountSettingsScreen(isForcedPaywall: true)),
-        );
+        if (mounted) setState(() => _isLoggedIn = true);
+        
+        // Fetch subscription status directly via the BackendService
+        final active = await BackendService.isSubscriptionActive();
+        if (mounted) {
+          setState(() => _isSubscribed = active);
+        }
       }
-    }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // A simple loading screen while it routes the user
-    return const Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.graphic_eq, size: 80, color: Colors.blue),
-            SizedBox(height: 24),
-            CircularProgressIndicator(color: Colors.tealAccent),
-          ],
-        ),
-      ),
-    );
+    // 1. App is loading session or verifying subscription status
+    if (_isLoggedIn == null || (_isLoggedIn! && _isSubscribed == null)) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // 2. Not Logged In
+    if (!_isLoggedIn!) {
+      return const AuthScreen();
+    }
+
+    // 3. Logged In, but paywall active (No subscription found)
+    if (!_isSubscribed!) {
+      return const AccountSettingsScreen(isForcedPaywall: true);
+    }
+
+    // 4. Fully Logged In & Paid -> Boot up the DAW!
+    return const VoxrayDAW();
   }
 }
 
