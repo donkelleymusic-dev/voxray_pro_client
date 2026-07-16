@@ -464,10 +464,12 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       // ── MASTER EQ (Biquad Resonant Filter) ──────────────────────────────
       if (plugins.contains('EQ')) {
-        // The global version of the filter is called biquadResonantFilter
         SoLoud.instance.filters.biquadResonantFilter.activate();
         SoLoud.instance.filters.biquadResonantFilter.wet.value = 1.0;
         SoLoud.instance.filters.biquadResonantFilter.type.value = 0; // Low Pass
+        
+        // ADD THIS LINE: Give the filter enough resonance to be audible!
+        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 2.0; 
         
         double targetFrequency = sliderToFrequency(state.eqCutoff);
         SoLoud.instance.filters.biquadResonantFilter.frequency.value = targetFrequency;
