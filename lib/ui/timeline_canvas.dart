@@ -464,7 +464,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
       // for "ghosting" a note that is likely bleed from other instrument/vocal/mic/stem (let's try thinner stroke width on ghost notes)
       double amplitude = (note['amplitude'] ?? 0.8).toDouble();
       bool isQuiet = amplitude < 0.15; // Threshold for "ghosting" a note that is likely bleed from other instrument/vocal/mic/stem
-      double strokeWidthAmplitude = isQuiet ? 0.5 : 1.0;
+      //double strokeWidthAmplitude = isQuiet ? 0.5 : 1.0;
       //notePaint.style = isQuiet ? PaintingStyle.stroke : PaintingStyle.fill;
       //notePaint.strokeWidth = 1.0;
 
@@ -543,7 +543,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
             ..style = PaintingStyle.fill // Faint solid fills look much cleaner than strokes
         );
 
-        String labelText = '${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
+        String labelText = '${getNoteName(note['display_midi'])} $amplitude.toString ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
         
         // --- NEW: Fade out the text label for quiet notes so it doesn't pop out ---
         Color textColor = isQuiet ? Colors.white.withOpacity(0.15) : Colors.white;
