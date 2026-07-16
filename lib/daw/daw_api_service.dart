@@ -1370,7 +1370,7 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
 
     Map<String, dynamic> projectData = {};
-    final tempDir = await getTemporaryDirectory();
+    //final tempDir = await getTemporaryDirectory();//works for apps but not for web
 
     // FOR APP USE (commented until we see if web use version below works for all):
     //for (ArchiveFile file in archive) {
