@@ -822,7 +822,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   // STUDIO MIXER DSP
   // =========================================================================
 
-  void _applyMasterPlugins() {
+  void () {
     final state   = getChannelState('master');
     final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
     try {
@@ -969,28 +969,28 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                     if (state.plugin1 != val) {
                       setMixerState(() => state.plugin1 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
                   _pluginSlot(key,state.plugin2, highlight, (val) {
                     if (state.plugin2 != val) {
                       setMixerState(() => state.plugin2 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
                   _pluginSlot(key,state.plugin3, highlight, (val) {
                     if (state.plugin3 != val) {
                       setMixerState(() => state.plugin3 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
                   _pluginSlot(key,state.plugin4, highlight, (val) {
                     if (state.plugin4 != val) {
                       setMixerState(() => state.plugin4 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) applyStemPlugins(key); else _applyMasterPlugins();
+                      if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
                   const SizedBox(height: 4),
