@@ -142,6 +142,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                       widget.dawState.setState(() {
                         widget.dawState.currentPosition = seekTime.clamp(0.0, widget.dawState.songDuration);
                       });
+                      // scrub mode capability:
+                      widget.dawState.seekAllPlayers(clampedTime);
                     }
                   }
                   return false;
