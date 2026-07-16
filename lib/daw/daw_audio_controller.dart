@@ -358,12 +358,15 @@ mixin DawAudioController on VoxrayDAWStateBase {
   // =========================================================================
   
   // ── Public DSP method (No underscore) ───────────────────────────────────
+  // =========================================================================
+  // STUDIO MIXER DSP (Stem-Specific Real-Time Updates)
+  // =========================================================================
+  
+  // ── Public DSP method (No underscore) ───────────────────────────────────
   void applyStemPlugins(String stemName) {
     final state = getChannelState(stemName);
     final source = stemSources[stemName];
-    
-    // 1. Changed from 'final' to 'SoundHandle?' so we can reassign it!
-    SoundHandle? handle = stemHandles[stemName]; 
+    final handle = stemHandles[stemName]; // No need to reassign this anymore!
     
     if (source == null) return;
 
@@ -401,48 +404,36 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
 
-      // ── COMPRESSOR ────────────────────────────────────────────────────────
+      // ── COMPRESSOR (Option 1: Always On, Real-time update) ─────────────────
       if (plugins.contains('Compressor')) {
-        // Activate on the source template
-        source.filters.compressorFilter.activate();
+        // Set the base source
         source.filters.compressorFilter.wet().value = 1.0;
         
-        // Force the DSP graph to rebuild if already playing
         if (handle != null) {
-          final Duration positionDuration = SoLoud.instance.getPosition(handle);
-          double currentTime = positionDuration.inMilliseconds / 1000.0;
-          //double currentTime = SoLoud.instance.getPosition(handle);
-
-          try {
-            // Stop the current handle
-            SoLoud.instance.stop(handle);
-            
-            // 2. Restart the audio and update the local variable
-            handle = SoLoud.instance.play(source);
-            
-            // 3. CRITICAL: Save the new handle back to your DAW's global state!
-            stemHandles[stemName] = handle;
-            
-            SoLoud.instance.seek(handle, Duration(milliseconds: (currentTime * 1000).round())); 
-            
-            // Set real-time parameters
-            source.filters.compressorFilter.threshold(soundHandle: handle).value = state.compressorThreshold;
-            source.filters.compressorFilter.ratio(soundHandle: handle).value = state.compressorRatio;
-            
-            // Custom Auto-Makeup Gain
-            double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
-            double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-            double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
-            
-            SoLoud.instance.setVolume(handle, finalVolume);
-          } catch (paramError) {
-            logToSupabase("Compressor update failed: $paramError");
-          }
+          // 1. Instantly turn the compressor on for the active voice
+          source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
+          
+          // 2. Stream the parameters directly to the engine
+          source.filters.compressorFilter.threshold(soundHandle: handle).value = state.compressorThreshold;
+          source.filters.compressorFilter.ratio(soundHandle: handle).value = state.compressorRatio;
+          
+          // 3. Custom Auto-Makeup Gain mapping
+          double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
+          double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
+          double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
+          
+          SoLoud.instance.setVolume(handle, finalVolume);
         }
       } else {
-        // Ensure compressor is bypassed if not in plugin list
+        // Ensure compressor is completely bypassed
         source.filters.compressorFilter.wet().value = 0.0;
-        if (handle != null) source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
+        
+        if (handle != null) {
+          source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
+          
+          // IMPORTANT: Restore the normal track volume since makeup gain is turned off
+          SoLoud.instance.setVolume(handle, state.isMuted ? 0.0 : state.volume);
+        }
       }
 
     } catch (e) {
