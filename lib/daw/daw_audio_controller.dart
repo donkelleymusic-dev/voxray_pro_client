@@ -361,7 +361,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
   void applyStemPlugins(String stemName) {
     final state = getChannelState(stemName);
     final source = stemSources[stemName];
-    final handle = stemHandles[stemName];
+    
+    // 1. Changed from 'final' to 'SoundHandle?' so we can reassign it!
+    SoundHandle? handle = stemHandles[stemName]; 
     
     if (source == null) return;
 
@@ -386,7 +388,6 @@ mixin DawAudioController on VoxrayDAWStateBase {
         source.filters.biquadFilter.wet().value = 1.0; 
         source.filters.biquadFilter.type().value = 0; // 0 = Low Pass
         
-        // Logarithmic frequency conversion for smooth EQ sweeps
         double targetFrequency = sliderToFrequency(state.eqCutoff);
         source.filters.biquadFilter.frequency().value = targetFrequency;
         
@@ -400,45 +401,46 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
 
+      // ── COMPRESSOR ────────────────────────────────────────────────────────
       if (plugins.contains('Compressor')) {
-        // 1. Activate on the source template
+        // Activate on the source template
         source.filters.compressorFilter.activate();
         source.filters.compressorFilter.wet().value = 1.0;
         
-        // 2. Force the DSP graph to rebuild if already playing
+        // Force the DSP graph to rebuild if already playing
         if (handle != null) {
-          // Capture the exact playback position
           double currentTime = SoLoud.instance.getPosition(handle);
 
           try {
             // Stop the current handle
             SoLoud.instance.stop(handle);
             
-            // Restart the audio (it will now inherit the newly activated compressor)
+            // 2. Restart the audio and update the local variable
             handle = SoLoud.instance.play(source);
-            SoLoud.instance.seek(handle, currentTime); // Jump back to where we were
-            // 2. Setup DSP Variables
-            //double uiThresholdDb = -50;//state.compressorThreshold; 
-            //double compRatio = 4.0;//state.compressorRatio; 
-        
-            // Fixed: Added real-time updates for attack and release
-            //source.filters.compressorFilter.attack(soundHandle: handle).value = attackValue;
-            //source.filters.compressorFilter.release(soundHandle: handle).value = releaseValue;
             
+            // 3. CRITICAL: Save the new handle back to your DAW's global state!
+            stemHandles[stemName] = handle;
+            
+            SoLoud.instance.seek(handle, Duration(milliseconds: (currentTime * 1000).round())); 
+            
+            // Set real-time parameters
             source.filters.compressorFilter.threshold(soundHandle: handle).value = state.compressorThreshold;
             source.filters.compressorFilter.ratio(soundHandle: handle).value = state.compressorRatio;
             
-            // 3. CUSTOM AUTO-MAKEUP GAIN
+            // Custom Auto-Makeup Gain
             double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
             double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-            
             double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
             
             SoLoud.instance.setVolume(handle, finalVolume);
+          } catch (paramError) {
+            logToSupabase("Compressor update failed: $paramError");
           }
-        } catch (paramError) {
-          logToSupabase("Compressor update failed: $paramError");
         }
+      } else {
+        // Ensure compressor is bypassed if not in plugin list
+        source.filters.compressorFilter.wet().value = 0.0;
+        if (handle != null) source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
       }
 
     } catch (e) {
