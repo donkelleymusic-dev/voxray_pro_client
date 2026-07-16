@@ -453,29 +453,30 @@ mixin DawAudioController on VoxrayDAWStateBase {
       // ── MASTER REVERB ───────────────────────────────────────────────────
       if (plugins.contains('Reverb')) {
         double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
-        SoLoud.instance.filters.freeverbFilter.activate(); 
-        SoLoud.instance.filters.freeverbFilter.wet().value = safeMix;
-        SoLoud.instance.filters.freeverbFilter.roomSize().value = state.reverbRoomSize;
+        // Global filters are managed by the SoLoud instance directly
+        SoLoud.instance.filters.freeverbFilter.activate();
+        SoLoud.instance.filters.freeverbFilter.wet = safeMix; // Direct property assignment
+        SoLoud.instance.filters.freeverbFilter.roomSize = state.reverbRoomSize;
       } else {
-        try { SoLoud.instance.filters.freeverbFilter.wet().value = 0.0; } catch(_) {}
+        SoLoud.instance.filters.freeverbFilter.wet = 0.0;
       }
 
-      // ── MASTER EQ ───────────────────────────────────────────────────────
+      // ── MASTER EQ (Biquad) ───────────────────────────────────────────────
       if (plugins.contains('EQ')) {
         SoLoud.instance.filters.biquadFilter.activate();
-        SoLoud.instance.filters.biquadFilter.wet().value = 1.0;
-        SoLoud.instance.filters.biquadFilter.type().value = 0; // Low Pass
-        SoLoud.instance.filters.biquadFilter.frequency().value = sliderToFrequency(state.eqCutoff);
+        SoLoud.instance.filters.biquadFilter.wet = 1.0;
+        SoLoud.instance.filters.biquadFilter.type = 0; // Low Pass
+        SoLoud.instance.filters.biquadFilter.frequency = sliderToFrequency(state.eqCutoff);
       } else {
-        try { SoLoud.instance.filters.biquadFilter.wet().value = 0.0; } catch(_) {}
+        SoLoud.instance.filters.biquadFilter.wet = 0.0;
       }
 
       // ── MASTER COMPRESSOR ───────────────────────────────────────────────
       if (plugins.contains('Compressor')) {
         SoLoud.instance.filters.compressorFilter.activate();
-        SoLoud.instance.filters.compressorFilter.wet().value = 1.0;
-        SoLoud.instance.filters.compressorFilter.threshold().value = state.compressorThreshold;
-        SoLoud.instance.filters.compressorFilter.ratio().value = state.compressorRatio;
+        SoLoud.instance.filters.compressorFilter.wet = 1.0;
+        SoLoud.instance.filters.compressorFilter.threshold = state.compressorThreshold;
+        SoLoud.instance.filters.compressorFilter.ratio = state.compressorRatio;
         
         // Master Bus Makeup Gain
         double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
@@ -484,7 +485,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         
         SoLoud.instance.setGlobalVolume(finalVolume);
       } else {
-        try { SoLoud.instance.filters.compressorFilter.wet().value = 0.0; } catch(_) {}
+        SoLoud.instance.filters.compressorFilter.wet = 0.0;
         // Return to normal global volume
         SoLoud.instance.setGlobalVolume(state.isMuted ? 0.0 : state.volume);
       }
