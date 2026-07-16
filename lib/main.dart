@@ -100,7 +100,11 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
   @override
   void initState() {
     super.initState();
-    _checkInitialState();
+    //_checkInitialState();
+    // Delay the state check until after the initial widget tree is built (otherwise slower browsers etc might get permanent loading spinner on launch)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkInitialState();
+    });
   }
 
   Future<void> _checkInitialState() async {
