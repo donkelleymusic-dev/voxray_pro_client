@@ -90,8 +90,8 @@ mixin DawAudioController on VoxrayDAWStateBase {
       applyStemPlugins(key); 
     }
     
-    // (Optional) If you have a master/mix bus DSP function, you can call it here too:
-    // _applyMasterPlugins(); 
+    // Sync the Master Bus DSP globally!
+    applyMasterPlugins(); 
   }
 
   void pauseAllPlayers() {
@@ -182,9 +182,6 @@ mixin DawAudioController on VoxrayDAWStateBase {
         newSource.filters.compressorFilter.activate();
         newSource.filters.biquadFilter.activate();
         
-        // Directly call the method on the filter instance
-        //newSource.filters.freeverbFilter.setParams(wet: 0.0);
-        //newSource.filters.compressorFilter.setParams(wet: 0.0); 
         newSource.filters.freeverbFilter.wet().value = 0.0;
         newSource.filters.compressorFilter.wet().value = 0.0;
         newSource.filters.biquadFilter.wet().value = 0.0;
@@ -275,8 +272,6 @@ mixin DawAudioController on VoxrayDAWStateBase {
         cachedStemPaths[stemName]!,
         mode: LoadMode.disk, // <--- THIS PREVENTS RAM CRASHES!
       );
-      // Read audio into RAM and then play:
-      //stemSources[stemName] = await SoLoud.instance.loadFile(cachedStemPaths[stemName]!);
 
       // Setup playback parameters
       stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
@@ -368,11 +363,6 @@ mixin DawAudioController on VoxrayDAWStateBase {
   // =========================================================================
   
   // ── Public DSP method (No underscore) ───────────────────────────────────
-  // =========================================================================
-  // STUDIO MIXER DSP (Stem-Specific Real-Time Updates)
-  // =========================================================================
-  
-  // ── Public DSP method (No underscore) ───────────────────────────────────
   void applyStemPlugins(String stemName) {
     final state = getChannelState(stemName);
     final source = stemSources[stemName];
@@ -451,6 +441,56 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
     } catch (e) {
       logToSupabase('Stem DSP update failed for $stemName: $e', severity: 'ERROR');
+    }
+  }
+
+  // ── Public Master DSP method ────────────────────────────────────────────
+  void applyMasterPlugins() {
+    final state = getChannelState('master');
+    final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
+
+    try {
+      // ── MASTER REVERB ───────────────────────────────────────────────────
+      if (plugins.contains('Reverb')) {
+        double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
+        SoLoud.instance.filters.freeverbFilter.activate(); 
+        SoLoud.instance.filters.freeverbFilter.wet().value = safeMix;
+        SoLoud.instance.filters.freeverbFilter.roomSize().value = state.reverbRoomSize;
+      } else {
+        try { SoLoud.instance.filters.freeverbFilter.wet().value = 0.0; } catch(_) {}
+      }
+
+      // ── MASTER EQ ───────────────────────────────────────────────────────
+      if (plugins.contains('EQ')) {
+        SoLoud.instance.filters.biquadFilter.activate();
+        SoLoud.instance.filters.biquadFilter.wet().value = 1.0;
+        SoLoud.instance.filters.biquadFilter.type().value = 0; // Low Pass
+        SoLoud.instance.filters.biquadFilter.frequency().value = sliderToFrequency(state.eqCutoff);
+      } else {
+        try { SoLoud.instance.filters.biquadFilter.wet().value = 0.0; } catch(_) {}
+      }
+
+      // ── MASTER COMPRESSOR ───────────────────────────────────────────────
+      if (plugins.contains('Compressor')) {
+        SoLoud.instance.filters.compressorFilter.activate();
+        SoLoud.instance.filters.compressorFilter.wet().value = 1.0;
+        SoLoud.instance.filters.compressorFilter.threshold().value = state.compressorThreshold;
+        SoLoud.instance.filters.compressorFilter.ratio().value = state.compressorRatio;
+        
+        // Master Bus Makeup Gain
+        double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
+        double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
+        double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
+        
+        SoLoud.instance.setGlobalVolume(finalVolume);
+      } else {
+        try { SoLoud.instance.filters.compressorFilter.wet().value = 0.0; } catch(_) {}
+        // Return to normal global volume
+        SoLoud.instance.setGlobalVolume(state.isMuted ? 0.0 : state.volume);
+      }
+
+    } catch (e) {
+      logToSupabase('Master DSP update failed: $e', severity: 'ERROR');
     }
   }
 }
