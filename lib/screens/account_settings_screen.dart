@@ -25,10 +25,12 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
 
   Future<void> _checkSubscriptionStatus() async {
     final active = await BackendService.isSubscriptionActive();
-    setState(() {
-      _isSubscribed = active;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isSubscribed = active;
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _launchStripe(String tier) async {
@@ -42,7 +44,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       }
       await launchUrl(Uri.parse(targetUrl), mode: LaunchMode.externalApplication);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Billing Error: $e'), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Billing Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -62,8 +68,16 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               onPressed: () async {
                 setState(() => _isLoading = true);
                 await _checkSubscriptionStatus();
+                
                 if (_isSubscribed && mounted) {
-                  Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const VoxrayDAW()));
+                  // ✅ FIX: Defer navigation safely out of the current build frame
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const VoxrayDAW()),
+                      );
+                    }
+                  });
                 }
               },
             )
@@ -125,7 +139,15 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                   onPressed: () async {
                     await BackendService.signOut();
                     if (mounted) {
-                       Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => AuthScreen()), (route) => false);
+                      // ✅ FIX: Defer navigation safely out of the current build frame
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(builder: (_) => AuthScreen()), 
+                            (route) => false,
+                          );
+                        }
+                      });
                     }
                   },
                   icon: const Icon(Icons.logout),
