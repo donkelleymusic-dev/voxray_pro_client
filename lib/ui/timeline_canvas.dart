@@ -497,11 +497,11 @@ class AdvancedPianoRollPainter extends CustomPainter {
         );
         
         // Draw the bright, sharp transient center
-        canvas.drawCircle(
-          Offset(startX, visualY + (zoomY / 2)),// was startX + blobRadius
-          blobRadius * 0.4,
-          Paint()..color = Colors.white.withOpacity(0.9)
-        );
+        //canvas.drawCircle(
+        //  Offset(startX, visualY + (zoomY / 2)),// was startX + blobRadius
+        //  blobRadius * 0.4,
+        //  Paint()..color = Colors.white.withOpacity(0.9)
+        //);
 
         // DRUMS DO NOT RENDER PIANO ROLL BLOCKS OR CONTOURS
         continue; 
@@ -525,19 +525,36 @@ class AdvancedPianoRollPainter extends CustomPainter {
         if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
         if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
 
+        // --- NEW: Apply heavy transparency if the note is quiet ---
+        Color finalNoteColor = noteColor;
+        if (isQuiet) {
+            finalNoteColor = noteColor.withOpacity(0.15); // Drastically drop the opacity
+        } else if (isXrayMode && i != draggingNoteIndex) {
+            finalNoteColor = noteColor.withOpacity(0.4);
+        }
+
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), 
             const Radius.circular(4)
           ), 
           Paint()
-            ..color = isXrayMode && i != draggingNoteIndex ? noteColor.withOpacity(0.4) : noteColor
-            ..style = isQuiet ? PaintingStyle.stroke : PaintingStyle.fill
-            ..strokeWidth = 0.5 // A very thin stroke (ignored when style is fill)
+            ..color = finalNoteColor
+            ..style = PaintingStyle.fill // Faint solid fills look much cleaner than strokes
         );
 
         String labelText = '${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
-        TextPainter tp = TextPainter(text: TextSpan(text: labelText, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
+        
+        // --- NEW: Fade out the text label for quiet notes so it doesn't pop out ---
+        Color textColor = isQuiet ? Colors.white.withOpacity(0.15) : Colors.white;
+        TextPainter tp = TextPainter(
+          text: TextSpan(
+            text: labelText, 
+            style: TextStyle(color: textColor, fontSize: 9, fontWeight: FontWeight.bold)
+          ), 
+          textDirection: TextDirection.ltr
+        )..layout();
+        
         if ((endX - startX) >= tp.width + 6 && zoomY > 14) {
           tp.paint(canvas, Offset(startX + 3, visualY + (zoomY / 2) - (tp.height / 2)));
         }
