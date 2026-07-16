@@ -375,10 +375,13 @@ mixin DawAudioController on VoxrayDAWStateBase {
     try {
       // ── REVERB ─────────────────────────────────────────────────────────────
       if (plugins.contains('Reverb')) {
-        source.filters.freeverbFilter.wet().value = state.reverbMix;
+        // Safety check: If the slider is at 0, bump it to 0.5 so it actually turns on!
+        double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
+        
+        source.filters.freeverbFilter.wet().value = safeMix;
         source.filters.freeverbFilter.roomSize().value = state.reverbRoomSize;
         if (handle != null) {
-          source.filters.freeverbFilter.wet(soundHandle: handle).value = state.reverbMix;
+          source.filters.freeverbFilter.wet(soundHandle: handle).value = safeMix;
           source.filters.freeverbFilter.roomSize(soundHandle: handle).value = state.reverbRoomSize;
         }
       } else {
