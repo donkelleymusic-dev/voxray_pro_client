@@ -543,7 +543,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
             ..style = PaintingStyle.fill // Faint solid fills look much cleaner than strokes
         );
 
-        String labelText = '${getNoteName(note['display_midi'])} $amplitude.toString ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
+        String labelText = '${getNoteName(note['display_midi'])} ${amplitude.toStringAsFixed(2)} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
         
         // --- NEW: Fade out the text label for quiet notes so it doesn't pop out ---
         Color textColor = isQuiet ? Colors.white.withOpacity(0.15) : Colors.white;
