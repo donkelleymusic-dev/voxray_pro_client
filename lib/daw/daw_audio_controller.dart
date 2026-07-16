@@ -133,80 +133,109 @@ mixin DawAudioController on VoxrayDAWStateBase {
     if (wasPlaying) pauseAllPlayers();
 
     try {
-      bool localFileExists = false;
-      String? targetPath = cachedStemPaths[stemName];
-
-      // 1. If the project loader or autosave registered a path, check if it's physically on disk
-      if (targetPath != null && targetPath.isNotEmpty) {
-        if (await File(targetPath).exists()) {
-          localFileExists = true;
-        }
-      }
-
-      // 2. Only download from the server if we lack a valid offline file path
-      if (!localFileExists) {
-        if (taskId.isEmpty) {
-          throw Exception('Cannot fetch stem: no valid server Task ID or offline cache path available.');
-        }
-        final dir = await getTemporaryDirectory();
-        final String networkFilePath = '${dir.path}/${taskId}_$stemName.ogg';
+      if (kIsWeb) {
+        // ── 1. WEB COMPATIBLE PATH (No dart:io, File, or local disk caching) ──
+        logToSupabase("Web platform detected. Fetching track [$stemName] directly to Web RAM...");
         
-        logToSupabase("Local cache missing for track [$stemName]. Streaming from remote node deployment...");
         final bytes = await fetchStemBytes(stemName, apiBase, taskId);
-        await File(networkFilePath).writeAsBytes(bytes);
-        cachedStemPaths[stemName] = networkFilePath;
-      } else {
-        logToSupabase("Cache verified. Streaming [$stemName] directly from storage path: ${cachedStemPaths[stemName]}");
-      }
-
-      // Force clear the old voice handle before creating a new one to avoid dead engine pointers
-      if (stemHandles.containsKey(stemName)) {
-        if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
-          SoLoud.instance.stop(stemHandles[stemName]!);
+        
+        // Force clear old voice handle
+        if (stemHandles.containsKey(stemName)) {
+          if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
+            SoLoud.instance.stop(stemHandles[stemName]!);
+          }
+          stemHandles.remove(stemName);
         }
-        stemHandles.remove(stemName);
-      }
 
-      // Read audio dynamically from disk (Streaming, not loading into RAM):
-      final newSource = await SoLoud.instance.loadFile(
-        cachedStemPaths[stemName]!,
-        mode: LoadMode.disk, // <--- THIS PREVENTS RAM CRASHES!
-      );
+        // Web must load into RAM memory buffers (cannot stream via path modes)
+        final newSource = await SoLoud.instance.loadMem(
+          '${taskId}_$stemName', 
+          bytes,
+        );
 
-      // =======================================================================
-      // 🎛️ ZERO-WET ARCHITECTURE: Pre-load and bypass DSP plugins
-      // =======================================================================
-      try {
-        // Activate
-        newSource.filters.freeverbFilter.activate();
-        newSource.filters.compressorFilter.activate();
-        newSource.filters.biquadFilter.activate();
+        // Pre-load / bypass filter configuration
+        try {
+          newSource.filters.freeverbFilter.activate();
+          newSource.filters.compressorFilter.activate();
+          newSource.filters.biquadFilter.activate();
+          
+          newSource.filters.freeverbFilter.wet().value = 0.0;
+          newSource.filters.compressorFilter.wet().value = 0.0;
+          newSource.filters.biquadFilter.wet().value = 0.0;
+        } catch (fxError) {
+          logToSupabase("Warning: Could not pre-load filters on web: $fxError");
+        }
+
+        stemSources[stemName] = newSource;
+        stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
+        SoLoud.instance.setPause(stemHandles[stemName]!, true);
+
+        final state = getChannelState(stemName);
+        SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
+        SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
-        newSource.filters.freeverbFilter.wet().value = 0.0;
-        newSource.filters.compressorFilter.wet().value = 0.0;
-        newSource.filters.biquadFilter.wet().value = 0.0;
+        applyStemPlugins(stemName);
+
+      } else {
+        // ── 2. NATIVE PATH (Mobile / Desktop) ──
+        bool localFileExists = false;
+        String? targetPath = cachedStemPaths[stemName];
+
+        if (targetPath != null && targetPath.isNotEmpty) {
+          if (await File(targetPath).exists()) {
+            localFileExists = true;
+          }
+        }
+
+        if (!localFileExists) {
+          if (taskId.isEmpty) {
+            throw Exception('Cannot fetch stem: no valid server Task ID or offline cache path available.');
+          }
+          final dir = await getTemporaryDirectory();
+          final String networkFilePath = '${dir.path}/${taskId}_$stemName.ogg';
+          
+          logToSupabase("Local cache missing for track [$stemName]. Streaming from remote node deployment...");
+          final bytes = await fetchStemBytes(stemName, apiBase, taskId);
+          await File(networkFilePath).writeAsBytes(bytes);
+          cachedStemPaths[stemName] = networkFilePath;
+        } else {
+          logToSupabase("Cache verified. Streaming [$stemName] directly from storage path: ${cachedStemPaths[stemName]}");
+        }
+
+        if (stemHandles.containsKey(stemName)) {
+          if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
+            SoLoud.instance.stop(stemHandles[stemName]!);
+          }
+          stemHandles.remove(stemName);
+        }
+
+        final newSource = await SoLoud.instance.loadFile(
+          cachedStemPaths[stemName]!,
+          mode: LoadMode.disk,
+        );
+
+        try {
+          newSource.filters.freeverbFilter.activate();
+          newSource.filters.compressorFilter.activate();
+          newSource.filters.biquadFilter.activate();
+          
+          newSource.filters.freeverbFilter.wet().value = 0.0;
+          newSource.filters.compressorFilter.wet().value = 0.0;
+          newSource.filters.biquadFilter.wet().value = 0.0;
+        } catch (fxError) {
+          logToSupabase("Warning: Could not pre-load filters: $fxError");
+        }
+
+        stemSources[stemName] = newSource;
+        stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
+        SoLoud.instance.setPause(stemHandles[stemName]!, true);
+
+        final state = getChannelState(stemName);
+        SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
+        SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
-        logToSupabase("DSP Graph compiled & bypassed successfully for track [$stemName]");
-      } catch (fxError) {
-        logToSupabase("Warning: Could not pre-load filters: $fxError");
+        applyStemPlugins(stemName);
       }
-      
-      // =======================================================================
-
-      // Assign the fully prepped source to your state map
-      stemSources[stemName] = newSource;
-
-      // Setup playback parameters
-      stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
-      SoLoud.instance.setPause(stemHandles[stemName]!, true);
-
-      final state = getChannelState(stemName);
-      logToSupabase("DSP Configuration: Channel track [$stemName] initialized with volume level: ${state.volume}");
-      SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
-      SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
-      
-      //Force the DSP state to match the UI immediately!
-      applyStemPlugins(stemName);
 
     } catch (e) {
       logToSupabase('Audio Layer Processing Failure [Track: $stemName]: $e', severity: 'ERROR');
