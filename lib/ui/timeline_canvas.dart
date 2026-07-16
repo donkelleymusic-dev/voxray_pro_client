@@ -521,7 +521,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
         double exactCurrentMidi = actualMidi.round() + baseFraction + semitoneShift + (currentShiftCents / 100.0);
         int deviationFromDisplay = ((exactCurrentMidi - note['display_midi']) * 100).round();
 
-        Color noteColor = deviationFromDisplay.abs() <= 10 ? Colors.tealAccent : deviationFromDisplay.abs() <= 25 ? Colors.amberAccent : Colors.redAccent;
+        Color noteColor = deviationFromDisplay.abs() <= 10 ? Colors.blueAccent : deviationFromDisplay.abs() <= 25 ? Colors.amberAccent : Colors.redAccent;
         if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
         if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
 
