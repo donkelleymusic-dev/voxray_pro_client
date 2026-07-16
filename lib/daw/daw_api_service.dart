@@ -237,6 +237,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       isXrayMode = false;
       dirtyStems.clear();
       cachedStemPaths.clear();
+      cachedStemBytes.clear();
       for (var h in stemHandles.values) SoLoud.instance.stop(h);
       stemHandles.clear();
       stemSources.clear();
@@ -1258,8 +1259,27 @@ mixin DawApiService on VoxrayDAWStateBase {
     // Ensure your controller has a Map<String, Uint8List> called 'cachedStemBytes' 
     // that you populate when downloading stems.
     // This might work for all.  if not, try it for web only, leaving app version above otherwise
+    //for (var entry in cachedStemBytes.entries) {
+    //    archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
+    //}
+    // 1. Pack from RAM (Always works on Web, and works for fresh downloads on Android)
     for (var entry in cachedStemBytes.entries) {
-        archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
+      archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
+    }
+
+    // 2. Pack from Disk (Fallback for Android if it streamed from an offline save)
+    if (!kIsWeb) {
+      for (var entry in cachedStemPaths.entries) {
+        // Only pack from disk if we didn't already pack it from RAM!
+        if (!cachedStemBytes.containsKey(entry.key)) {
+          try {
+            final bytes = await File(entry.value).readAsBytes();
+            archive.addFile(ArchiveFile('${entry.key}.ogg', bytes.length, bytes));
+          } catch (e) {
+            logToSupabase('Skipping missing file for package: ${entry.key}');
+          }
+        }
+      }
     }
 
     return Uint8List.fromList(ZipEncoder().encode(archive)!);
@@ -1327,6 +1347,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       hasBeenSaved    = true;
       dirtyStems.clear();
       cachedStemPaths.clear();
+      cachedStemBytes.clear();
       for (var h in stemHandles.values) SoLoud.instance.stop(h);
       stemHandles.clear();
       stemSources.clear();
@@ -1373,12 +1394,11 @@ mixin DawApiService on VoxrayDAWStateBase {
       } else if (file.name.endsWith('.ogg')) {
         String stemName = file.name.replaceAll('.ogg', '');
         
-        // --- FIX: Keep the bytes in memory for the web ---
+        // 1. WEB & MOBILE: Always load into RAM for instant playback
         cachedStemBytes[stemName] = file.content as Uint8List;
         
-        // If not on web, you can still write to temp directory for platform compatibility
-        if (!kIsWeb) {
-          final tempDir = await getTemporaryDirectory();
+        // 2. MOBILE ONLY: Write to disk to save RAM
+        if (!kIsWeb && tempDir != null) {
           String extractPath = '${tempDir.path}/imported_$stemName.ogg';
           await File(extractPath).writeAsBytes(file.content as List<int>);
           cachedStemPaths[stemName] = extractPath;
@@ -1507,7 +1527,7 @@ mixin DawApiService on VoxrayDAWStateBase {
   // =========================================================================
 
   void triggerAutoSave() {
-    if (currentTaskId == null || isRestoringState) return;
+    if (currentTaskId == null || isRestoringState || kIsWeb) return; // ADD kIsWeb
     autoSaveTimer?.cancel();
     autoSaveTimer = Timer(const Duration(seconds: 2), _performAutoSave);
   }
@@ -1539,6 +1559,7 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> restoreAutoSaveOnStartup() async {
+    if (kIsWeb) return;
     try {
       setState(() => isRestoringState = true);
       final dir  = await getApplicationDocumentsDirectory();
