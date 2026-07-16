@@ -137,12 +137,16 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         }
                       }
                       
-                      // Calculate the exact time and seek the audio engine
+                      // 1. Calculate the exact time and save it to a variable FIRST
                       double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
+                      double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                      
+                      // 2. Update the visual UI
                       widget.dawState.setState(() {
-                        widget.dawState.currentPosition = seekTime.clamp(0.0, widget.dawState.songDuration);
+                        widget.dawState.currentPosition = clampedTime;
                       });
-                      // scrub mode capability:
+                      
+                      // 3. Update the audio engine using that shared variable!
                       widget.dawState.seekAllPlayers(clampedTime);
                     }
                   }
