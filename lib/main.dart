@@ -170,7 +170,13 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
   // ── Persistent storage / job tracking ────────────────────────────────────
   Set<String> stemsCurrentlyFetching = {};
-  final Map<String, String> cachedStemPaths = {};
+  //final Map<String, String> cachedStemPaths = {};
+  // The disk path cache (Used for Mobile/Desktop)
+  Map<String, String> cachedStemPaths = {};
+  
+  // THE NEW RAM BUFFER (Crucial for Web!)
+  Map<String, Uint8List> cachedStemBytes = {};
+  
   Timer? autoSaveTimer;
   //Timer? __autoSaveTimer;
   //Timer? get _autoSaveTimer => __autoSaveTimer;
