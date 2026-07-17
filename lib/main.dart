@@ -2147,6 +2147,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
           child: ListTile(
               leading: Icon(Icons.info_outline, color: Colors.white54),
               title: Text('About / FAQ'))),
+      const PopupMenuItem(
+          value: 'feedback',
+          child: ListTile(
+              leading: Icon(Icons.info_outline, color: Colors.white54),
+              title: Text('Submit Bugs / Features'))),
       
       const PopupMenuDivider(),
       
@@ -2205,6 +2210,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         break;
       case 'about_info':
         Navigator.push(context, MaterialPageRoute(builder: (_) => AboutInfoScreen(contentKey: 'about_me', pageTitle: 'About voXRAY')));
+        break;
+      case 'feedback':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => FeedbackScreen(contentKey: 'bugs_feedback', pageTitle: 'Submit Bugs / Feedback')));
         break;
     }
   }
