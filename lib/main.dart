@@ -71,27 +71,32 @@ import 'screens/feedback_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
   await Supabase.initialize(
     url: 'https://dazqevapqvdpbdoypwke.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'
         '.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhenFldmFwcXZkcGJkb3lwd2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzODU1MTcsImV4cCI6MjA5ODk2MTUxN30'
         '.hJvau902z0lAXRnwHPLa30HoLJzxJg4zQDzSXuh_Tjs',
   );
+
+  // 1. Initialize your audio engine BEFORE the app UI runs!
+  await SoLoud.instance.init();
+
+  // 2. Wrap your actual app logic directly inside Sentry's appRunner
   await SentryFlutter.init(
     (options) {
-      options.dsn = 'https://d6a836c92a35e39f8a73a143d2bca99d@o4511748451729408.ingest.us.sentry.io/4511748461363200'; // Paste your DSN string here
-      
-      // Captures 100% of transactions for performance monitoring.
-      // You can dial this down (e.g., 0.2 for 20%) later if it gets noisy.
+      options.dsn = 'https://d6a836c92a35e39f8a73a143d2bca99d@o4511748451729408.ingest.us.sentry.io/4511748461363200';
       options.tracesSampleRate = 1.0; 
     },
-    appRunner: () => runApp(const MyApp()), // Replace MyApp() with your root widget
+    appRunner: () => runApp(
+      MaterialApp(
+        home: const AppGatekeeper(),
+        theme: ThemeData(brightness: Brightness.dark),
+      )
+    ), 
   );
-  await SoLoud.instance.init();
-  runApp(MaterialApp(
-    home: const AppGatekeeper(),
-    theme: ThemeData(brightness: Brightness.dark),
-  ));
+  
+  // Notice: The duplicate runApp() that used to be down here is now completely removed!
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
