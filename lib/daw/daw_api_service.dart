@@ -827,7 +827,7 @@ mixin DawApiService on VoxrayDAWStateBase {
             filename: 'stems_${currentTaskId}_$activeStem.ogg'
           )
         );
-        logToSupabase('renderStemEdits UI "Attach ALL cached stems directly from the device" request.files.add filename: "stems_${currentTaskId}_${entry.key}.ogg"');
+        logToSupabase('renderStemEdits UI "Attach ALL cached stems directly from the device" request.files.add filename: "stems_${currentTaskId}_$activeStem.ogg"');
       }
 
       var response = await request.send().timeout(const Duration(seconds: 120), onTimeout: () {
