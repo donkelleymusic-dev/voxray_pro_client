@@ -134,10 +134,20 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
     try {
       if (kIsWeb) {
-        // ── 1. WEB COMPATIBLE PATH (No dart:io, File, or local disk caching) ──
-        logToSupabase("Web platform detected. Fetching track [$stemName] directly to Web RAM...");
+        // ── 1. WEB COMPATIBLE PATH ──
+        logToSupabase("Web platform detected. Processing track [$stemName]...");
         
-        final bytes = await fetchStemBytes(stemName, apiBase, taskId);
+        Uint8List bytes;
+        
+        // FIX: Did we just unpack this from a .vxp file? Use the RAM buffer!
+        if (cachedStemBytes.containsKey(stemName)) {
+           bytes = cachedStemBytes[stemName]!;
+        } 
+        // FIX: If not, download it from the API and SAVE it to the RAM buffer so we can export it later!
+        else {
+           bytes = await fetchStemBytes(stemName, apiBase, taskId);
+           cachedStemBytes[stemName] = bytes;
+        }
         
         // Force clear old voice handle
         if (stemHandles.containsKey(stemName)) {
