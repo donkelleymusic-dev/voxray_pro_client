@@ -53,6 +53,7 @@ dependencies:
   path_provider: ^2.1.0
   supabase_flutter: ^2.15.4
   url_launcher: ^6.3.2
+  sentry_flutter: ^8.6.0
 
 dev_dependencies:
   flutter_test:
