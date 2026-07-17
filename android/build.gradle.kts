@@ -24,9 +24,12 @@ tasks.register<Delete>("clean") {
 }
 
 subprojects {
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            languageVersion = "2.0"
+    afterEvaluate {
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            kotlinOptions {
+                // This now runs after Sentry's script, successfully overwriting their 1.6 restriction
+                languageVersion = "2.0"
+            }
         }
     }
 }
