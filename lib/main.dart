@@ -62,6 +62,7 @@ import 'screens/auth_screen.dart';
 import 'screens/wallet_screen.dart';
 import 'screens/account_settings_screen.dart';
 import 'screens/about_info_screen.dart';
+import 'screens/feedback_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTRY POINT
