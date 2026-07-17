@@ -785,7 +785,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         }
         showSaveConfirmation('Establishing server architecture link for Master Mix...');
         
-        logToSupabase('renderStemEdits UI "posting to analyze-advanced" for stem: $activeStem');
+        logToSupabase('renderStemEdits UI "posting to analyze-advanced" for stem: $activeStem, stem_target: $lookupStem, acoustic_profile: "standard"');
         var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
           ..fields['upload_type']      = 'stem'
           ..fields['stem_target']      = lookupStem
@@ -797,6 +797,8 @@ mixin DawApiService on VoxrayDAWStateBase {
         if (sessionRes.statusCode == 200) {
           currentTaskId = jsonDecode(await sessionRes.stream.bytesToString())['task_id'];
         } else {
+          
+          logToSupabase('renderStemEdits UI "posting to analyze-advanced" failed: sessionRes.statusCode = $sessionRes.statusCode');
           throw Exception('Could not build a backend framework pipeline target session.');
         }
       }
@@ -824,13 +826,18 @@ mixin DawApiService on VoxrayDAWStateBase {
             filename: 'stems_${currentTaskId}_${entry.key}.ogg'
           )
         );
+        logToSupabase('renderStemEdits UI "Attach ALL cached stems directly from the device" request.files.add filename: "stems_${currentTaskId}_${entry.key}.ogg"');
       }
 
       var response = await request.send().timeout(const Duration(seconds: 120), onTimeout: () {
+        
+        logToSupabase('renderStemEdits UI "Attach ALL cached stems" Upload timed out. Connection is too slow.');
         throw TimeoutException('Upload timed out. Connection is too slow.');
       });
       var responseData = await http.Response.fromStream(response);
       if (responseData.statusCode != 200) {
+        
+        logToSupabase('renderStemEdits UI "Attach ALL cached stems" responseData.statusCode: ${responseData.statusCode}: ${responseData.body}');
         throw Exception('Server error ${responseData.statusCode}: ${responseData.body}');
       }
 
@@ -841,12 +848,17 @@ mixin DawApiService on VoxrayDAWStateBase {
         final renderResult = await pollRenderJob(jobId);
         if (renderResult == null) throw Exception('Render polling failed.');
         
+        logToSupabase('renderStemEdits UI "Attach ALL cached stems" success: Downloading preview audio...');
         setState(() => exportMessage = 'Downloading preview audio...');
         String fileId = renderResult['file_id'];
         String rFormat = renderResult['format'];
         
         var dlRes = await http.get(Uri.parse('$apiBase/api/download-mix/$fileId?format=$rFormat')).timeout(const Duration(seconds: 60));
-        if (dlRes.statusCode != 200) throw Exception('Failed to download preview audio.');
+        if (dlRes.statusCode != 200) {
+          
+          logToSupabase('renderStemEdits UI statusCode: $dlRes.statusCode for http.get("$apiBase/api/download-mix/$fileId?format=$rFormat")');
+          throw Exception('Failed to download preview audio.');
+        }
         
         Uint8List previewBytes = dlRes.bodyBytes;
 
@@ -865,8 +877,12 @@ mixin DawApiService on VoxrayDAWStateBase {
           setState(() { activePlaybackSources.add(activeStem); });
         }
         setState(() => dirtyStems.remove(activeStem));
+        
+        logToSupabase('renderStemEdits UI "Stem updated — tap Play to hear edits."');
         showSaveConfirmation('Stem updated — tap Play to hear edits.', isPreview: true);
       } else {
+        
+        logToSupabase('renderStemEdits UI "Render failed"');
         showSaveConfirmation('Render failed: ${result['message'] ?? 'unknown error'}');
       }
     } catch (e) {
