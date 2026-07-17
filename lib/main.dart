@@ -48,6 +48,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'models/channel_state.dart';
 import 'daw/daw_audio_controller.dart';
@@ -75,6 +76,16 @@ Future<void> main() async {
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'
         '.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhenFldmFwcXZkcGJkb3lwd2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzODU1MTcsImV4cCI6MjA5ODk2MTUxN30'
         '.hJvau902z0lAXRnwHPLa30HoLJzxJg4zQDzSXuh_Tjs',
+  );
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = 'https://d6a836c92a35e39f8a73a143d2bca99d@o4511748451729408.ingest.us.sentry.io/4511748461363200'; // Paste your DSN string here
+      
+      // Captures 100% of transactions for performance monitoring.
+      // You can dial this down (e.g., 0.2 for 20%) later if it gets noisy.
+      options.tracesSampleRate = 1.0; 
+    },
+    appRunner: () => runApp(const MyApp()), // Replace MyApp() with your root widget
   );
   await SoLoud.instance.init();
   runApp(MaterialApp(
@@ -1510,6 +1521,19 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            TextButton(
+              onPressed: () async {
+                try {
+                  throw Exception('Voxray test error!');
+                } catch (exception, stackTrace) {
+                  await Sentry.captureException(
+                    exception,
+                    stackTrace: stackTrace,
+                  );
+                }
+              },
+              child: const Text('Throw Test Error'),
+            )
             ListTile(
               leading: const Icon(Icons.multitrack_audio,
                   color: Colors.amberAccent, size: 28),
