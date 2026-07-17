@@ -2212,7 +2212,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         Navigator.push(context, MaterialPageRoute(builder: (_) => AboutInfoScreen(contentKey: 'about_me', pageTitle: 'About voXRAY')));
         break;
       case 'feedback':
-        Navigator.push(context, MaterialPageRoute(builder: (_) => FeedbackScreen(contentKey: 'bugs_feedback', pageTitle: 'Submit Bugs / Feedback')));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const FeedbackScreen()));
+        //Navigator.push(context, MaterialPageRoute(builder: (_) => FeedbackScreen(contentKey: 'bugs_feedback', pageTitle: 'Submit Bugs / Feedback')));
         break;
     }
   }
