@@ -1489,12 +1489,11 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
 
     for (String stem in generatedStems) {
-      if (cachedStemPaths.containsKey(stem)) {
+      // FIX: Check if the audio exists on Disk OR in RAM!
+      if (cachedStemPaths.containsKey(stem) || cachedStemBytes.containsKey(stem)) {
         activePlaybackSources.add(stem);
         await loadStemPlayerSource(stem, apiBase, currentTaskId ?? '');
         
-        // ── ADD THIS LINE ──
-        // This forces the audio engine to sync with the restored UI mixer state!
         applyStemPlugins(stem); 
       }
     }
