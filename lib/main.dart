@@ -1526,7 +1526,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextButton(
+            /*TextButton(
               onPressed: () async {
                 try {
                   throw Exception('Voxray test error!');
@@ -1538,7 +1538,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 }
               },
               child: const Text('Throw Test Error'),
-            ),
+            ),*/
             ListTile(
               leading: const Icon(Icons.multitrack_audio,
                   color: Colors.amberAccent, size: 28),
