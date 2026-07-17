@@ -454,22 +454,9 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double endX = (note['start_time'] + ((note['end_time'] - note['start_time']) * (note['time_ratio'] ?? 1.0))) * zoomX;
       double padding = zoomY * 0.15; 
 
-      // Create the block
-      //Paint notePaint = Paint();
-      //notePaint.color = isXrayMode && i != draggingNoteIndex 
-      //    ? noteColor.withOpacity(0.4) 
-      //    : noteColor;
-      
       // Calculate the amplitude-based style
-      // for "ghosting" a note that is likely bleed from other instrument/vocal/mic/stem (let's try thinner stroke width on ghost notes)
       double amplitude = (note['amplitude'] ?? 0.8).toDouble();
-      bool isQuiet = amplitude < 0.15; // Threshold for "ghosting" a note that is likely bleed from other instrument/vocal/mic/stem
-      //double strokeWidthAmplitude = isQuiet ? 0.5 : 1.0;
-      //notePaint.style = isQuiet ? PaintingStyle.stroke : PaintingStyle.fill;
-      //notePaint.strokeWidth = 1.0;
-
-      //notePaint.color = noteColor.withOpacity(isQuiet ? 0.2 : 0.8);
-      //notePaint.style = PaintingStyle.fill;
+      bool isQuiet = amplitude < 0.15; 
 
       int semitoneShift = note['semitone_shift'] ?? 0;
       double currentShiftCents = (note['cents_shift'] ?? 0).toDouble();
@@ -482,28 +469,17 @@ class AdvancedPianoRollPainter extends CustomPainter {
       bool isDrumHit = note['type'] == 'drum_hit' || isDrumsMode;
 
       if (isDrumHit) {
-        // Map the amplitude/velocity to opacity and slight size changes
         double amplitude = (note['amplitude'] ?? 0.8).toDouble();
         Color drumColor = Colors.deepOrangeAccent.withOpacity((0.3 + (amplitude * 0.7)).clamp(0.0, 1.0));
         
-        // Blobs fit inside the lane height
         double blobRadius = zoomY * 0.45; 
         
-        // Draw the outer velocity aura
         canvas.drawCircle(
           Offset(startX + blobRadius, visualY + (zoomY / 2)),
           blobRadius,
           Paint()..color = drumColor
         );
         
-        // Draw the bright, sharp transient center
-        //canvas.drawCircle(
-        //  Offset(startX, visualY + (zoomY / 2)),// was startX + blobRadius
-        //  blobRadius * 0.4,
-        //  Paint()..color = Colors.white.withOpacity(0.9)
-        //);
-
-        // DRUMS DO NOT RENDER PIANO ROLL BLOCKS OR CONTOURS
         continue; 
       }
 
@@ -525,10 +501,9 @@ class AdvancedPianoRollPainter extends CustomPainter {
         if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
         if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
 
-        // --- NEW: Apply heavy transparency if the note is quiet ---
         Color finalNoteColor = noteColor;
         if (isQuiet) {
-            finalNoteColor = noteColor.withOpacity(0.15); // Drastically drop the opacity
+            finalNoteColor = noteColor.withOpacity(0.15);
         } else if (isXrayMode && i != draggingNoteIndex) {
             finalNoteColor = noteColor.withOpacity(0.4);
         }
@@ -540,46 +515,81 @@ class AdvancedPianoRollPainter extends CustomPainter {
           ), 
           Paint()
             ..color = finalNoteColor
-            ..style = PaintingStyle.fill // Faint solid fills look much cleaner than strokes
+            ..style = PaintingStyle.fill 
         );
 
-        String labelText = '${getNoteName(note['display_midi'])} ${amplitude.toStringAsFixed(2)} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
+        String labelText = '${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
         
-        // --- NEW: Fade out the text label for quiet notes so it doesn't pop out ---
-        Color textColor = isQuiet ? Colors.white.withOpacity(0.15) : Colors.white;
-        TextPainter tp = TextPainter(
-          text: TextSpan(
-            text: labelText, 
-            style: TextStyle(color: textColor, fontSize: 9, fontWeight: FontWeight.bold)
-          ), 
-          textDirection: TextDirection.ltr
-        )..layout();
+        // ==========================================
+        // NEW TEXT RENDERING (DYNAMIC RESIZE & OUTLINE)
+        // ==========================================
         
-        if ((endX - startX) >= tp.width + 6 && zoomY > 14) {
-          tp.paint(canvas, Offset(startX + 3, visualY + (zoomY / 2) - (tp.height / 2)));
+        double maxFontSize = (zoomY * 0.6).clamp(6.0, 14.0); 
+        double availableWidth = (endX - startX) - 6.0; 
+
+        if (availableWidth > 10 && zoomY > 10) { 
+          TextPainter measureTp = TextPainter(
+            text: TextSpan(text: labelText, style: TextStyle(fontSize: maxFontSize, fontWeight: FontWeight.bold)),
+            textDirection: TextDirection.ltr
+          )..layout();
+
+          double finalFontSize = maxFontSize;
+          if (measureTp.width > availableWidth) {
+            finalFontSize = maxFontSize * (availableWidth / measureTp.width);
+          }
+
+          if (finalFontSize >= 4.5) {
+            Color outlineColor = isQuiet ? Colors.white.withOpacity(0.25) : Colors.white;
+            Color fillColor = isQuiet ? Colors.black.withOpacity(0.25) : Colors.black;
+
+            TextPainter tpOutline = TextPainter(
+              text: TextSpan(
+                text: labelText,
+                style: TextStyle(
+                  fontSize: finalFontSize,
+                  fontWeight: FontWeight.w900,
+                  foreground: Paint()
+                    ..style = PaintingStyle.stroke
+                    ..strokeWidth = 2.0 
+                    ..color = outlineColor,
+                )
+              ),
+              textDirection: TextDirection.ltr
+            )..layout();
+
+            TextPainter tpFill = TextPainter(
+              text: TextSpan(
+                text: labelText,
+                style: TextStyle(
+                  fontSize: finalFontSize,
+                  fontWeight: FontWeight.w900,
+                  color: fillColor,
+                )
+              ),
+              textDirection: TextDirection.ltr
+            )..layout();
+
+            Offset textOffset = Offset(startX + 3, visualY + (zoomY / 2) - (tpFill.height / 2));
+            tpOutline.paint(canvas, textOffset);
+            tpFill.paint(canvas, textOffset);
+          }
         }
       }
 
-      // Define a latency constant (in seconds)
-      // This value depends on your hop_length (256) and sr (22050)
-      // You may need to tune this by +/- 0.02 until it looks perfect.
       double latencyOffset = 0.045;
       
-      // Draw the squiggly contour line for ALL objects (Real notes AND Continuous X-Ray lines)
       if (isXrayMode && note['contour'] != null && (note['contour'] as List).isNotEmpty) {
         Path contourPath = Path();
         List<dynamic> contour = note['contour'];
         double stepX = (endX - startX) / (contour.length > 1 ? contour.length - 1 : 1);
         double vibrato = (note['vibrato_scale'] ?? 1.0).toDouble();
         for (int j = 0; j < contour.length; j++) {
-          //double px = (time - latencyOffset) * zoomX; // sample of how to use latencyOffset, but not specific to this api. change accordingly (DonK)
           double px = (startX - latencyOffset) + (j * stepX);
           double pointMidi = actualMidi.round().toDouble() + semitoneShift + ((contour[j].toDouble() * vibrato) + currentShiftCents) / 100.0;
           double py = (maxMidi - pointMidi) * zoomY + (zoomY / 2);
           if (j == 0) contourPath.moveTo(px, py); else contourPath.lineTo(px, py);
         }
         
-        // Dim the background lines slightly so the real notes pop
         Color lineColor = isXrayLine ? Colors.white.withOpacity(0.3) : Colors.white;
         canvas.drawPath(contourPath, Paint()..color = lineColor..style = PaintingStyle.stroke..strokeWidth = 2.0..strokeCap = StrokeCap.round);
       }
