@@ -818,12 +818,13 @@ mixin DawApiService on VoxrayDAWStateBase {
         )); // <-- SEMICOLON CLOSES THE CASCADE
 
       // Attach ALL cached stems directly from the device
-      for (var entry in cachedStemPaths.entries) {
+      // Attach ONLY the active stem directly from the device
+      if (cachedStemPaths.containsKey(activeStem)) {
         request.files.add(
           await http.MultipartFile.fromPath(
             'audio_stems', 
-            entry.value, 
-            filename: 'stems_${currentTaskId}_${entry.key}.ogg'
+            cachedStemPaths[activeStem]!, 
+            filename: 'stems_${currentTaskId}_$activeStem.ogg'
           )
         );
         logToSupabase('renderStemEdits UI "Attach ALL cached stems directly from the device" request.files.add filename: "stems_${currentTaskId}_${entry.key}.ogg"');
@@ -935,12 +936,12 @@ mixin DawApiService on VoxrayDAWStateBase {
         )); // <-- SEMICOLON CLOSES THE CASCADE
 
       // Attach ALL cached stems directly from the device
-      for (var entry in cachedStemPaths.entries) {
+      if (cachedStemPaths.containsKey(stem)) {
         request.files.add(
           await http.MultipartFile.fromPath(
             'audio_stems', 
-            entry.value, 
-            filename: 'stems_${currentTaskId}_${entry.key}.ogg'
+            cachedStemPaths[stem]!, 
+            filename: 'stems_${currentTaskId}_$stem.ogg'
           )
         );
       }
