@@ -769,16 +769,23 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   Future<void> renderStemEdits(String activeStem) async {
     if (originalAudioBytes == null || activeStem.isEmpty) return;
+    logToSupabase('renderStemEdits UI for stem: $activeStem');
     setState(() { isPreviewing = true; exportMessage = 'Queueing edits via Server...'; processingProgress = 0.0; });
 
     try {
       if (currentTaskId == null) {
+        
+      logToSupabase('renderStemEdits UI "currentTaskId == null" for stem: $activeStem');
         String lookupStem = activeEditableStem.isNotEmpty ? activeEditableStem
             : (cachedStemPaths.isNotEmpty ? cachedStemPaths.keys.first : '');
         if (lookupStem.isEmpty || !cachedStemPaths.containsKey(lookupStem)) {
+          
+          logToSupabase('renderStemEdits UI "No valid track state found in cache." for stem: $activeStem');
           throw Exception('No valid track state found in cache.');
         }
         showSaveConfirmation('Establishing server architecture link for Master Mix...');
+        
+        logToSupabase('renderStemEdits UI "posting to analyze-advanced" for stem: $activeStem');
         var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
           ..fields['upload_type']      = 'stem'
           ..fields['stem_target']      = lookupStem
