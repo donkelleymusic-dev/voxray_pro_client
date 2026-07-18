@@ -1365,40 +1365,6 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
   }
 
-  Future<void> saveVoxrayProjectAs() async {
-  final bytes = await packageProjectBytes();
-  String defaultSaveName = originalFileName.contains('.')
-      ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-      : (originalFileName.isNotEmpty ? originalFileName : projectName);
-
-  try {
-    // 1. Ask the OS for the save location WITHOUT '.platform'
-    String? path = await fp.FilePicker.saveFile(
-      dialogTitle: 'Save VoxRay Project',
-      fileName: '$defaultSaveName.vxp', 
-      type: fp.FileType.custom,
-      allowedExtensions: ['vxp'],
-    );
-
-    if (path != null && path.isNotEmpty) {
-      // 2. Write the massive byte array directly to disk via Dart I/O
-      final file = File(path);
-      await file.writeAsBytes(bytes);
-
-      setState(() { 
-        currentProjectPath = path; 
-        hasBeenSaved = true; 
-        dirtyStems.clear(); 
-      });
-      showSaveConfirmation('Project saved successfully as offline .vxp archive.');
-    } else {
-      showSaveConfirmation('Save cancelled.');
-    }
-  } catch (e) {
-    showSaveConfirmation('Save failed: $e');
-  }
-}
-
   Future<void> loadVoxrayProject(BuildContext context) async {
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom, allowedExtensions: ['vxp'], withData: true);
