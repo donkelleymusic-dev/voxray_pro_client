@@ -302,7 +302,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               
                               // 2. QUANTIZATION: Round to the nearest integer pixel. 
                               // This kills the jitter because fluctuations < 0.5 pixels are ignored.
-                              double snappedX = rawX.roundToDouble(); 
+                              double snappedX = rawX.floorToDouble(); 
                           
                               return Positioned(
                                 left: snappedX,
