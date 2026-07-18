@@ -1359,11 +1359,11 @@ mixin DawApiService on VoxrayDAWStateBase {
       : (originalFileName.isNotEmpty ? originalFileName : projectName);
 
   try {
-    // 1. Ask the OS for the save location WITHOUT sending the bytes over the bridge
-    String? path = await FilePicker.platform.saveFile(
+    // 1. Ask the OS for the save location WITHOUT '.platform'
+    String? path = await fp.FilePicker.saveFile(
       dialogTitle: 'Save VoxRay Project',
       fileName: '$defaultSaveName.vxp', 
-      type: FileType.custom,
+      type: fp.FileType.custom,
       allowedExtensions: ['vxp'],
     );
 
