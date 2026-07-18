@@ -6,6 +6,10 @@
 	<string>Voxray requires the microphone for live pitch tracking.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>This app requires access to your music library to import audio files for editing.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app requires access to save your exported master mixes and project files.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -78,6 +82,10 @@
 	            <string>voxray</string>
 	        </array>
 	    </dict>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+	    <string>audio</string>
 	</array>
 </dict>
 </plist>
