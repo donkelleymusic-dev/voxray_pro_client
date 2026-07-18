@@ -63,6 +63,23 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         if (!foundTime) {
            exactPlayheadTime.value = widget.dawState.currentPosition;
         }
+
+        exactPlayheadTime.value = currentTime; // Updates the red line
+
+        // ✅ PUT YOUR EXACT SCROLL LOGIC HERE
+        if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
+            double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
+            
+            double targetX = (currentTime * widget.dawState.zoomX) - anchorOffset;
+            if (targetX < 0) targetX = 0;
+            
+            if (widget.horizontalScrollController.position.maxScrollExtent > 0) {
+                widget.horizontalScrollController.jumpTo(
+                    targetX.clamp(0.0, widget.horizontalScrollController.position.maxScrollExtent)
+                );
+            }
+        }
+        
       } else {
         // Keep synced when paused (e.g. dragging or scrubbing)
         if (!widget.dawState.isUserScrolling) {
