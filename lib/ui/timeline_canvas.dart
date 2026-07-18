@@ -66,7 +66,20 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     
         // 3. UPDATE the playhead state
         exactPlayheadTime.value = currentTime; // Now it knows what currentTime is!
-    
+
+        // --- UPDATE VU METERS ---
+        // 1. Update Synth (Note-Driven)
+        widget.dawState.channelLevels['synth']?.value = 
+            calculateSynthLevel(currentTime, widget.dawState.rawNotes) * widget.dawState.getChannelState('synth').volume;
+            
+        // 2. Update Audio Stems (RMS-Driven)
+        for (String stemName in widget.dawState.stemSources.keys) {
+           var state = widget.dawState.getChannelState(stemName);
+           widget.dawState.channelLevels[stemName]?.value = 
+               calculateAudioLevel(currentTime, state.rmsEnvelope) * state.volume;
+        }
+        // -----------------------------
+        
         // 4. SCROLL the canvas synchronously using your math
         if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
           double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
@@ -101,6 +114,29 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     //super.dispose();
   }
 
+  double calculateSynthLevel(double currentPlayheadSeconds, List<dynamic> rawNotes) {
+    for (var note in rawNotes) {
+      if (note['isDeleted'] == true || note['isMuted'] == true) continue;
+      
+      double start = note['start_time'];
+      double end = start + ((note['end_time'] - start) * (note['time_ratio'] ?? 1.0));
+      
+      if (currentPlayheadSeconds >= start && currentPlayheadSeconds <= end) {
+        return (note['amplitude'] ?? 0.8).toDouble();
+      }
+    }
+    return 0.0;
+  }
+
+  double calculateAudioLevel(double currentPlayheadSeconds, List<double> precomputedRmsEnvelope) {
+    if (precomputedRmsEnvelope.isEmpty) return 0.0;
+    int index = (currentPlayheadSeconds * 10).floor();
+    if (index >= 0 && index < precomputedRmsEnvelope.length) {
+      return precomputedRmsEnvelope[index];
+    }
+    return 0.0;
+  }
+  
   int get minMidi {
     switch (widget.dawState.activeEditableStem) {
       case 'drums': return 35; // GM Drum Map starts around here
