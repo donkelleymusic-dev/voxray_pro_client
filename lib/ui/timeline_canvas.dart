@@ -26,7 +26,8 @@ class TimelineCanvasWidget extends StatefulWidget {
 
 // 1. Add SingleTickerProviderStateMixin for the 60fps Game Loop
 class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with SingleTickerProviderStateMixin {
-  late Ticker ;
+  late Ticker;
+  late Ticker _audioSyncTicker;
   final ValueNotifier<double> exactPlayheadTime = ValueNotifier<double>(0.0);
 
   int? draggingNoteIndex;
