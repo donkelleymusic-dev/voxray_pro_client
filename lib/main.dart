@@ -584,13 +584,18 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         allStemsNotes = Map<String, List<dynamic>>.from(
             json.decode(undoStack.removeLast()));
         redoStackContinuous.add(json.encode(allStemsContinuousXray));
-        allStemsContinuousXray =
-            json.decode(undoStackContinuous.removeLast());
+        final Map<String, dynamic> decoded = json.decode(undoStackContinuous.removeLast());
+
+        allStemsContinuousXray = decoded.map((key, value) {
+          return MapEntry(key, List<dynamic>.from(value));
+        });
+        //allStemsContinuousXray =
+        //    json.decode(undoStackContinuous.removeLast());
       });
     }
   }
 
-  void _redo() {
+  void _redo_old() {
     if (redoStack.isNotEmpty) {
       setState(() {
         undoStack.add(json.encode(allStemsNotes));
@@ -599,6 +604,24 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         undoStackContinuous.add(json.encode(allStemsContinuousXray));
         allStemsContinuousXray =
             json.decode(redoStackContinuous.removeLast());
+      });
+    }
+  }
+  
+  void _redo() {
+    if (redoStack.isNotEmpty) {
+      setState(() {
+        undoStack.add(json.encode(allStemsNotes));
+        allStemsNotes = Map<String, List<dynamic>>.from(
+            json.decode(redoStack.removeLast()));
+  
+        undoStackContinuous.add(json.encode(allStemsContinuousXray));
+        
+        // Explicit cast to prevent TypeError
+        final Map<String, dynamic> decoded = json.decode(redoStackContinuous.removeLast());
+        allStemsContinuousXray = decoded.map((key, value) {
+          return MapEntry(key, List<dynamic>.from(value));
+        });
       });
     }
   }
