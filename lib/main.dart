@@ -488,18 +488,18 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
 
       if (!isUserScrolling) {
         // Calculate dynamic offset (fallback to 0 if clients aren't attached yet)
-        //double anchorOffset = horizontalScrollController.hasClients 
-        //    ? horizontalScrollController.position.viewportDimension * 0.35 
-        //    : 0.0;
+        double anchorOffset = horizontalScrollController.hasClients 
+            ? horizontalScrollController.position.viewportDimension * 0.35 
+            : 0.0;
             
-       // double targetX = (currentT * zoomX) - anchorOffset;
-        //if (targetX < 0) targetX = 0;
+        double targetX = (currentT * zoomX) - anchorOffset;
+        if (targetX < 0) targetX = 0;
         
-        //if (horizontalScrollController.hasClients &&
-        //    horizontalScrollController.position.maxScrollExtent > 0) {
-        //  horizontalScrollController.jumpTo(targetX.clamp(
-        //      0.0, horizontalScrollController.position.maxScrollExtent));
-        //}
+        if (horizontalScrollController.hasClients &&
+            horizontalScrollController.position.maxScrollExtent > 0) {
+          horizontalScrollController.jumpTo(targetX.clamp(
+              0.0, horizontalScrollController.position.maxScrollExtent));
+        }
 
 
         if (verticalScrollController.hasClients && rawNotes.isNotEmpty) {
