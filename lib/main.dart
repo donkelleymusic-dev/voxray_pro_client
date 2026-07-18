@@ -483,7 +483,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         currentT = loopStartBoundary;
       }
 
-      setState(() => currentPosition = currentT);
+      //setState(() => currentPosition = currentT); // old version, did 30fps which was gpu/cpu heavy.  now we use gaming hw timer.
+      currentPosition = currentT;
 
       if (!isUserScrolling) {
         // Calculate dynamic offset (fallback to 0 if clients aren't attached yet)
