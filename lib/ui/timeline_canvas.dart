@@ -297,14 +297,20 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           ValueListenableBuilder<double>(
                             valueListenable: exactPlayheadTime,
                             builder: (context, timeValue, child) {
+                              // 1. Calculate the exact pixel position
+                              double rawX = timeValue * widget.dawState.zoomX;
+                              
+                              // 2. QUANTIZATION: Round to the nearest integer pixel. 
+                              // This kills the jitter because fluctuations < 0.5 pixels are ignored.
+                              double snappedX = rawX.roundToDouble(); 
+                          
                               return Positioned(
-                                left: timeValue * widget.dawState.zoomX,
+                                left: snappedX,
                                 top: 0,
                                 bottom: 0,
                                 child: child!,
                               );
                             },
-                            // Caching the Container child here prevents standard layout rebuilds
                             child: Container(
                               width: 2,
                               color: Colors.redAccent.withOpacity(0.8),
