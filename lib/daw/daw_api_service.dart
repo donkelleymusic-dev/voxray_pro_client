@@ -1360,7 +1360,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   try {
     // 1. Ask the OS for the save location WITHOUT sending the bytes over the bridge
-    String? path = await FilePicker.platform.saveFileDialog(
+    String? path = await FilePicker.platform.saveFile(
       dialogTitle: 'Save VoxRay Project',
       fileName: '$defaultSaveName.vxp', 
       type: FileType.custom,
