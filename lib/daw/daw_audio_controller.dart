@@ -523,21 +523,6 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.filters.biquadResonantFilter.wet.value = 0.0;
       }
 
-      // ── MASTER EQ (Standard Biquad Filter) ──────────────────────────────
-      if (plugins.contains('EQNORES')) {
-        if (!SoLoud.instance.filters.biquadFilter.isActive) {
-          SoLoud.instance.filters.biquadFilter.activate();
-        }
-        
-        SoLoud.instance.filters.biquadFilter.wet.value = 1.0;
-        SoLoud.instance.filters.biquadFilter.type.value = 0; // Low Pass
-        
-        double targetFrequency = sliderToFrequency(state.eqCutoff);
-        SoLoud.instance.filters.biquadFilter.frequency.value = targetFrequency;
-      } else {
-        SoLoud.instance.filters.biquadFilter.wet.value = 0.0;
-      }
-
       // ── MASTER COMPRESSOR ────────────────────────────────────────────────
       if (plugins.contains('Compressor')) {
         if (!SoLoud.instance.filters.compressorFilter.isActive) {
