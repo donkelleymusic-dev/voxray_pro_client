@@ -21,12 +21,61 @@ class TimelineCanvasWidget extends StatefulWidget {
   State<TimelineCanvasWidget> createState() => _TimelineCanvasWidgetState();
 }
 
-class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
+// 1. Add SingleTickerProviderStateMixin for the 60fps Game Loop
+class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with SingleTickerProviderStateMixin {
+  late Ticker _audioSyncTicker;
+  final ValueNotifier<double> exactPlayheadTime = ValueNotifier<double>(0.0);
+
   int? draggingNoteIndex;
   double dragStartY = 0;
   int initialSemitoneShift = 0;
   int initialCentsShift = 0;
   int lastPlayedMidi = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    exactPlayheadTime.value = widget.dawState.currentPosition;
+    
+    // 2. Initialize the hardware-locked ticker to poll audio time directly
+    _audioSyncTicker = createTicker((elapsed) {
+      if (widget.dawState.isPlaying) {
+        bool foundTime = false;
+        // Priority 1: Master Bus
+        if (widget.dawState.masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(widget.dawState.masterHandle!)) {
+          exactPlayheadTime.value = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
+          foundTime = true;
+        } 
+        // Priority 2: Stem Bus
+        else if (widget.dawState.stemHandles.isNotEmpty) {
+          for (var handle in widget.dawState.stemHandles.values) {
+            if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+              exactPlayheadTime.value = SoLoud.instance.getPosition(handle).inMilliseconds / 1000.0;
+              foundTime = true;
+              break;
+            }
+          }
+        }
+        // Priority 3: Fallback to UI state if audio engine is busy/loading
+        if (!foundTime) {
+           exactPlayheadTime.value = widget.dawState.currentPosition;
+        }
+      } else {
+        // Keep synced when paused (e.g. dragging or scrubbing)
+        if (!widget.dawState.isUserScrolling) {
+          exactPlayheadTime.value = widget.dawState.currentPosition;
+        }
+      }
+    });
+    _audioSyncTicker.start();
+  }
+
+  @override
+  void dispose() {
+    _audioSyncTicker.dispose();
+    exactPlayheadTime.dispose();
+    super.dispose();
+  }
 
   int get minMidi {
     switch (widget.dawState.activeEditableStem) {
@@ -110,8 +159,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                   if (notification is UserScrollNotification) {
                     widget.dawState.isUserScrolling = notification.direction != ScrollDirection.idle;
                   } else if (notification is ScrollUpdateNotification) {
-                    // Trigger a repaint so the playhead visually moves
-                    setState(() {}); 
+                    
+                    // 3. REMOVED setState() TO STOP LATENCY LOOP
                     
                     if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
                       double viewportWidth = notification.metrics.viewportDimension;
@@ -137,17 +186,17 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                         }
                       }
                       
-                      // 1. Calculate the exact time and save it to a variable FIRST
                       double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
                       double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
                       
-                      // 2. Update the visual UI
-                      widget.dawState.setState(() {
-                        widget.dawState.currentPosition = clampedTime;
-                      });
+                      // Instantly update the visual UI via the fast Notifier
+                      exactPlayheadTime.value = clampedTime;
                       
-                      // 3. Update the audio engine using that shared variable!
+                      // Update the audio engine directly without triggering heavy DAWState rebuilds
                       widget.dawState.seekAllPlayers(clampedTime);
+                      
+                      // Silently sync the state variable for background processes
+                      widget.dawState.currentPosition = clampedTime;
                     }
                   }
                   return false;
@@ -223,28 +272,36 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> {
                       onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
                       child: Stack(
                         children: [
-                          CustomPaint(
-                            size: Size(timelineWidth, totalHeight),
-                            painter: AdvancedPianoRollPainter(
-                              notes: processedNotes, 
-                              continuousXray: widget.dawState.continuousXray,
-                              currentScrollX: currentScrollX,                 
-                              zoomX: widget.dawState.zoomX, 
-                              zoomY: widget.dawState.zoomY,
-                              minMidi: minMidi, maxMidi: maxMidi, 
-                              isXrayMode: widget.dawState.isXrayMode,
-                              isDrumsMode: isDrums,
-                              draggingNoteIndex: draggingNoteIndex, 
-                              initialSemitoneShift: initialSemitoneShift,
+                          // 4. Wrap CustomPaint in RepaintBoundary to cache the heavy vector graphics
+                          RepaintBoundary(
+                            child: CustomPaint(
+                              size: Size(timelineWidth, totalHeight),
+                              painter: AdvancedPianoRollPainter(
+                                notes: processedNotes, 
+                                continuousXray: widget.dawState.continuousXray,
+                                currentScrollX: currentScrollX,                 
+                                zoomX: widget.dawState.zoomX, 
+                                zoomY: widget.dawState.zoomY,
+                                minMidi: minMidi, maxMidi: maxMidi, 
+                                isXrayMode: widget.dawState.isXrayMode,
+                                isDrumsMode: isDrums,
+                                draggingNoteIndex: draggingNoteIndex, 
+                                initialSemitoneShift: initialSemitoneShift,
+                              ),
                             ),
                           ),
-                          // Moving Vertical Playhead (Dynamic Viewport Position)
-                          Positioned(
-                            // It naturally stays anchored to the 25% screen coordinate because 
-                            // the scrub math/audio ticker handles the scroll offset!
-                            left: widget.dawState.currentPosition * widget.dawState.zoomX,
-                            top: 0,
-                            bottom: 0,
+                          // 5. ValueListenableBuilder explicitly for the lightweight Playhead
+                          ValueListenableBuilder<double>(
+                            valueListenable: exactPlayheadTime,
+                            builder: (context, timeValue, child) {
+                              return Positioned(
+                                left: timeValue * widget.dawState.zoomX,
+                                top: 0,
+                                bottom: 0,
+                                child: child!,
+                              );
+                            },
+                            // Caching the Container child here prevents standard layout rebuilds
                             child: Container(
                               width: 2,
                               color: Colors.redAccent.withOpacity(0.8),
