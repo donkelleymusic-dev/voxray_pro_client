@@ -493,8 +493,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
     try {
       // ── MASTER REVERB ───────────────────────────────────────────────────
       if (plugins.contains('Reverb')) {
-        SoLoud.instance.filters.freeverbFilter.activate();
-        
+        if (!SoLoud.instance.filters.freeverbFilter.isActive) {
+          SoLoud.instance.filters.freeverbFilter.activate();
+        }
         double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
         // Global parameters are properties, not methods! (No parentheses)
         SoLoud.instance.filters.freeverbFilter.wet.value = safeMix;
@@ -505,7 +506,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       // ── MASTER EQ (Biquad Resonant Filter) ──────────────────────────────
       if (plugins.contains('EQ')) {
-        SoLoud.instance.filters.biquadResonantFilter.activate();
+        if (!SoLoud.instance.filters.biquadResonantFilter.isActive) {
+          SoLoud.instance.filters.biquadResonantFilter.activate();
+        }
         SoLoud.instance.filters.biquadResonantFilter.wet.value = 1.0;
         SoLoud.instance.filters.biquadResonantFilter.type.value = 0; // Low Pass
         
@@ -520,7 +523,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       // ── MASTER COMPRESSOR ────────────────────────────────────────────────
       if (plugins.contains('Compressor')) {
-        SoLoud.instance.filters.compressorFilter.activate();
+        if (!SoLoud.instance.filters.compressorFilter.isActive) {
+          SoLoud.instance.filters.compressorFilter.activate();
+        }
         SoLoud.instance.filters.compressorFilter.wet.value = 1.0;
         SoLoud.instance.filters.compressorFilter.threshold.value = state.compressorThreshold;
         SoLoud.instance.filters.compressorFilter.ratio.value = state.compressorRatio;
