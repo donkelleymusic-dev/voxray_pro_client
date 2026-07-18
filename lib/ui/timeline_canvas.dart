@@ -232,6 +232,11 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                     scrollDirection: Axis.horizontal,
                     child: GestureDetector(
                       onTapDown: (details) {
+                        print("Tap registered. Current DragMode: ${widget.dawState.currentDragMode}"); // Check the console
+                        if (widget.dawState.currentDragMode != DragMode.off) {
+                          print("TAP GUARD BLOCKED ACTION");
+                          return;
+                        }
                         if (widget.dawState.currentDragMode != DragMode.off) return; 
                         const double touchSlop = 24.0; 
                         for (int i = 0; i < processedNotes.length; i++) {
