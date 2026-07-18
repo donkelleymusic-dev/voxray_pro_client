@@ -417,7 +417,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       // ── REVERB ─────────────────────────────────────────────────────────────
       if (plugins.contains('Reverb')) {
         // Safety check: If the slider is at 0, bump it to 0.5 so it actually turns on!
-        //double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
+        double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
         
         source.filters.freeverbFilter.wet().value = safeMix;
         source.filters.freeverbFilter.roomSize().value = state.reverbRoomSize;
@@ -496,6 +496,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (!SoLoud.instance.filters.freeverbFilter.isActive) {
           SoLoud.instance.filters.freeverbFilter.activate();
         }
+        double safeMix = state.reverbMix;
         //double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
         // Global parameters are properties, not methods! (No parentheses)
         SoLoud.instance.filters.freeverbFilter.wet.value = safeMix;
@@ -505,10 +506,11 @@ mixin DawAudioController on VoxrayDAWStateBase {
       }
 
       // ── MASTER EQ (Biquad Resonant Filter) ──────────────────────────────
-      if (plugins.contains('EQRES')) {
+      if (plugins.contains('EQ')) {
         if (!SoLoud.instance.filters.biquadResonantFilter.isActive) {
           SoLoud.instance.filters.biquadResonantFilter.activate();
         }
+        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 1.5;
         SoLoud.instance.filters.biquadResonantFilter.wet.value = 1.0;
         SoLoud.instance.filters.biquadResonantFilter.type.value = 0; // Low Pass
         
@@ -522,7 +524,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       }
 
       // ── MASTER EQ (Standard Biquad Filter) ──────────────────────────────
-      if (plugins.contains('EQ')) {
+      if (plugins.contains('EQNORES')) {
         if (!SoLoud.instance.filters.biquadFilter.isActive) {
           SoLoud.instance.filters.biquadFilter.activate();
         }
