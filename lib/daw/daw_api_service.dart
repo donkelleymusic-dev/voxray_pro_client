@@ -1310,16 +1310,23 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> saveVoxrayProject() async {
+    logToSupabase('client saveVoxrayProject()');
     if (currentProjectPath == null || kIsWeb || currentProjectPath!.startsWith('content://')) {
-      await saveVoxrayProjectAs();
+      
+      logToSupabase('client saveVoxrayProject - currentProjectPath: ${currentProjectPath}, kIsWeb: ${kIsWeb}, currentProjectPath-startWith"content://" = ${currentProjectPath!.startsWith("content://")}');
+      await ();
       return;
     }
     final bytes = await packageProjectBytes();
     try {
+      logToSupabase('client saveVoxrayProject - try(await File(path.writeAsBytes({$bytes}))');
+      
       await File(currentProjectPath!).writeAsBytes(bytes);
       setState(() { hasBeenSaved = true; dirtyStems.clear(); });
       showSaveConfirmation('Project file successfully overwritten on disk.');
     } catch (e) {
+      
+      logToSupabase('client saveVoxrayProject - Overwrite failed: $e');
       showSaveConfirmation('Overwrite failed: $e');
     }
   }
