@@ -1338,8 +1338,8 @@ mixin DawApiService on VoxrayDAWStateBase {
         : (originalFileName.isNotEmpty ? originalFileName : projectName);
   
     try {
-      // Standard call relying on your existing file_picker import
-      String? path = await FilePicker.platform.saveFile(
+      // 1. Correct v11 API: Direct call on FilePicker, no '.platform', no 'bytes' passed
+      String? path = await FilePicker.saveFile(
         dialogTitle: 'Save VoxRay Project',
         fileName: '$defaultSaveName.vxp', 
         type: FileType.custom,
@@ -1347,7 +1347,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       );
   
       if (path != null && path.isNotEmpty) {
-        // Write the massive byte array directly to disk via Dart I/O
+        // 2. Write natively via Dart I/O to avoid the C++ plugin stack overflow
         final file = File(path);
         await file.writeAsBytes(bytes);
   
