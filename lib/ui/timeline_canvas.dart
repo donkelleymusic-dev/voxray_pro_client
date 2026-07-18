@@ -26,7 +26,7 @@ class TimelineCanvasWidget extends StatefulWidget {
 
 // 1. Add SingleTickerProviderStateMixin for the 60fps Game Loop
 class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with SingleTickerProviderStateMixin {
-  late Ticker _audioSyncTicker;
+  late Ticker ;
   final ValueNotifier<double> exactPlayheadTime = ValueNotifier<double>(0.0);
 
   int? draggingNoteIndex;
@@ -43,57 +43,55 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     // 2. Initialize the hardware-locked ticker to poll audio time directly
     _audioSyncTicker = createTicker((elapsed) {
       if (widget.dawState.isPlaying) {
+        
+        // 1. DECLARE the variable so the compiler knows what it is
+        double currentTime = widget.dawState.currentPosition;
         bool foundTime = false;
-        // Priority 1: Master Bus
+    
+        // 2. FETCH the high-res time from the audio engine
         if (widget.dawState.masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(widget.dawState.masterHandle!)) {
-          exactPlayheadTime.value = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
+          currentTime = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
           foundTime = true;
-        } 
-        // Priority 2: Stem Bus
-        else if (widget.dawState.stemHandles.isNotEmpty) {
+        } else if (widget.dawState.stemHandles.isNotEmpty) {
           for (var handle in widget.dawState.stemHandles.values) {
             if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
-              exactPlayheadTime.value = SoLoud.instance.getPosition(handle).inMilliseconds / 1000.0;
+              currentTime = SoLoud.instance.getPosition(handle).inMilliseconds / 1000.0;
               foundTime = true;
               break;
             }
           }
         }
-        // Priority 3: Fallback to UI state if audio engine is busy/loading
-        if (!foundTime) {
-           exactPlayheadTime.value = widget.dawState.currentPosition;
-        }
-
-        exactPlayheadTime.value = currentTime; // Updates the red line
-
-        if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
     
+        // 3. UPDATE the playhead state
+        exactPlayheadTime.value = currentTime; // Now it knows what currentTime is!
+    
+        // 4. SCROLL the canvas synchronously using your math
+        if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
           double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
-          
-          // CHANGE IS HERE: Use exactPlayheadTime.value instead of currentTime / currentT
-          double targetX = (exactPlayheadTime.value * widget.dawState.zoomX) - anchorOffset;
+          double targetX = (currentTime * widget.dawState.zoomX) - anchorOffset;
           
           if (targetX < 0) targetX = 0;
           
           if (widget.horizontalScrollController.position.maxScrollExtent > 0) {
-              widget.horizontalScrollController.jumpTo(
-                  targetX.clamp(0.0, widget.horizontalScrollController.position.maxScrollExtent)
-              );
+            widget.horizontalScrollController.jumpTo(
+              targetX.clamp(0.0, widget.horizontalScrollController.position.maxScrollExtent)
+            );
           }
-        }        
+        }
+    
       } else {
-        // Keep synced when paused (e.g. dragging or scrubbing)
+        // Keep things synced if playback is paused but the user is scrubbing
         if (!widget.dawState.isUserScrolling) {
           exactPlayheadTime.value = widget.dawState.currentPosition;
         }
       }
     });
-    _audioSyncTicker.start();
+    .start();
   }
 
   @override
   void dispose() {
-    _audioSyncTicker.dispose();
+    .dispose();
     exactPlayheadTime.dispose();
     super.dispose();
   }
