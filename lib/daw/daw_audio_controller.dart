@@ -417,7 +417,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       // ── REVERB ─────────────────────────────────────────────────────────────
       if (plugins.contains('Reverb')) {
         // Safety check: If the slider is at 0, bump it to 0.5 so it actually turns on!
-        double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
+        //double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
         
         source.filters.freeverbFilter.wet().value = safeMix;
         source.filters.freeverbFilter.roomSize().value = state.reverbRoomSize;
@@ -496,7 +496,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (!SoLoud.instance.filters.freeverbFilter.isActive) {
           SoLoud.instance.filters.freeverbFilter.activate();
         }
-        double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
+        //double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
         // Global parameters are properties, not methods! (No parentheses)
         SoLoud.instance.filters.freeverbFilter.wet.value = safeMix;
         SoLoud.instance.filters.freeverbFilter.roomSize.value = state.reverbRoomSize;
@@ -505,7 +505,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       }
 
       // ── MASTER EQ (Biquad Resonant Filter) ──────────────────────────────
-      if (plugins.contains('EQ')) {
+      if (plugins.contains('EQRES')) {
         if (!SoLoud.instance.filters.biquadResonantFilter.isActive) {
           SoLoud.instance.filters.biquadResonantFilter.activate();
         }
@@ -519,6 +519,21 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.filters.biquadResonantFilter.frequency.value = targetFrequency;
       } else {
         SoLoud.instance.filters.biquadResonantFilter.wet.value = 0.0;
+      }
+
+      // ── MASTER EQ (Standard Biquad Filter) ──────────────────────────────
+      if (plugins.contains('EQ')) {
+        if (!SoLoud.instance.filters.biquadFilter.isActive) {
+          SoLoud.instance.filters.biquadFilter.activate();
+        }
+        
+        SoLoud.instance.filters.biquadFilter.wet.value = 1.0;
+        SoLoud.instance.filters.biquadFilter.type.value = 0; // Low Pass
+        
+        double targetFrequency = sliderToFrequency(state.eqCutoff);
+        SoLoud.instance.filters.biquadFilter.frequency.value = targetFrequency;
+      } else {
+        SoLoud.instance.filters.biquadFilter.wet.value = 0.0;
       }
 
       // ── MASTER COMPRESSOR ────────────────────────────────────────────────
