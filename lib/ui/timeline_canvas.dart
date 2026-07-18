@@ -4,6 +4,9 @@ import 'note_inspector.dart';
 import 'package:flutter/rendering.dart'; 
 import 'dart:math' as math;
 import '../models/channel_state.dart';
+// imports for new hardware gaming timer
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 
 class TimelineCanvasWidget extends StatefulWidget {
   final VoxrayDAWState dawState;
