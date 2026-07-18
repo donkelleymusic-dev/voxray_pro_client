@@ -99,6 +99,72 @@ Future<void> main() async {
   // Notice: The duplicate runApp() that used to be down here is now completely removed!
 }
 
+// =========================================================================
+// HARDWARE OPTIMIZED VU METER
+// =========================================================================
+
+class ChannelVuMeter extends StatelessWidget {
+  final double level;
+  
+  const ChannelVuMeter({Key? key, required this.level}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: const Size(48, 6), // Matches your exact original dimensions
+        painter: _HorizontalVuMeterPainter(level: level),
+      ),
+    );
+  }
+}
+
+class _HorizontalVuMeterPainter extends CustomPainter {
+  final double level;
+  
+  _HorizontalVuMeterPainter({required this.level});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const int segments = 8; // 8 blocks fits nicely into 48 pixels
+    final double segmentWidth = (size.width / segments) - 1; 
+    
+    // Scale level logarithmically for better visual feedback, then clamp
+    final double logLevel = math.log(level * 9.0 + 1.0) / math.log(10.0);
+    final int activeSegments = (logLevel * segments).ceil().clamp(0, segments);
+
+    for (int i = 0; i < segments; i++) {
+      final double x = i * (segmentWidth + 1);
+      final Rect rect = Rect.fromLTWH(x, 0, segmentWidth, size.height);
+
+      Color segmentColor;
+      if (i >= segments - 1) {
+        segmentColor = Colors.redAccent; // Clipping
+      } else if (i >= segments - 3) {
+        segmentColor = Colors.amberAccent; // Warning zone
+      } else {
+        segmentColor = Colors.greenAccent; // Safe zone
+      }
+
+      // Dim inactive segments heavily to look like unlit LEDs
+      if (i >= activeSegments) {
+        segmentColor = segmentColor.withOpacity(0.15);
+      }
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(1.5)),
+        Paint()..color = segmentColor,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HorizontalVuMeterPainter oldDelegate) {
+    // Only rebuild the widget if the discrete number of active blocks changes
+    return (oldDelegate.level * 8).ceil() != (level * 8).ceil();
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TOP-LEVEL WIDGETS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,6 +289,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     'master': ChannelState(), 'synth': ChannelState(),
     'vocals': ChannelState(), 'instrumental': ChannelState(),
   };
+
+  final Map<String, ValueNotifier<double>> channelLevels = {};
 
   // ── Scroll controllers ────────────────────────────────────────────────────
   final ScrollController horizontalScrollController = ScrollController();
@@ -377,6 +445,12 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
       }
       mixerState[key] = newState;
     }
+
+    // Auto-initialize the fast UI notifier if missing
+    if (!channelLevels.containsKey(key)) {
+      channelLevels[key] = ValueNotifier<double>(0.0);
+    }
+    
     return mixerState[key]!;
   }
 
@@ -993,25 +1067,14 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                         overflow: TextOverflow.ellipsis),
                   ),
 
-                  // VU meter
-                  Container(
-                    height: 6, width: 48,
-                    decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(3)),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: simulatedMeterValue.clamp(0.0, 1.0),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                                colors: [Colors.green, Colors.yellow, Colors.red]),
-                          ),
-                        ),
-                      ),
-                    ),
+                  // 🎚️ NEW REACTIVE VU METER
+                  ValueListenableBuilder<double>(
+                    valueListenable: channelLevels[key]!,
+                    builder: (context, currentLevel, child) {
+                      // Force visual to 0 if track is paused or muted
+                      double displayLevel = (isPlaying && isAudible && !state.isMuted) ? currentLevel : 0.0;
+                      return ChannelVuMeter(level: displayLevel);
+                    },
                   ),
                   const SizedBox(height: 8),
 
