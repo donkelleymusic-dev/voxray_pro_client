@@ -36,6 +36,9 @@ class ChannelState {
   double compressorThreshold; // e.g. -24.0 dBFS
   double compressorRatio;     // e.g. 3.5:1
 
+  // Pre-calculated envelope for the VU meter
+  List<double> rmsEnvelope;
+
   ChannelState({
     this.volume = 1.0,
     this.pan = 0.0,
@@ -53,6 +56,7 @@ class ChannelState {
     this.eqHighGain = 0.0,
     this.compressorThreshold = -24.0,
     this.compressorRatio = 3.5,
+    this.rmsEnvelope = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -73,6 +77,7 @@ class ChannelState {
     // Consistent camelCase for UI <-> Python JSON payload maps
     'compressorThreshold': compressorThreshold,
     'compressorRatio': compressorRatio,
+    'rmsEnvelope': rmsEnvelope,
   };
 
   factory ChannelState.fromJson(Map<String, dynamic> json) {
@@ -96,6 +101,7 @@ class ChannelState {
       // Handle fallback keys gracefully in case older offline projects are loaded
       compressorThreshold: (json['compressorThreshold'] ?? json['compressor_threshold'] ?? -24.0).toDouble(),
       compressorRatio: (json['compressorRatio'] ?? json['compressor_ratio'] ?? 3.5).toDouble(),
+      rmsEnvelope: (json['rmsEnvelope'] as List<dynamic>?)?.map((e) => e.toDouble()).toList() ?? [],
     );
   }
 
@@ -116,6 +122,7 @@ class ChannelState {
     double? eqHighGain,
     double? compressorThreshold,
     double? compressorRatio,
+    List<double>? rmsEnvelope,
   }) {
     return ChannelState(
       volume: volume ?? this.volume,
@@ -134,6 +141,7 @@ class ChannelState {
       eqHighGain: eqHighGain ?? this.eqHighGain,
       compressorThreshold: compressorThreshold ?? this.compressorThreshold,
       compressorRatio: compressorRatio ?? this.compressorRatio,
+      rmsEnvelope: rmsEnvelope ?? this.rmsEnvelope,
     );
   }
 }
