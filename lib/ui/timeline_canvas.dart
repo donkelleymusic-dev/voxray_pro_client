@@ -129,9 +129,18 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
   }
 
   double calculateAudioLevel(double currentPlayheadSeconds, List<double> precomputedRmsEnvelope) {
-    if (precomputedRmsEnvelope.isEmpty) return 0.0;
+    if (precomputedRmsEnvelope.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('calculateAudioLevel error rmsenvelope empty'), backgroundColor: Colors.red),
+      );
+      return 0.0;
+    }
     int index = (currentPlayheadSeconds * 10).floor();
     if (index >= 0 && index < precomputedRmsEnvelope.length) {
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('calculateAudioLevel precomputedRmsEnvelope: $precomputedRmsEnvelope[index]'), backgroundColor: Colors.green),
+      );
       return precomputedRmsEnvelope[index];
     }
     return 0.0;
