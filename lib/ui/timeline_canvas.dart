@@ -88,14 +88,17 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         }
       }
     });
-    .start();
+    _audioSyncTicker.start();
+    //.start();
   }
 
   @override
   void dispose() {
-    .dispose();
-    exactPlayheadTime.dispose();
+    _audioSyncTicker.dispose(); 
     super.dispose();
+    //.dispose();
+    //exactPlayheadTime.dispose();
+    //super.dispose();
   }
 
   int get minMidi {
