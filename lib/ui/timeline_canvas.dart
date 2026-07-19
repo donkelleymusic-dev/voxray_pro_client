@@ -64,7 +64,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
           }
         }
         
-        widget.dawState.logToSupabase("DEBUG: timeline_canvas.dart createTicker high-res time fetch. foundTime = ${foundTime}");
+        //widget.dawState.logToSupabase("DEBUG: timeline_canvas.dart createTicker high-res time fetch. foundTime = ${foundTime}");
     
         // 3. UPDATE the playhead state
         exactPlayheadTime.value = currentTime; // Now it knows what currentTime is!
@@ -79,7 +79,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
            var state = widget.dawState.getChannelState(stemName);
            widget.dawState.channelLevels[stemName]?.value = 
                calculateAudioLevel(currentTime, state.rmsEnvelope) * state.volume;
-          widget.dawState.logToSupabase("DEBUG: timeline_canvas.dart Update Audio Stem: ${stemName}, value: ${widget.dawState.channelLevels[stemName]?.value} foundTime");
+          widget.dawState.logToSupabase("DEBUG: timeline_canvas.dart Update Audio Stem: ${stemName}, value: ${calculateAudioLevel(currentTime, state.rmsEnvelope) * state.volume} foundTime");
         }
         // -----------------------------
         
