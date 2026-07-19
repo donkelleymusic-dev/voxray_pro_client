@@ -282,35 +282,52 @@ mixin DawApiService on VoxrayDAWStateBase {
         ..fields['instruments_json']  = jsonEncode(targetStemsSelection.toList())
         ..fields['upload_type']       = uploadOptions['type']!
         ..fields['stem_target']       = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'none'
-        ..fields['acoustic_profile']  = acousticProfile // <-- NEW: Send the profile to the backend
+        ..fields['acoustic_profile']  = acousticProfile 
         ..fields['is_test_mode']      = isTestModeActive.toString()
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!,
             filename: result.files.single.name));
       
-      // Attach the Auth Token!
       final session = Supabase.instance.client.auth.currentSession;
       if (session != null) {
         request.fields['access_token'] = session.accessToken;
       }
       
-      // ADDED 60-SECOND TIMEOUT TO PREVENT SILENT FRONTEND FREEZES
+      // =========================================================
+      // 1. FREE THE EVENT LOOP: Pause the 60fps UI ticker
+      // =========================================================
+      setState(() { isUploading = true; });
+
       var response = await request.send().timeout(const Duration(seconds: 240), onTimeout: () {
         throw TimeoutException('File upload timed out (4 min max). The server took too long to respond.');
       });
+      
+      // =========================================================
+      // 2. RESTORE THE EVENT LOOP: The upload finished safely
+      // =========================================================
+      setState(() { isUploading = false; });
+
       if (response.statusCode != 200) throw Exception('Server rejected file upload');
 
       var data = json.decode(await response.stream.bytesToString());
       currentTaskId = data['task_id'];
       currentJobId = data['job_id'];
 
-      // --- NEW: Poll the server regardless of whether it's a Mix or a Stem ---
       String targetToPoll = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'mix';
       await registerActiveJob(currentJobId!, currentTaskId!, 'INITIAL_STEM_ANALYSIS', targetToPoll);
       pollForStemData(currentJobId!, targetToPoll);
 
     } catch (e) {
       logToSupabase('Initialization Failed: $e');
-      setState(() { isLoading = false; processingMessage = 'Failed to start.'; });
+      
+      // =========================================================
+      // 3. FAILSAFE: Always restore the loop if the upload crashes
+      // =========================================================
+      setState(() { 
+        isUploading = false; 
+        isLoading = false; 
+        processingMessage = 'Failed to start.'; 
+      });
+      
       showSaveConfirmation('Initialization Failed: $e');
     }
   }
@@ -364,13 +381,31 @@ mixin DawApiService on VoxrayDAWStateBase {
         ..fields['instruments_json'] = jsonEncode([chosenIdentity])
         ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: result.files.single.name));
 
+      // =========================================================
+      // 1. FREE THE EVENT LOOP
+      // =========================================================
+      setState(() { isUploading = true; });
+
       var res  = await req.send();
+      
+      // =========================================================
+      // 2. RESTORE THE EVENT LOOP
+      // =========================================================
+      setState(() { isUploading = false; });
+
       var data = jsonDecode(await res.stream.bytesToString());
       currentTaskId = data['task_id'];
       currentJobId  = data['job_id'];
       pollForStemData(currentJobId!, chosenIdentity);
     } catch (e) {
-      setState(() { isLoading = false; });
+      
+      // =========================================================
+      // 3. FAILSAFE RESTORE
+      // =========================================================
+      setState(() { 
+        isUploading = false; 
+        isLoading = false; 
+      });
       showSaveConfirmation('Import matrix generation crashed: $e');
     }
   }
