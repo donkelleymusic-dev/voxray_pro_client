@@ -136,16 +136,16 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
       return 0.0;
     } else {
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('calculateAudioLevel error rmsEnvelope NOT empty'), backgroundColor: Colors.cyan),
-      );
+      //ScaffoldMessenger.of(context).showSnackBar(
+      //  SnackBar(content: Text('calculateAudioLevel error rmsEnvelope NOT empty'), backgroundColor: Colors.cyan),
+      )//;
     }
     int index = (currentPlayheadSeconds * 10).floor();
     if (index >= 0 && index < precomputedrmsEnvelope.length) {
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('calculateAudioLevel precomputedrmsEnvelope: $precomputedrmsEnvelope[index]'), backgroundColor: Colors.green),
-      );
+      //ScaffoldMessenger.of(context).showSnackBar(
+      //  SnackBar(content: Text('calculateAudioLevel precomputedrmsEnvelope: $precomputedrmsEnvelope[index]'), backgroundColor: Colors.green),
+      //);
       return precomputedrmsEnvelope[index];
     }
     return 0.0;
