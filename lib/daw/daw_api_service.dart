@@ -80,6 +80,27 @@ mixin DawApiService on VoxrayDAWStateBase {
   // UPLOAD & ANALYSIS
   // =========================================================================
 
+  Future<void> testUploadSpeed(Uint8List bytes, String filename) async {
+    print('🧪 STARTING HTTPBIN UPLOAD TEST...');
+    final stopwatch = Stopwatch()..start();
+    
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('https://httpbin.org/post'))
+        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+        
+      var response = await request.send();
+      stopwatch.stop();
+      
+      print('🧪 TEST COMPLETE!');
+      print('🧪 Status Code: ${response.statusCode}');
+      print('🧪 Total Time: ${stopwatch.elapsedMilliseconds} ms (${stopwatch.elapsed.inSeconds} seconds)');
+      
+    } catch (e) {
+      stopwatch.stop();
+      print('🧪 TEST CRASHED after ${stopwatch.elapsed.inSeconds} seconds: $e');
+    }
+  }
+  
   Future<Map<String, String>?> showUploadTypeDialog(BuildContext context) {
     return showDialog<Map<String, String>>(
       context: context,
@@ -226,6 +247,11 @@ mixin DawApiService on VoxrayDAWStateBase {
       audioBytes = await File(result.files.single.path!).readAsBytes();
     } else return;
 
+    // --- TEMPORARY INJECTION ---
+    await testUploadSpeed(audioBytes, result.files.single.name);
+    return; // Stop here, don't run the rest of the DAW logic yet
+    // ---------------------------
+    
     setState(() {
       isLoading          = true;
       processingProgress = 0.0;
