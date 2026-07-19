@@ -433,6 +433,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
               if (result['stem_rms_data'] != null) {
                 logToSupabase("DEBUG: Envelope received! Length: ${result['stem_rms_data'].length}");
+                logToSupabase("DEBUG: result['stem_rms_data']: ${logToSupabase("}");
               } else {
                 logToSupabase("DEBUG: CRITICAL: No stem_rms_data found in server response.");
               }
