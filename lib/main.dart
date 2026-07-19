@@ -301,6 +301,9 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   Map<String, List<dynamic>> allStemsNotes        = {};
   Map<String, List<dynamic>> allStemsContinuousXray = {};
   String activeEditableStem = '';
+
+  // get control over 60fps updates while doing file uploading:
+  bool isUploading = false;
   
   // ── Global Log Multiplexer ──────────────────────────────────────────────
   String getPlatformString() {
