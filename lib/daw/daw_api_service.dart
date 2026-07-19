@@ -253,8 +253,8 @@ mixin DawApiService on VoxrayDAWStateBase {
     } else return;
 
     // --- TEMPORARY INJECTION ---
-    await testUploadSpeed(audioBytes, result.files.single.name);
-    return; // Stop here, don't run the rest of the DAW logic yet
+    //await testUploadSpeed(audioBytes, result.files.single.name);
+    //return; // Stop here, don't run the rest of the DAW logic yet
     // ---------------------------
     
     setState(() {
