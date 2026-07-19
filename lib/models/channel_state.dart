@@ -37,7 +37,7 @@ class ChannelState {
   double compressorRatio;     // e.g. 3.5:1
 
   // Pre-calculated envelope for the VU meter
-  List<double> stem_rms_data;
+  List<double> rmsEnvelope;
 
   ChannelState({
     this.volume = 1.0,
@@ -56,7 +56,7 @@ class ChannelState {
     this.eqHighGain = 0.0,
     this.compressorThreshold = -24.0,
     this.compressorRatio = 3.5,
-    this.stem_rms_data = const [],
+    this.rmsEnvelope = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -77,7 +77,7 @@ class ChannelState {
     // Consistent camelCase for UI <-> Python JSON payload maps
     'compressorThreshold': compressorThreshold,
     'compressorRatio': compressorRatio,
-    'stem_rms_data': stem_rms_data,
+    'rmsEnvelope': rmsEnvelope,
   };
 
   factory ChannelState.fromJson(Map<String, dynamic> json) {
@@ -101,8 +101,8 @@ class ChannelState {
       // Handle fallback keys gracefully in case older offline projects are loaded
       compressorThreshold: (json['compressorThreshold'] ?? json['compressor_threshold'] ?? -24.0).toDouble(),
       compressorRatio: (json['compressorRatio'] ?? json['compressor_ratio'] ?? 3.5).toDouble(),
-      //stem_rms_data: (json['stem_rms_data'] as List<dynamic>?)?.map((e) => e.toDouble()).toList() ?? [],
-      stem_rms_data: (json['stem_rms_data'] as List<dynamic>?)?.map<double>((e) => (e as num).toDouble()).toList() ?? <double>[],
+      //rmsEnvelope: (json['rmsEnvelope'] as List<dynamic>?)?.map((e) => e.toDouble()).toList() ?? [],
+      rmsEnvelope: (json['rmsEnvelope'] as List<dynamic>?)?.map<double>((e) => (e as num).toDouble()).toList() ?? <double>[],
     );
   }
 
@@ -123,7 +123,7 @@ class ChannelState {
     double? eqHighGain,
     double? compressorThreshold,
     double? compressorRatio,
-    List<double>? stem_rms_data,
+    List<double>? rmsEnvelope,
   }) {
     return ChannelState(
       volume: volume ?? this.volume,
@@ -142,7 +142,7 @@ class ChannelState {
       eqHighGain: eqHighGain ?? this.eqHighGain,
       compressorThreshold: compressorThreshold ?? this.compressorThreshold,
       compressorRatio: compressorRatio ?? this.compressorRatio,
-      stem_rms_data: stem_rms_data ?? this.stem_rms_data,
+      rmsEnvelope: rmsEnvelope ?? this.rmsEnvelope,
     );
   }
 }
