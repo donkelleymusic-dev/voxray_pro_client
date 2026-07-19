@@ -78,8 +78,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         for (String stemName in widget.dawState.stemSources.keys) {
            var state = widget.dawState.getChannelState(stemName);
            widget.dawState.channelLevels[stemName]?.value = 
-               calculateAudioLevel(currentTime, state.stem_rms_data) * state.volume;
-          //widget.dawState.logToSupabase("DEBUG: timeline_canvas.dart Update Audio Stem: ${stemName}, value: ${calculateAudioLevel(currentTime, state.stem_rms_data) * state.volume} foundTime");
+               calculateAudioLevel(currentTime, state.rmsEnvelope) * state.volume;
+          //widget.dawState.logToSupabase("DEBUG: timeline_canvas.dart Update Audio Stem: ${stemName}, value: ${calculateAudioLevel(currentTime, state.rmsEnvelope) * state.volume} foundTime");
         }
         // -----------------------------
         
@@ -131,22 +131,22 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     return 0.0;
   }
 
-  double calculateAudioLevel(double currentPlayheadSeconds, List<double> precomputedstem_rms_data) {
-    if (precomputedstem_rms_data.isEmpty) {
+  double calculateAudioLevel(double currentPlayheadSeconds, List<double> precomputedrmsEnvelope) {
+    if (precomputedrmsEnvelope.isEmpty) {
       return 0.0;
     } else {
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('calculateAudioLevel error stem_rms_data NOT empty'), backgroundColor: Colors.cyan),
+        SnackBar(content: Text('calculateAudioLevel error rmsEnvelope NOT empty'), backgroundColor: Colors.cyan),
       );
     }
     int index = (currentPlayheadSeconds * 10).floor();
-    if (index >= 0 && index < precomputedstem_rms_data.length) {
+    if (index >= 0 && index < precomputedrmsEnvelope.length) {
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('calculateAudioLevel precomputedstem_rms_data: $precomputedstem_rms_data[index]'), backgroundColor: Colors.green),
+        SnackBar(content: Text('calculateAudioLevel precomputedrmsEnvelope: $precomputedrmsEnvelope[index]'), backgroundColor: Colors.green),
       );
-      return precomputedstem_rms_data[index];
+      return precomputedrmsEnvelope[index];
     }
     return 0.0;
   }
