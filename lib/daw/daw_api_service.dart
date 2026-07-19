@@ -81,6 +81,8 @@ mixin DawApiService on VoxrayDAWStateBase {
   // =========================================================================
 
   Future<void> testUploadSpeed(Uint8List bytes, String filename) async {
+    
+    logToSupabase('STARTING HTTPBIN UPLOAD TEST...');
     processingMessage = '🧪 STARTING HTTPBIN UPLOAD TEST...';
     
     final stopwatch = Stopwatch()..start();
@@ -92,12 +94,14 @@ mixin DawApiService on VoxrayDAWStateBase {
       var response = await request.send();
       stopwatch.stop();
       
+      logToSupabase('TEST COMPLETE! STATUS: ${response.statusCode}, TIME: ${stopwatch.elapsedMilliseconds} ms (${stopwatch.elapsed.inSeconds} seconds)');
       processingMessage = '🧪 TEST COMPLETE!';
       processingMessage = '🧪 Status Code: ${response.statusCode}';
       processingMessage = '🧪 Total Time: ${stopwatch.elapsedMilliseconds} ms (${stopwatch.elapsed.inSeconds} seconds)';
       
     } catch (e) {
       stopwatch.stop();
+      logToSupabase('TEST CRASHED after ${stopwatch.elapsed.inSeconds} seconds: $e');
       processingMessage = '🧪 TEST CRASHED after ${stopwatch.elapsed.inSeconds} seconds: $e';
     }
   }
