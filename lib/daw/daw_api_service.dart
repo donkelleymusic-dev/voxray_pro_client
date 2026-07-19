@@ -432,8 +432,17 @@ mixin DawApiService on VoxrayDAWStateBase {
               }
 
               if (result['stem_rms_data'] != null) {
-                logToSupabase("DEBUG: Envelope received! Length: ${result['stem_rms_data'].length}");
-                logToSupabase("DEBUG: result['stem_rms_data']: ${logToSupabase("}");
+                Map<String, dynamic> envelopes = result['stem_rms_data'];
+                logToSupabase("DEBUG: Envelope dictionary received with ${envelopes.length} stems.");
+                
+                for (String stemName in envelopes.keys) {
+                   var state = getChannelState(stemName);
+                   // Convert the JSON list to a strict List<double> and assign it!
+                   state.rmsEnvelope = (envelopes[stemName] as List).map<double>((e) => (e as num).toDouble()).toList();
+                   
+                   // This will tell you exactly how many 10ms frames of data were generated for the track
+                   logToSupabase("DEBUG: Successfully assigned ${state.rmsEnvelope.length} RMS frames to track: $stemName");
+                }
               } else {
                 logToSupabase("DEBUG: CRITICAL: No stem_rms_data found in server response.");
               }
