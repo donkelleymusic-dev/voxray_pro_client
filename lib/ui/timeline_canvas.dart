@@ -44,6 +44,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     
     // 2. Initialize the hardware-locked ticker to poll audio time directly
     _audioSyncTicker = createTicker((elapsed) {
+
+      if (widget.dawState.isUploading) return; // do nothing but upload while uploading!
+      
       if (widget.dawState.isPlaying) {
         
         // 1. DECLARE the variable so the compiler knows what it is
