@@ -432,9 +432,9 @@ mixin DawApiService on VoxrayDAWStateBase {
               }
 
               if (result['rms_envelope'] != null) {
-                widget.dawState.logToSupabase("DEBUG: Envelope received! Length: ${result['rms_envelope'].length}");
+                logToSupabase("DEBUG: Envelope received! Length: ${result['rms_envelope'].length}");
               } else {
-                widget.dawState.logToSupabase("DEBUG: CRITICAL: No RMS envelope found in server response.");
+                logToSupabase("DEBUG: CRITICAL: No RMS envelope found in server response.");
               }
               
               double newDuration = (result['duration'] ?? songDuration).toDouble();
