@@ -431,6 +431,12 @@ mixin DawApiService on VoxrayDAWStateBase {
                  processingMessage = 'Downloading audio stems...';
               }
 
+              if (result['rms_envelope'] != null) {
+                widget.dawState.logToSupabase("DEBUG: Envelope received! Length: ${result['rms_envelope'].length}");
+              } else {
+                widget.dawState.logToSupabase("DEBUG: CRITICAL: No RMS envelope found in server response.");
+              }
+              
               double newDuration = (result['duration'] ?? songDuration).toDouble();
               if (newDuration > 0) {
                 songDuration    = newDuration;
