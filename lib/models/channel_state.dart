@@ -101,7 +101,7 @@ class ChannelState {
       // Handle fallback keys gracefully in case older offline projects are loaded
       compressorThreshold: (json['compressorThreshold'] ?? json['compressor_threshold'] ?? -24.0).toDouble(),
       compressorRatio: (json['compressorRatio'] ?? json['compressor_ratio'] ?? 3.5).toDouble(),
-      //rmsEnvelope: (json['rmsEnvelope'] as List<dynamic>?)?.map((e) => e.toDouble()).toList() ?? [],
+      //stem_rms_data: (json['stem_rms_data'] as List<dynamic>?)?.map((e) => e.toDouble()).toList() ?? [],
       stem_rms_data: (json['stem_rms_data'] as List<dynamic>?)?.map<double>((e) => (e as num).toDouble()).toList() ?? <double>[],
     );
   }
