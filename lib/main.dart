@@ -230,37 +230,32 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
     
   void resetMixerToDefaults() {
     setState(() {
-      // 1. Reset standard fixed channels safely using your mixerState map
+      // 1. Reset core channels using your built-in getChannelState helper
       List<String> coreChannels = ['master', 'original', 'synth'];
       for (String stem in coreChannels) {
-        if (mixerState.containsKey(stem)) {
-          final state = mixerState[stem]!;
-          state.volume = 0.8;
-          state.pan = 0.0;
-          state.plugin1 = 'None';
-          state.plugin2 = 'None';
-          state.plugin3 = 'None';
-          state.plugin4 = 'None';
-          
-          // Mute synth by default
-          state.isMuted = (stem == 'synth');
-        }
+        final state = getChannelState(stem);
+        state.volume = 0.8;
+        state.pan = 0.0;
+        state.plugin1 = 'None';
+        state.plugin2 = 'None';
+        state.plugin3 = 'None';
+        state.plugin4 = 'None';
+        state.isMuted = (stem == 'synth'); // Mute synth by default
       }
 
-      // 2. Reset all active stems from your selection list
-      for (String stem in targetStemsSelection) {
-        if (mixerState.containsKey(stem)) {
-          final state = mixerState[stem]!;
-          state.volume = 0.8;
-          state.pan = 0.0;
-          state.plugin1 = 'None';
-          state.plugin2 = 'None';
-          state.plugin3 = 'None';
-          state.plugin4 = 'None';
-          
-          // Automatically mute INSTRUMENTAL by default
-          state.isMuted = (stem == 'instrumental');
-        }
+      // 2. Reset any active stems if stemSources/popStems is available in this scope
+      // (Using stemSources.keys which you used in the Meter Bridge)
+      for (String stem in stemSources.keys) {
+        final state = getChannelState(stem);
+        state.volume = 0.8;
+        state.pan = 0.0;
+        state.plugin1 = 'None';
+        state.plugin2 = 'None';
+        state.plugin3 = 'None';
+        state.plugin4 = 'None';
+        
+        // Mute INSTRUMENTAL by default
+        state.isMuted = (stem == 'instrumental');
       }
     });
   }
