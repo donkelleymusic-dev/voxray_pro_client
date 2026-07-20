@@ -65,6 +65,9 @@ import 'screens/account_settings_screen.dart';
 import 'screens/about_info_screen.dart';
 import 'screens/feedback_screen.dart';
 
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:http/http.dart' as http;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTRY POINT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1842,7 +1845,121 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   // DOSSIER (in-app) DIALOG
   // =========================================================================
 
-  void _showDossier() {
+  // =========================================================================
+  // DOSSIER (in-app) DIALOG
+  // =========================================================================
+
+  Future<void> _showDossier() async {
+    if (rawNotes.isEmpty || currentTaskId == null) {
+      _showSaveConfirmation('No pitch data to analyze. Please process a stem first.');
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+      processingMessage = 'Compiling Forensic Dossier...';
+    });
+
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'));
+      request.fields['task_id'] = currentTaskId!;
+      request.fields['session_meta'] = jsonEncode({
+        'filename': originalFileName,
+        'duration': songDuration,
+        'stem_target': activeEditableStem.isNotEmpty ? activeEditableStem : 'vocals',
+        'xray_enabled': isXrayMode,
+        'version': '1.5.0'
+      });
+      request.fields['notes_manifest'] = jsonEncode(rawNotes);
+
+      final streamedResponse = await request.send();
+      final responseData = await streamedResponse.stream.bytesToString();
+      
+      if (streamedResponse.statusCode == 200) {
+        final decoded = jsonDecode(responseData);
+        if (decoded['status'] == 'success') {
+          final markdownData = decoded['report_md'] ?? '# Error\nMarkdown payload missing from server.';
+          if (mounted) _showDossierModal(context, markdownData);
+        } else {
+          _showSaveConfirmation('Failed to generate dossier.');
+        }
+      } else {
+        _showSaveConfirmation('Server error: ${streamedResponse.statusCode}');
+      }
+    } catch (e) {
+      _showSaveConfirmation('Network error generating dossier: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showDossierModal(BuildContext context, String markdownData) {
+    showModalBottomSheet(
+      context: context, 
+      isScrollControlled: true, 
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.85, 
+        minChildSize: 0.4, 
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF161616), 
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)), 
+            border: Border.all(color: const Color(0xFF333333))
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, 
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+                children: [
+                  const Flexible(
+                    child: Row(children: [
+                      Icon(Icons.shield_outlined, color: Color(0xFF00E5FF)), 
+                      SizedBox(width: 12), 
+                      Expanded(
+                        child: Text(
+                          'FORENSIC INTEGRITY DOSSIER', 
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white), 
+                          overflow: TextOverflow.ellipsis
+                        )
+                      )
+                    ])
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white54), 
+                    onPressed: () => Navigator.pop(context)
+                  ),
+                ]
+              ),
+              const Divider(color: Color(0xFF333333), height: 24),
+              Expanded(
+                child: Markdown(
+                  controller: scrollController, 
+                  data: markdownData, 
+                  selectable: true, 
+                  styleSheet: MarkdownStyleSheet(
+                    h1: const TextStyle(color: Color(0xFF00E5FF), fontSize: 20, fontWeight: FontWeight.bold), 
+                    h2: const TextStyle(color: Color(0xFF00E5FF), fontSize: 16, fontWeight: FontWeight.bold), 
+                    p: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5), 
+                    listBullet: const TextStyle(color: Color(0xFF00E5FF))
+                  )
+                )
+              ),
+            ]
+          ),
+        ),
+      ),
+    );
+  }
+  
+  void _showDossier_old() {
     if (rawNotes.isEmpty) return;
 
     String midiToName(num midi) {
@@ -2252,7 +2369,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
           value: 'show_dossier',
           child: ListTile(
               leading: Icon(Icons.assessment, color: Colors.greenAccent),
-              title: Text('View GUI Dossier'))),
+              title: Text('Dossier Summary'))),
       const PopupMenuItem(
           value: 'downloads',
           child: ListTile(
