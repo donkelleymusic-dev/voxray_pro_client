@@ -31,7 +31,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
   late Ticker _audioSyncTicker;
   final ValueNotifier<double> exactPlayheadTime = ValueNotifier<double>(0.0);
   // universal tuning variables
-  final double playheadVisualOffset = 0.250; // 350ms delay for flying notes
+  final double playheadVisualOffset = 0.100; // 350ms delay for flying notes
   final double vuMeterVisualOffset = 0.020;  // 80ms delay for VU meters
 
   int? draggingNoteIndex;
