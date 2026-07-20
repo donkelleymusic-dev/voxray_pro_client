@@ -230,20 +230,27 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
     
   void resetMixerToDefaults() {
     setState(() {
-      for (String stem in mixerState.keys) {
-        // Reset basic levels
-        mixerState[stem]!.volume = 0.8; // Standard default headroom
-        mixerState[stem]!.pan = 0.0;    // Center
+      // List all possible standard channels to reset
+      List<String> channelsToReset = ['master', 'original', 'synth', ...targetStemsSelection];
+      
+      for (String stem in channelsToReset) {
+        final state = getChannelState(stem);
         
-        // Clear DSP FX
-        mixerState[stem]!.reverbSend = 0.0;
-        mixerState[stem]!.delaySend = 0.0;
+        // Reset basic levels and pans
+        state.volume = 0.8;
+        state.pan = 0.0;
         
-        // Mute Instrumental and Synth automatically
+        // Clear plugins/DSP slots if your state has them
+        state.plugin1 = 'None';
+        state.plugin2 = 'None';
+        state.plugin3 = 'None';
+        state.plugin4 = 'None';
+        
+        // Mute Instrumental and Synth automatically by default
         if (stem == 'instrumental' || stem == 'synth') {
-          mixerState[stem]!.isMuted = true;
+          state.isMuted = true;
         } else {
-          mixerState[stem]!.isMuted = false;
+          state.isMuted = false;
         }
       }
     });
