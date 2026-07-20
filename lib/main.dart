@@ -2798,20 +2798,19 @@ Container(
             ),
 
           // 4. Loop On / Off Toggle
-          Tooltip(
-            message: 'Toggle Loop Playback',
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-              icon: Icon(Icons.loop, size: 20, color: isLoopActive ? Colors.tealAccent : Colors.white38),
-              onPressed: () {
-                setState(() {
-                  isLoopActive = !isLoopActive;
-                });
-                // Call your loop toggle handler here
-              },
-            ),
-          ),
+Tooltip(
+  message: 'Toggle Loop Playback',
+  child: IconButton(
+    padding: EdgeInsets.zero,
+    constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+    icon: Icon(Icons.loop, size: 20, color: isLoopModeActive ? Colors.tealAccent : Colors.white38),
+    onPressed: () {
+      setState(() {
+        isLoopModeActive = !isLoopModeActive;
+      });
+    },
+  ),
+),
 
           // 5. X-Ray Toggle
           Tooltip(
