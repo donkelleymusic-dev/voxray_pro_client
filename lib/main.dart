@@ -1217,10 +1217,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                           .where((stem) => stem != 'instrumental')
                           .map((stem) => buildChannelStrip(stem.toUpperCase(), stem, Colors.tealAccent)),
                           
-                      if (targetStemsSelection.contains('instrumental'))
-                        buildChannelStrip('INSTRUMENTAL', 'instrumental', Colors.deepOrangeAccent),
+                      //if (targetStemsSelection.contains('instrumental'))
+                        //buildChannelStrip('INSTRUMENTAL', 'instrumental', Colors.deepOrangeAccent),
                         
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       buildChannelStrip('SYNTH', 'synth', Colors.purpleAccent),
                     ],
                   ),
