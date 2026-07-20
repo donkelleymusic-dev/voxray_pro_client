@@ -52,11 +52,10 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
       
       if (widget.dawState.isPlaying) {
         
-        // 1. DECLARE the variable so the compiler knows what it is
         double rawHardwareTime = widget.dawState.currentPosition;
         bool foundTime = false;
     
-        // 2. FETCH the high-res time from the audio engine (NO OFFSETS YET)
+        // 1. FETCH the high-res time from the audio engine
         if (widget.dawState.masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(widget.dawState.masterHandle!)) {
           rawHardwareTime = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
           foundTime = true;
@@ -70,28 +69,40 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
           }
         }
         
-        // 3. CALCULATE SPLIT OFFSETS 
-        // Subtracting time forces the visual UI to "wait" for the audio to catch up
+        // 2. AUTO-STOP IF NO VOICES ARE PLAYING
+        if (!foundTime) {
+          widget.dawState.pauseAllPlayers();
+          widget.dawState.jumpToTimelinePosition(0.0);
+          return;
+        }
+
+        // 3. HANDLE LOOP BOUNDARIES
+        if (widget.dawState.isLoopModeActive &&
+            widget.dawState.loopEndBoundary > widget.dawState.loopStartBoundary &&
+            widget.dawState.loopEndBoundary > 0.0 &&
+            rawHardwareTime >= widget.dawState.loopEndBoundary) {
+          widget.dawState.seekAllPlayers(widget.dawState.loopStartBoundary);
+          rawHardwareTime = widget.dawState.loopStartBoundary;
+        }
+        
+        // 4. CALCULATE SPLIT OFFSETS 
         double uiPlayheadTime = math.max(0.0, rawHardwareTime - playheadVisualOffset);
         double uiVuMeterTime = math.max(0.0, rawHardwareTime - vuMeterVisualOffset);
     
-        // 4. UPDATE the playhead state (Using Playhead Time)
+        // 5. UPDATE the playhead state
         exactPlayheadTime.value = uiPlayheadTime; 
 
-        // --- UPDATE VU METERS (Using VU Meter Time) ---
-        // 1. Update Synth (Note-Driven)
+        // --- UPDATE VU METERS ---
         widget.dawState.channelLevels['synth']?.value = 
             calculateSynthLevel(uiVuMeterTime, widget.dawState.rawNotes) * widget.dawState.getChannelState('synth').volume;
             
-        // 2. Update Audio Stems (RMS-Driven)
         for (String stemName in widget.dawState.stemSources.keys) {
            var state = widget.dawState.getChannelState(stemName);
            widget.dawState.channelLevels[stemName]?.value = 
                calculateAudioLevel(uiVuMeterTime, state.rmsEnvelope) * state.volume;
         }
-        // -----------------------------
         
-        // 5. SCROLL the canvas synchronously (Using Playhead Time)
+        // 6. HORIZONTAL SCROLL
         if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
           double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
           double targetX = (uiPlayheadTime * widget.dawState.zoomX) - anchorOffset;
@@ -104,16 +115,40 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
             );
           }
         }
+
+        // 7. VERTICAL PITCH-FOLLOWING SCROLL
+        if (!widget.dawState.isUserScrolling && widget.verticalScrollController.hasClients && widget.dawState.rawNotes.isNotEmpty) {
+          var activeNotes = widget.dawState.rawNotes.where((n) {
+            if (n['isDeleted'] == true) return false;
+            double start = (n['start_time'] ?? 0).toDouble();
+            double end   = (n['end_time']   ?? 0).toDouble();
+            return start <= rawHardwareTime && end >= rawHardwareTime;
+          }).toList();
+
+          if (activeNotes.isNotEmpty) {
+            List<int> midiValues = activeNotes
+                .map<int>((n) => ((n['display_midi'] ?? n['actual_midi'] ?? 60)).round())
+                .toList()
+              ..sort();
+            int medianMidi = midiValues[midiValues.length ~/ 2];
+
+            double viewportHeight = widget.verticalScrollController.position.viewportDimension;
+            double noteY = ((maxMidi - medianMidi) * widget.dawState.zoomY) + (widget.dawState.zoomY / 2);
+            double currentY = widget.verticalScrollController.position.pixels;
+            double targetY = (noteY - (viewportHeight / 2)).clamp(0.0, widget.verticalScrollController.position.maxScrollExtent);
+
+            if ((targetY - currentY).abs() > 1.0) {
+              widget.verticalScrollController.jumpTo(currentY + (targetY - currentY) * 0.15);
+            }
+          }
+        }
     
       } else {
-        // Keep things synced if playback is paused but the user is scrubbing
         if (!widget.dawState.isUserScrolling) {
           exactPlayheadTime.value = widget.dawState.currentPosition;
         }
       }
     });
-    _audioSyncTicker.start();
-  }
 
   @override
   void dispose() {
