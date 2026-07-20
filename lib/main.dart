@@ -84,7 +84,7 @@ Future<void> main() async {
 
   // 1. Initialize your audio engine BEFORE the app UI runs!
   await SoLoud.instance.init(
-    sampleRate: 44100,     // Force standard CD-quality sample rate across all devices
+    sampleRate: 48000,     // Force standard CD-quality sample rate across all devices
     bufferSize: 4096,      // Bump from 2048 to 4096 to give the phone speaker thread breathing room
     channels: Channels.stereo,
   );
