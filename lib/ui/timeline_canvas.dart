@@ -30,6 +30,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
   //late Ticker;
   late Ticker _audioSyncTicker;
   final ValueNotifier<double> exactPlayheadTime = ValueNotifier<double>(0.0);
+  // universal tuning variables
+  final double playheadVisualOffset = 0.350; // 350ms delay for flying notes
+  final double vuMeterVisualOffset = 0.080;  // 80ms delay for VU meters
 
   int? draggingNoteIndex;
   double dragStartY = 0;
@@ -50,50 +53,48 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
       if (widget.dawState.isPlaying) {
         
         // 1. DECLARE the variable so the compiler knows what it is
-        double currentTime = widget.dawState.currentPosition;
+        double rawHardwareTime = widget.dawState.currentPosition;
         bool foundTime = false;
     
-        // 2. FETCH the high-res time from the audio engine
+        // 2. FETCH the high-res time from the audio engine (NO OFFSETS YET)
         if (widget.dawState.masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(widget.dawState.masterHandle!)) {
-          double rawHardwareTime = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
-          // Apply a 60ms look-behind offset to sync visual with actual speaker output
-          currentTime = math.max(0.0, rawHardwareTime - 0.060); 
+          rawHardwareTime = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
           foundTime = true;
         } else if (widget.dawState.stemHandles.isNotEmpty) {
           for (var handle in widget.dawState.stemHandles.values) {
             if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
-              double rawHardwareTime = SoLoud.instance.getPosition(handle).inMilliseconds / 1000.0;
-              // Apply a 60ms look-behind offset
-              currentTime = math.max(0.0, rawHardwareTime - 0.060); 
+              rawHardwareTime = SoLoud.instance.getPosition(handle).inMilliseconds / 1000.0;
               foundTime = true;
               break;
             }
           }
         }
         
-        //widget.dawState.logToSupabase("DEBUG: timeline_canvas.dart createTicker high-res time fetch. foundTime = ${foundTime}");
+        // 3. CALCULATE SPLIT OFFSETS 
+        // Subtracting time forces the visual UI to "wait" for the audio to catch up
+        double uiPlayheadTime = math.max(0.0, rawHardwareTime - playheadVisualOffset);
+        double uiVuMeterTime = math.max(0.0, rawHardwareTime - vuMeterVisualOffset);
     
-        // 3. UPDATE the playhead state
-        exactPlayheadTime.value = currentTime; // Now it knows what currentTime is!
+        // 4. UPDATE the playhead state (Using Playhead Time)
+        exactPlayheadTime.value = uiPlayheadTime; 
 
-        // --- UPDATE VU METERS ---
+        // --- UPDATE VU METERS (Using VU Meter Time) ---
         // 1. Update Synth (Note-Driven)
         widget.dawState.channelLevels['synth']?.value = 
-            calculateSynthLevel(currentTime, widget.dawState.rawNotes) * widget.dawState.getChannelState('synth').volume;
+            calculateSynthLevel(uiVuMeterTime, widget.dawState.rawNotes) * widget.dawState.getChannelState('synth').volume;
             
         // 2. Update Audio Stems (RMS-Driven)
         for (String stemName in widget.dawState.stemSources.keys) {
            var state = widget.dawState.getChannelState(stemName);
            widget.dawState.channelLevels[stemName]?.value = 
-               calculateAudioLevel(currentTime, state.rmsEnvelope) * state.volume;
-          //widget.dawState.logToSupabase("DEBUG: timeline_canvas.dart Update Audio Stem: ${stemName}, value: ${calculateAudioLevel(currentTime, state.rmsEnvelope) * state.volume} foundTime");
+               calculateAudioLevel(uiVuMeterTime, state.rmsEnvelope) * state.volume;
         }
         // -----------------------------
         
-        // 4. SCROLL the canvas synchronously using your math
+        // 5. SCROLL the canvas synchronously (Using Playhead Time)
         if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
           double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
-          double targetX = (currentTime * widget.dawState.zoomX) - anchorOffset;
+          double targetX = (uiPlayheadTime * widget.dawState.zoomX) - anchorOffset;
           
           if (targetX < 0) targetX = 0;
           
@@ -112,7 +113,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
       }
     });
     _audioSyncTicker.start();
-    //.start();
   }
 
   @override
