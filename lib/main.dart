@@ -2344,6 +2344,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   @override
   Widget build(BuildContext context) {
     bool isCurrentStemGenerated = generatedStems.contains(activeEditableStem);
+    // Detect if we are in landscape mode to double the sidebar width
+    bool isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
       appBar: AppBar(
@@ -2351,33 +2353,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('voXRAY ',
-                style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                    color: Colors.white)),
+                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              decoration: BoxDecoration(
-                  color: Colors.redAccent,
-                  borderRadius: BorderRadius.circular(4)),
-              child: const Text('PRO',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 10,
-                      color: Colors.white)),
+              decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
+              child: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
             ),
             const SizedBox(width: 4),
-            const Text('Forensic Daw',
-                style: TextStyle(
-                    fontWeight: FontWeight.w300,
-                    fontSize: 14,
-                    color: Colors.white70)),
+            const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
             IconButton(
               icon: const Icon(Icons.account_balance_wallet),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const WalletScreen()),
-              ),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen())),
             ),
           ],
         ),
@@ -2393,8 +2379,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
       ),
       body: SafeArea(
         child: isLiveModeActive
-            ? LivePedagogyView(
-                onExit: () => setState(() => isLiveModeActive = false))
+            ? LivePedagogyView(onExit: () => setState(() => isLiveModeActive = false))
             : Column(children: [
                 // ── Status bar ───────────────────────────────────────────────
                 Container(
@@ -2411,286 +2396,189 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                           child: Text(
                             originalFileName != 'Unknown File'
                                 ? '$originalFileName' +
-                                    (activeEditableStem.isNotEmpty
-                                        ? '  [STEM: ${activeEditableStem.toUpperCase()}]'
-                                        : '')
+                                    (activeEditableStem.isNotEmpty ? '  [STEM: ${activeEditableStem.toUpperCase()}]' : '')
                                 : 'No File Loaded',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.white70,
-                                fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (projectName != 'Voxray_Session')
-                          Text(' [$projectName]',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Colors.white38)),
+                          Text(' [$projectName]', style: const TextStyle(fontSize: 12, color: Colors.white38)),
                       ]),
                       if (isLoading) ...[
                         const SizedBox(height: 4),
                         Row(children: [
                           Expanded(
                               child: LinearProgressIndicator(
-                                  value: processingProgress,
-                                  color: Colors.tealAccent,
-                                  backgroundColor: Colors.grey[800])),
+                                  value: processingProgress, color: Colors.tealAccent, backgroundColor: Colors.grey[800])),
                           const SizedBox(width: 4),
-                          Text(processingMessage,
-                              style: const TextStyle(
-                                  fontSize: 10, color: Colors.tealAccent)),
+                          Text(processingMessage, style: const TextStyle(fontSize: 10, color: Colors.tealAccent)),
                         ]),
                       ] else if (isPreviewing || isExporting || isSynthRendering) ...[
                         const SizedBox(height: 4),
                         Row(children: [
                           Expanded(
                               child: LinearProgressIndicator(
-                                  value: processingProgress,
-                                  color: Colors.amberAccent,
-                                  backgroundColor: Colors.grey[800])),
+                                  value: processingProgress, color: Colors.amberAccent, backgroundColor: Colors.grey[800])),
                           const SizedBox(width: 4),
-                          Text(
-                              exportMessage.isNotEmpty
-                                  ? exportMessage
-                                  : synthMessage,
-                              style: const TextStyle(
-                                  fontSize: 10, color: Colors.amberAccent)),
+                          Text(exportMessage.isNotEmpty ? exportMessage : synthMessage,
+                              style: const TextStyle(fontSize: 10, color: Colors.amberAccent)),
                         ]),
                       ],
                     ],
                   ),
                 ),
 
-                // ── Tool strip ───────────────────────────────────────────────
+                // ── ROW 1: Simplified Tool Strip ───────────────────────────────────────────────
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
                   color: Colors.black26,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ROW 1
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            // 1. Current Track Dropdown
-                            if (targetStemsSelection.isNotEmpty)
-                              Container(
-                                height: 32,
-                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                decoration: BoxDecoration(
-                                  color: Colors.black45,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: targetStemsSelection.contains(activeEditableStem) && activeEditableStem.isNotEmpty ? activeEditableStem : null,
-                                    dropdownColor: Colors.grey[900],
-                                    hint: const Text('No Stems Available', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                                    icon: const Icon(Icons.arrow_drop_down, color: Colors.tealAccent),
-                                    style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold, fontSize: 13),
-                                    items: () {
-                                      // SORTING LOGIC: Match the mixer's visual order
-                                      List<String> sortedStems = targetStemsSelection.toList();
-                                      sortedStems.sort((a, b) {
-                                        if (a == 'instrumental') return 1; // Push instrumental to the bottom
-                                        if (b == 'instrumental') return -1;
-                                        int idxA = popStems.indexOf(a);
-                                        int idxB = popStems.indexOf(b);
-                                        if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
-                                        if (idxA != -1) return -1;
-                                        if (idxB != -1) return 1;
-                                        return a.compareTo(b);
-                                      });
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        // 1. Studio Mixer (Kept on top for quick access)
+                        IconButton(
+                            icon: const Icon(Icons.tune, color: Colors.orangeAccent, size: 22),
+                            tooltip: 'Studio Mixer',
+                            constraints: const BoxConstraints(),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            onPressed: _showStudioMixer),
+                        const SizedBox(width: 4),
 
-                                      return sortedStems.map((String stemKey) {
-                                        bool isSuggested = suggestedStems.contains(stemKey);
-                                        bool isMuted = getChannelState(stemKey).isMuted; // Check if muted in mixer
-                                        
-                                        return DropdownMenuItem<String>(
-                                          value: stemKey,
-                                          child: Row(children: [
-                                            if (isMuted)
-                                              const Padding(
-                                                padding: EdgeInsets.only(right: 6.0),
-                                                child: Icon(Icons.volume_off, size: 14, color: Colors.white38),
-                                              ),
-                                            Text(
-                                              stemKey.toUpperCase(), 
-                                              style: TextStyle(
-                                                // "Ghost" the text if muted
-                                                color: isMuted ? Colors.white38 : (isSuggested ? Colors.yellowAccent : Colors.white),
-                                                fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
-                                              )
-                                            ),
-                                            if (isSuggested && !isMuted) 
-                                              const Padding(padding: EdgeInsets.only(left: 4.0), child: Icon(Icons.star, size: 12, color: Colors.yellowAccent)),
-                                            if (!generatedStems.contains(stemKey)) 
-                                              const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.hourglass_empty, size: 14, color: Colors.white38)),
-                                          ]),
-                                        );
-                                      }).toList();
-                                    }(),
-                                    onChanged: (String? newSelection) {
-                                      if (newSelection != null && newSelection != activeEditableStem) {
-                                        setState(() {
-                                          activeEditableStem = newSelection;
-                                          isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
-                                        });
-                                        if (!generatedStems.contains(newSelection) && originalAudioBytes != null && currentTaskId != null && !isLoading) {
-                                          generateStemOnDemand(newSelection);
-                                        }
-                                      }
-                                    },
-                                  ),
+                        // 2. Edit Tools Group (Drag Mode & Preview)
+                        Container(
+                          height: 32,
+                          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
+                          child: Row(
+                            children: [
+                              PopupMenuButton<DragMode>(
+                                padding: EdgeInsets.zero,
+                                icon: Icon(Icons.pan_tool, size: 18, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
+                                tooltip: 'Drag Pitch Mode',
+                                onSelected: (val) => setState(() => currentDragMode = val),
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
+                                  PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
+                                  PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
+                                ],
+                              ),
+                              Tooltip(
+                                message: 'Preview pitch/DSP edits',
+                                child: IconButton(
+                                  icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 20),
+                                  onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem))
+                                      ? () => renderStemEdits(activeEditableStem)
+                                      : null,
                                 ),
                               ),
-                            const SizedBox(width: 4),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
 
-                            // 2. Studio Mixer
-                            IconButton(
-                              icon: const Icon(Icons.tune, color: Colors.orangeAccent, size: 22),
-                              tooltip: 'Studio Mixer',
-                              constraints: const BoxConstraints(),
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              onPressed: _showStudioMixer
+                // ── ROW 2: The Swipeable Meter Bridge / Track Selector ─────────────────────────────────
+                Container(
+                  height: 52, // Height for text, icon, and meter
+                  decoration: BoxDecoration(
+                    color: Colors.grey[900],
+                    border: const Border(bottom: BorderSide(color: Colors.black, width: 2)),
+                  ),
+                  child: Builder(builder: (context) {
+                    // Sorting logic preserved from your dropdown
+                    List<String> sortedStems = targetStemsSelection.toList();
+                    sortedStems.sort((a, b) {
+                      if (a == 'instrumental') return 1;
+                      if (b == 'instrumental') return -1;
+                      int idxA = popStems.indexOf(a);
+                      int idxB = popStems.indexOf(b);
+                      if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
+                      if (idxA != -1) return -1;
+                      if (idxB != -1) return 1;
+                      return a.compareTo(b);
+                    });
+
+                    return ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: sortedStems.length,
+                      itemBuilder: (context, index) {
+                        String stemName = sortedStems[index];
+                        bool isSelected = activeEditableStem == stemName;
+                        bool isSuggested = suggestedStems.contains(stemName);
+                        bool isMuted = getChannelState(stemName).isMuted;
+                        bool isGenerated = generatedStems.contains(stemName);
+
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              activeEditableStem = stemName;
+                              isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
+                            });
+                            if (!isGenerated && originalAudioBytes != null && currentTaskId != null && !isLoading) {
+                              generateStemOnDemand(stemName);
+                            }
+                          },
+                          child: Container(
+                            width: 85, // Narrow enough to fit several on screen
+                            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isSelected ? Colors.blueGrey[800] : Colors.black45,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: isSelected ? Colors.blueAccent : Colors.transparent,
+                                width: 1.5,
+                              ),
                             ),
-                            const SizedBox(width: 4),
-
-                            // 3. Edit Tools Group (Drag Mode & Render)
-                            Container(
-                              height: 32,
-                              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
-                              child: Row(
-                                children: [
-                                  PopupMenuButton<DragMode>(
-                                    padding: EdgeInsets.zero,
-                                    icon: Icon(Icons.pan_tool, size: 18, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
-                                    tooltip: 'Drag Pitch Mode',
-                                    onSelected: (val) => setState(() => currentDragMode = val),
-                                    itemBuilder: (context) => const [
-                                      PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
-                                      PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
-                                      PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
-                                    ],
-                                  ),
-                                  Tooltip(
-                                    message: 'Preview pitch/DSP edits',
-                                    child: IconButton(
-                                      icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 20),
-                                      onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem))
-                                          ? () => renderStemEdits(activeEditableStem)
-                                          : null,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (isMuted) const Icon(Icons.volume_off, size: 10, color: Colors.white38),
+                                    if (!isGenerated) const Icon(Icons.hourglass_empty, size: 10, color: Colors.white38),
+                                    if (isSuggested && !isMuted) const Icon(Icons.star, size: 10, color: Colors.yellowAccent),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      stemName.toUpperCase(),
+                                      style: TextStyle(
+                                        color: isMuted ? Colors.white38 : (isSelected ? Colors.white : Colors.grey[400]),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                // The VU Meter
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                                  child: SizedBox(
+                                    height: 6,
+                                    child: ValueListenableBuilder<double>(
+                                      valueListenable: channelLevels[stemName] ?? ValueNotifier(0.0),
+                                      builder: (context, level, child) {
+                                        return CustomPaint(
+                                          size: const Size(double.infinity, 6),
+                                          painter: _HorizontalVuMeterPainter(level: level),
+                                        );
+                                      },
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 4),
-
-                            // 4. X-Ray Button
-                            isXrayProcessing
-                                ? const Padding(padding: EdgeInsets.symmetric(horizontal: 12.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)))
-                                : IconButton(
-                                    icon: Icon(Icons.fingerprint, color: isXrayMode ? Colors.amberAccent : Colors.white38, size: 22),
-                                    constraints: const BoxConstraints(),
-                                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                                    onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null
-                                  ),
-                            const SizedBox(width: 4),
-
-                            // 5. Undo/Redo Group
-                            Container(
-                              height: 32,
-                              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
-                              child: Row(
-                                children: [
-                                  IconButton(
-                                      icon: const Icon(Icons.undo, size: 18),
-                                      tooltip: 'Undo',
-                                      onPressed: undoStack.isNotEmpty ? _undo : null),
-                                  IconButton(
-                                      icon: const Icon(Icons.redo, size: 18),
-                                      tooltip: 'Redo',
-                                      onPressed: redoStack.isNotEmpty ? _redo : null),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-
-                      // ROW 2 (Transport / Timeline Tools)
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            // 1. Loop Toggle
-                            IconButton(
-                                icon: Icon(Icons.loop, color: isLoopModeActive ? Colors.tealAccent : Colors.white38, size: 20),
-                                constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                onPressed: () => setState(() => isLoopModeActive = !isLoopModeActive)),
-                            
-                            // 2. Add Marker
-                            IconButton(
-                                icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent),
-                                constraints: const BoxConstraints(),
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                onPressed: addMarkerAtCurrentPlayhead),
-
-                            // 3. Go to Marker Dropdown
-                            if (markers.isNotEmpty)
-                              PopupMenuButton<double>(
-                                icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Go to Marker',
-                                itemBuilder: (context) => markers.map((marker) {
-                                  int totalSeconds = (marker['time'] as double).round();
-                                  String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
-                                  return PopupMenuItem<double>(
-                                    value: marker['time'],
-                                    child: Row(children: [
-                                      const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
-                                      const SizedBox(width: 4),
-                                      Text('${marker['label']}  '),
-                                      Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                                    ]),
-                                  );
-                                }).toList(),
-                                onSelected: (time) => jumpToTimelinePosition(time),
-                              ),
-
-                            // 4. Set Loop Region Dropdown
-                            if (markers.length >= 2)
-                              PopupMenuButton<String>(
-                                icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
-                                padding: EdgeInsets.zero,
-                                tooltip: 'Set Loop Region',
-                                itemBuilder: (context) {
-                                  List<PopupMenuItem<String>> items = [];
-                                  for (int i = 0; i < markers.length; i++) {
-                                    for (int j = i + 1; j < markers.length; j++) {
-                                      items.add(PopupMenuItem(
-                                        value: '${markers[i]['time']}_${markers[j]['time']}',
-                                        child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
-                                      ));
-                                    }
-                                  }
-                                  return items;
-                                },
-                                onSelected: (val) {
-                                  final parts = val.split('_');
-                                  setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
-                                },
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                          ),
+                        );
+                      },
+                    );
+                  }),
                 ),
 
                 // ── Horizontal zoom ──────────────────────────────────────────
@@ -2699,33 +2587,25 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   child: SliderTheme(
                     data: SliderThemeData(
                       trackHeight: 2,
-                      thumbShape:
-                          const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                       overlayShape: SliderComponentShape.noOverlay,
                     ),
-                    child: Slider(
-                        value: zoomX,
-                        min: 20.0,
-                        max: 500.0,
-                        onChanged: setZoomX),
+                    child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: setZoomX),
                   ),
                 ),
 
-                // ── Timeline ─────────────────────────────────────────────────
+                // ── Workspace: Timeline + Sidebar ─────────────────────────────────────────────
                 Expanded(
                   child: Column(children: [
+                    // Play Button & Ruler
                     Row(children: [
                       Container(
-                        width: 46, 
-                        height: 45, 
+                        width: 46,
+                        height: 45,
                         color: Colors.grey[900],
                         child: IconButton(
                           padding: EdgeInsets.zero,
-                          icon: Icon(
-                            isPlaying ? Icons.pause : Icons.play_arrow, 
-                            color: Colors.tealAccent, 
-                            size: 28
-                          ),
+                          icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
                           onPressed: _toggleMasterTransport,
                         ),
                       ),
@@ -2736,75 +2616,143 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                           child: TimelineRulerWidget(dawState: this),
                         ),
                       ),
+                      // Spacer above the sidebar so the ruler stretches fully
+                      SizedBox(width: isLandscape ? 100 : 50),
                     ]),
+                    
+                    // Main Canvas Area
                     Expanded(
-                      child: Row(children: [
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8.0),
-                          child: SizedBox(
-                            width: 24,
-                            child: RotatedBox(
-                              quarterTurns: 3,
-                              child: SliderTheme(
-                                data: SliderThemeData(
-                                  trackHeight: 2,
-                                  thumbShape: const RoundSliderThumbShape(
-                                      enabledThumbRadius: 6),
-                                  overlayShape: SliderComponentShape.noOverlay,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Left: Vertical Zoom (Existing)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8.0),
+                            child: SizedBox(
+                              width: 24,
+                              child: RotatedBox(
+                                quarterTurns: 3,
+                                child: SliderTheme(
+                                  data: SliderThemeData(
+                                    trackHeight: 2,
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                    overlayShape: SliderComponentShape.noOverlay,
+                                  ),
+                                  child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: setZoomY),
                                 ),
-                                child: Slider(
-                                    value: zoomY,
-                                    min: 8.0,
-                                    max: 60.0,
-                                    onChanged: setZoomY),
                               ),
                             ),
                           ),
-                        ),
-                        Expanded(
-                          child: !isCurrentStemGenerated &&
-                                  originalAudioBytes != null &&
-                                  currentTaskId != null
-                              ? Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.music_note,
-                                          size: 48, color: Colors.white24),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                          'The ${activeEditableStem.isNotEmpty ? activeEditableStem.toUpperCase() : 'selected'} stem has not been extracted yet.',
-                                          style: const TextStyle(
-                                              color: Colors.white54)),
-                                      const SizedBox(height: 24),
-                                      ElevatedButton.icon(
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.teal,
-                                            padding:
-                                                const EdgeInsets.symmetric(
-                                                    horizontal: 32,
-                                                    vertical: 16)),
-                                        icon: const Icon(Icons.build),
-                                        label: Text(
-                                            'Generate & Analyze ${activeEditableStem.isNotEmpty ? activeEditableStem.toUpperCase() : ''}'),
-                                        onPressed: isLoading ||
-                                                activeEditableStem.isEmpty
-                                            ? null
-                                            : () => generateStemOnDemand(
-                                                activeEditableStem),
-                                      ),
-                                    ],
+                          
+                          // Middle: Timeline Canvas
+                          Expanded(
+                            child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
+                                ? Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.music_note, size: 48, color: Colors.white24),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                            'The ${activeEditableStem.isNotEmpty ? activeEditableStem.toUpperCase() : 'selected'} stem has not been extracted yet.',
+                                            style: const TextStyle(color: Colors.white54)),
+                                        const SizedBox(height: 24),
+                                        ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.teal,
+                                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
+                                          icon: const Icon(Icons.build),
+                                          label: Text('Generate & Analyze ${activeEditableStem.isNotEmpty ? activeEditableStem.toUpperCase() : ''}'),
+                                          onPressed: isLoading || activeEditableStem.isEmpty ? null : () => generateStemOnDemand(activeEditableStem),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : TimelineCanvasWidget(
+                                    dawState: this,
+                                    horizontalScrollController: horizontalScrollController,
+                                    verticalScrollController: verticalScrollController,
                                   ),
-                                )
-                              : TimelineCanvasWidget(
-                                  dawState: this,
-                                  horizontalScrollController:
-                                      horizontalScrollController,
-                                  verticalScrollController:
-                                      verticalScrollController,
+                          ),
+                          
+                          // Right: The New Responsive Vertical Sidebar
+                          Container(
+                            width: isLandscape ? 100 : 50, // Doubles in landscape to form a 2x2 grid
+                            decoration: BoxDecoration(
+                              color: Colors.grey[900],
+                              border: const Border(left: BorderSide(color: Colors.black, width: 2)),
+                            ),
+                            child: SingleChildScrollView(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child: Wrap(
+                                  alignment: WrapAlignment.center,
+                                  runSpacing: 4.0, // Space between rows
+                                  children: [
+                                    // 1. Add Marker
+                                    Tooltip(
+                                      message: 'Add Marker',
+                                      child: IconButton(
+                                        icon: const Icon(Icons.add_location_alt, size: 22, color: Colors.white70),
+                                        onPressed: () { /* Add Marker Logic */ },
+                                      ),
+                                    ),
+                                    
+                                    // 2. X-Ray Toggle
+                                    Tooltip(
+                                      message: 'Toggle X-Ray',
+                                      child: isXrayProcessing
+                                          ? const Padding(padding: EdgeInsets.all(12.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)))
+                                          : IconButton(
+                                              icon: Icon(Icons.fingerprint, size: 22, color: isXrayMode ? Colors.amberAccent : Colors.white38),
+                                              onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null,
+                                            ),
+                                    ),
+                                    
+                                    // 3. Grid Snap (Placeholder)
+                                    Tooltip(
+                                      message: 'Snap to Grid',
+                                      child: IconButton(
+                                        icon: const Icon(Icons.grid_on, size: 22, color: Colors.white70),
+                                        onPressed: () { /* Grid logic */ },
+                                      ),
+                                    ),
+
+                                    // Divider for Undo/Redo grouping
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                                        child: Divider(color: Colors.grey[800], thickness: 2),
+                                      ),
+                                    ),
+
+                                    // 4. Undo
+                                    Tooltip(
+                                      message: 'Undo',
+                                      child: IconButton(
+                                        icon: const Icon(Icons.undo, size: 22),
+                                        color: undoStack.isNotEmpty ? Colors.white : Colors.white24,
+                                        onPressed: undoStack.isNotEmpty ? _undo : null,
+                                      ),
+                                    ),
+                                    
+                                    // 5. Redo
+                                    Tooltip(
+                                      message: 'Redo',
+                                      child: IconButton(
+                                        icon: const Icon(Icons.redo, size: 22),
+                                        color: redoStack.isNotEmpty ? Colors.white : Colors.white24,
+                                        onPressed: redoStack.isNotEmpty ? _redo : null,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                        ),
-                      ]),
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
                     ),
                   ]),
                 ),
