@@ -55,12 +55,16 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     
         // 2. FETCH the high-res time from the audio engine
         if (widget.dawState.masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(widget.dawState.masterHandle!)) {
-          currentTime = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
+          double rawHardwareTime = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
+          // Apply a 60ms look-behind offset to sync visual with actual speaker output
+          currentTime = math.max(0.0, rawHardwareTime - 0.060); 
           foundTime = true;
         } else if (widget.dawState.stemHandles.isNotEmpty) {
           for (var handle in widget.dawState.stemHandles.values) {
             if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
-              currentTime = SoLoud.instance.getPosition(handle).inMilliseconds / 1000.0;
+              double rawHardwareTime = SoLoud.instance.getPosition(handle).inMilliseconds / 1000.0;
+              // Apply a 60ms look-behind offset
+              currentTime = math.max(0.0, rawHardwareTime - 0.060); 
               foundTime = true;
               break;
             }
@@ -137,19 +141,25 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
   double calculateAudioLevel(double currentPlayheadSeconds, List<double> precomputedrmsEnvelope) {
     if (precomputedrmsEnvelope.isEmpty) {
       return 0.0;
-    } else {
-      
-      //ScaffoldMessenger.of(context).showSnackBar(
-      //  SnackBar(content: Text('calculateAudioLevel error rmsEnvelope NOT empty'), backgroundColor: Colors.cyan),
-      //)
-    }
+    } 
+    
     int index = (currentPlayheadSeconds * 10).floor();
     if (index >= 0 && index < precomputedrmsEnvelope.length) {
+      double rawRms = precomputedrmsEnvelope[index];
       
-      //ScaffoldMessenger.of(context).showSnackBar(
-      //  SnackBar(content: Text('calculateAudioLevel precomputedrmsEnvelope: $precomputedrmsEnvelope[index]'), backgroundColor: Colors.green),
-      //);
-      return precomputedrmsEnvelope[index];
+      // 1. Noise gate: absolute silence for tiny AI stem bleed
+      if (rawRms <= 0.001) return 0.0; 
+      
+      // 2. Convert to Decibels (dB)
+      double currentDb = 20 * math.log(rawRms) / math.ln10;
+      
+      // 3. The Floor (-48 dB is a great standard for 8-segment meters)
+      const double minDbFloor = -48.0; 
+      if (currentDb <= minDbFloor) return 0.0;
+      
+      // 4. Return a logarithmic percentage (0.0 to 1.0)
+      double logPercentage = (currentDb - minDbFloor) / (0.0 - minDbFloor);
+      return logPercentage.clamp(0.0, 1.0);
     }
     return 0.0;
   }
