@@ -1410,6 +1410,9 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       // 1. MOBILE & WEB: Must provide bytes directly to FilePicker due to Scoped Storage
       if (kIsWeb || Platform.isAndroid || Platform.isIOS) {
+        String finalFileName = defaultSaveName.endsWith('.vxp') 
+            ? defaultSaveName 
+            : '$defaultSaveName.vxp';
         // Note: Make sure to use .platform.saveFile for the latest file_picker API
         path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
