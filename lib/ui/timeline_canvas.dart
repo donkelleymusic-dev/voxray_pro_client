@@ -149,6 +149,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         }
       }
     });
+    _audioSyncTicker.start(); // 1. Start the ticker!
+  } // 2. Close initState() HERE!
 
   @override
   void dispose() {
