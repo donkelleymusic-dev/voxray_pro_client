@@ -1416,57 +1416,76 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   Future<void> saveVoxrayProjectAs() async {
     final bytes = await packageProjectBytes();
-    String defaultSaveName = originalFileName.contains('.')
-        ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-        : (originalFileName.isNotEmpty ? originalFileName : projectName);
- 
+  
+    // 1. Clean base name (strip any existing .zip or .vxp extensions)
+    String baseName = originalFileName;
+    if (baseName.endsWith('.zip')) {
+      baseName = baseName.substring(0, baseName.length - 4);
+    }
+    if (baseName.endsWith('.vxp')) {
+      baseName = baseName.substring(0, baseName.length - 4);
+    }
+    if (baseName.contains('.')) {
+      baseName = baseName.substring(0, baseName.lastIndexOf('.'));
+    }
+    if (baseName.isEmpty) {
+      baseName = projectName.isNotEmpty ? projectName : 'UntitledProject';
+    }
+  
+    final String targetFileName = '$baseName.vxp';
+  
     try {
       String? path;
-
-      // 1. MOBILE & WEB: Must provide bytes directly to FilePicker due to Scoped Storage
+  
+      // 2. MOBILE & WEB
       if (kIsWeb || Platform.isAndroid || Platform.isIOS) {
-        String finalFileName = defaultSaveName.endsWith('.vxp') 
-            ? defaultSaveName 
-            : '$defaultSaveName.vxp';
-        // Note: Make sure to use .platform.saveFile for the latest file_picker API
         path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
-          fileName: '$defaultSaveName.vxp', 
-          type: FileType.custom,
-          allowedExtensions: ['vxp'],
-          bytes: bytes, // <-- THE FIX: Hands the memory directly to the Mobile OS
+          fileName: targetFileName,
+          type: FileType.any, // FileType.any prevents OS/browser from enforcing application/zip extension
+          bytes: bytes,
         );
-        
-        // On Web, path is null but the file downloads automatically.
-        // On Mobile, FilePicker writes the file and returns the URI path.
+  
         if (path != null || kIsWeb) {
-          setState(() { 
-            if (path != null) currentProjectPath = path; 
-            hasBeenSaved = true; 
-            dirtyStems.clear(); 
+          setState(() {
+            if (path != null) {
+              // Guarantee .zip is removed if the OS appended it
+              currentProjectPath = path.endsWith('.zip')
+                  ? path.substring(0, path.length - 4)
+                  : path;
+            }
+            hasBeenSaved = true;
+            dirtyStems.clear();
           });
           showSaveConfirmation('Project saved successfully.');
         } else {
           showSaveConfirmation('Save cancelled.');
         }
       } 
-      // 2. DESKTOP (Windows/Mac/Linux): Get path from OS, write natively via Dart I/O
+      // 3. DESKTOP (Windows/Mac/Linux)
       else {
         path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
-          fileName: '$defaultSaveName.vxp', 
-          type: FileType.custom,
-          allowedExtensions: ['vxp'],
+          fileName: targetFileName,
+          type: FileType.any, // Prevents OS dialog from forcing MIME extensions
         );
- 
+  
         if (path != null && path.isNotEmpty) {
+          // Strip trailing .zip if added by OS file dialog
+          if (path.endsWith('.zip')) {
+            path = path.substring(0, path.length - 4);
+          }
+          if (!path.endsWith('.vxp')) {
+            path = '$path.vxp';
+          }
+  
           final file = File(path);
-          await file.writeAsBytes(bytes); // Native Dart I/O write
- 
-          setState(() { 
-            currentProjectPath = path; 
-            hasBeenSaved = true; 
-            dirtyStems.clear(); 
+          await file.writeAsBytes(bytes);
+  
+          setState(() {
+            currentProjectPath = path;
+            hasBeenSaved = true;
+            dirtyStems.clear();
           });
           showSaveConfirmation('Project saved successfully as offline .vxp archive.');
         } else {
