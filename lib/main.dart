@@ -2344,30 +2344,220 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   @override
   Widget build(BuildContext context) {
     bool isCurrentStemGenerated = generatedStems.contains(activeEditableStem);
-    // Detect if we are in landscape mode to double the sidebar width
+    // 1. Detect Orientation
     bool isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    // 2. Extract the Status / Progress Content so we can place it dynamically
+    Widget buildStatusContent(bool compact) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(children: [
+            Icon(Icons.audio_file, size: compact ? 12 : 14, color: Colors.white54),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                originalFileName != 'Unknown File'
+                    ? '$originalFileName' +
+                        (activeEditableStem.isNotEmpty ? '  [STEM: ${activeEditableStem.toUpperCase()}]' : '')
+                    : 'No File Loaded',
+                style: TextStyle(fontSize: compact ? 10 : 12, color: Colors.white70, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (projectName != 'Voxray_Session')
+              Text(' [$projectName]', style: TextStyle(fontSize: compact ? 10 : 12, color: Colors.white38)),
+          ]),
+          if (isLoading) ...[
+            const SizedBox(height: 2),
+            Row(children: [
+              Expanded(
+                  child: LinearProgressIndicator(
+                      value: processingProgress, color: Colors.tealAccent, backgroundColor: Colors.grey[800], minHeight: compact ? 2 : 4)),
+              const SizedBox(width: 4),
+              Text(processingMessage, style: TextStyle(fontSize: compact ? 9 : 10, color: Colors.tealAccent)),
+            ]),
+          ] else if (isPreviewing || isExporting || isSynthRendering) ...[
+            const SizedBox(height: 2),
+            Row(children: [
+              Expanded(
+                  child: LinearProgressIndicator(
+                      value: processingProgress, color: Colors.amberAccent, backgroundColor: Colors.grey[800], minHeight: compact ? 2 : 4)),
+              const SizedBox(width: 4),
+              Text(exportMessage.isNotEmpty ? exportMessage : synthMessage,
+                  style: TextStyle(fontSize: compact ? 9 : 10, color: Colors.amberAccent)),
+            ]),
+          ],
+        ],
+      );
+    }
+
+    // 3. Extract the Tool Group (Mixer + Pan + Preview)
+    Widget buildToolGroup() {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+              icon: const Icon(Icons.tune, color: Colors.orangeAccent, size: 22),
+              tooltip: 'Studio Mixer',
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              onPressed: _showStudioMixer),
+          const SizedBox(width: 4),
+          Container(
+            height: 32,
+            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
+            child: Row(
+              children: [
+                PopupMenuButton<DragMode>(
+                  padding: EdgeInsets.zero,
+                  icon: Icon(Icons.pan_tool, size: 18, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
+                  tooltip: 'Drag Pitch Mode',
+                  onSelected: (val) => setState(() => currentDragMode = val),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
+                    PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
+                    PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
+                  ],
+                ),
+                Tooltip(
+                  message: 'Preview pitch/DSP edits',
+                  child: IconButton(
+                    icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 20),
+                    onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem))
+                        ? () => renderStemEdits(activeEditableStem)
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 4. Extract the Meter Bridge ListView
+    Widget buildMeterBridge() {
+      List<String> sortedStems = targetStemsSelection.toList();
+      sortedStems.sort((a, b) {
+        if (a == 'instrumental') return 1;
+        if (b == 'instrumental') return -1;
+        int idxA = popStems.indexOf(a);
+        int idxB = popStems.indexOf(b);
+        if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
+        if (idxA != -1) return -1;
+        if (idxB != -1) return 1;
+        return a.compareTo(b);
+      });
+
+      return ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: sortedStems.length,
+        itemBuilder: (context, index) {
+          String stemName = sortedStems[index];
+          bool isSelected = activeEditableStem == stemName;
+          bool isSuggested = suggestedStems.contains(stemName);
+          bool isMuted = getChannelState(stemName).isMuted;
+          bool isGenerated = generatedStems.contains(stemName);
+
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                activeEditableStem = stemName;
+                isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
+              });
+              if (!isGenerated && originalAudioBytes != null && currentTaskId != null && !isLoading) {
+                generateStemOnDemand(stemName);
+              }
+            },
+            child: Container(
+              width: 85,
+              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.blueGrey[800] : Colors.black45,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: isSelected ? Colors.blueAccent : Colors.transparent, width: 1.5),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (isMuted) const Icon(Icons.volume_off, size: 10, color: Colors.white38),
+                      if (!isGenerated) const Icon(Icons.hourglass_empty, size: 10, color: Colors.white38),
+                      if (isSuggested && !isMuted) const Icon(Icons.star, size: 10, color: Colors.yellowAccent),
+                      const SizedBox(width: 2),
+                      Text(
+                        stemName.toUpperCase(),
+                        style: TextStyle(
+                          color: isMuted ? Colors.white38 : (isSelected ? Colors.white : Colors.grey[400]),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                    child: SizedBox(
+                      height: 6,
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: channelLevels[stemName] ?? ValueNotifier(0.0),
+                        builder: (context, level, child) {
+                          return CustomPaint(
+                            size: const Size(double.infinity, 6),
+                            painter: _HorizontalVuMeterPainter(level: level),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: isLandscape ? 40 : 56, // Shrink AppBar slightly in landscape
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('voXRAY ',
-                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
+            const Text('voXRAY ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
               child: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
             ),
             const SizedBox(width: 4),
-            const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
+            if (!isLandscape) // Hide subtitle in landscape to save horizontal space
+              const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
             IconButton(
-              icon: const Icon(Icons.account_balance_wallet),
+              icon: const Icon(Icons.account_balance_wallet, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen())),
             ),
           ],
         ),
         actions: [
+          // 5. In Landscape, inject the Status Text right into the AppBar
+          if (isLandscape)
+            Container(
+              width: MediaQuery.of(context).size.width * 0.35, // Cap width so it doesn't overflow
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 8.0),
+              child: buildStatusContent(true),
+            ),
           if (!isLiveModeActive)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
@@ -2381,204 +2571,49 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         child: isLiveModeActive
             ? LivePedagogyView(onExit: () => setState(() => isLiveModeActive = false))
             : Column(children: [
-                // ── Status bar ───────────────────────────────────────────────
-                Container(
-                  width: double.infinity,
-                  color: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        const Icon(Icons.audio_file, size: 14, color: Colors.white54),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            originalFileName != 'Unknown File'
-                                ? '$originalFileName' +
-                                    (activeEditableStem.isNotEmpty ? '  [STEM: ${activeEditableStem.toUpperCase()}]' : '')
-                                : 'No File Loaded',
-                            style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.bold),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (projectName != 'Voxray_Session')
-                          Text(' [$projectName]', style: const TextStyle(fontSize: 12, color: Colors.white38)),
-                      ]),
-                      if (isLoading) ...[
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          Expanded(
-                              child: LinearProgressIndicator(
-                                  value: processingProgress, color: Colors.tealAccent, backgroundColor: Colors.grey[800])),
-                          const SizedBox(width: 4),
-                          Text(processingMessage, style: const TextStyle(fontSize: 10, color: Colors.tealAccent)),
-                        ]),
-                      ] else if (isPreviewing || isExporting || isSynthRendering) ...[
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          Expanded(
-                              child: LinearProgressIndicator(
-                                  value: processingProgress, color: Colors.amberAccent, backgroundColor: Colors.grey[800])),
-                          const SizedBox(width: 4),
-                          Text(exportMessage.isNotEmpty ? exportMessage : synthMessage,
-                              style: const TextStyle(fontSize: 10, color: Colors.amberAccent)),
-                        ]),
-                      ],
-                    ],
+                
+                // 6. In Portrait, render the classic Status Bar
+                if (!isLandscape)
+                  Container(
+                    width: double.infinity,
+                    color: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    child: buildStatusContent(false),
                   ),
-                ),
 
-                // ── ROW 1: Simplified Tool Strip ───────────────────────────────────────────────
+                // 7. Dynamic Tools & Meter Bridge Row
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-                  color: Colors.black26,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        // 1. Studio Mixer (Kept on top for quick access)
-                        IconButton(
-                            icon: const Icon(Icons.tune, color: Colors.orangeAccent, size: 22),
-                            tooltip: 'Studio Mixer',
-                            constraints: const BoxConstraints(),
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            onPressed: _showStudioMixer),
-                        const SizedBox(width: 4),
-
-                        // 2. Edit Tools Group (Drag Mode & Preview)
-                        Container(
-                          height: 32,
-                          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
-                          child: Row(
-                            children: [
-                              PopupMenuButton<DragMode>(
-                                padding: EdgeInsets.zero,
-                                icon: Icon(Icons.pan_tool, size: 18, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
-                                tooltip: 'Drag Pitch Mode',
-                                onSelected: (val) => setState(() => currentDragMode = val),
-                                itemBuilder: (context) => const [
-                                  PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
-                                  PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
-                                  PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
-                                ],
-                              ),
-                              Tooltip(
-                                message: 'Preview pitch/DSP edits',
-                                child: IconButton(
-                                  icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 20),
-                                  onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem))
-                                      ? () => renderStemEdits(activeEditableStem)
-                                      : null,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // ── ROW 2: The Swipeable Meter Bridge / Track Selector ─────────────────────────────────
-                Container(
-                  height: 52, // Height for text, icon, and meter
+                  height: 52,
                   decoration: BoxDecoration(
                     color: Colors.grey[900],
                     border: const Border(bottom: BorderSide(color: Colors.black, width: 2)),
                   ),
-                  child: Builder(builder: (context) {
-                    // Sorting logic preserved from your dropdown
-                    List<String> sortedStems = targetStemsSelection.toList();
-                    sortedStems.sort((a, b) {
-                      if (a == 'instrumental') return 1;
-                      if (b == 'instrumental') return -1;
-                      int idxA = popStems.indexOf(a);
-                      int idxB = popStems.indexOf(b);
-                      if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
-                      if (idxA != -1) return -1;
-                      if (idxB != -1) return 1;
-                      return a.compareTo(b);
-                    });
-
-                    return ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: sortedStems.length,
-                      itemBuilder: (context, index) {
-                        String stemName = sortedStems[index];
-                        bool isSelected = activeEditableStem == stemName;
-                        bool isSuggested = suggestedStems.contains(stemName);
-                        bool isMuted = getChannelState(stemName).isMuted;
-                        bool isGenerated = generatedStems.contains(stemName);
-
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              activeEditableStem = stemName;
-                              isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
-                            });
-                            if (!isGenerated && originalAudioBytes != null && currentTaskId != null && !isLoading) {
-                              generateStemOnDemand(stemName);
-                            }
-                          },
-                          child: Container(
-                            width: 85, // Narrow enough to fit several on screen
-                            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isSelected ? Colors.blueGrey[800] : Colors.black45,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: isSelected ? Colors.blueAccent : Colors.transparent,
-                                width: 1.5,
-                              ),
+                  child: isLandscape
+                      // LANDSCAPE: Tools and Meters live on the SAME horizontal strip
+                      ? Row(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6.0, right: 8.0),
+                              child: buildToolGroup(),
                             ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    if (isMuted) const Icon(Icons.volume_off, size: 10, color: Colors.white38),
-                                    if (!isGenerated) const Icon(Icons.hourglass_empty, size: 10, color: Colors.white38),
-                                    if (isSuggested && !isMuted) const Icon(Icons.star, size: 10, color: Colors.yellowAccent),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      stemName.toUpperCase(),
-                                      style: TextStyle(
-                                        color: isMuted ? Colors.white38 : (isSelected ? Colors.white : Colors.grey[400]),
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                // The VU Meter
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                                  child: SizedBox(
-                                    height: 6,
-                                    child: ValueListenableBuilder<double>(
-                                      valueListenable: channelLevels[stemName] ?? ValueNotifier(0.0),
-                                      builder: (context, level, child) {
-                                        return CustomPaint(
-                                          size: const Size(double.infinity, 6),
-                                          painter: _HorizontalVuMeterPainter(level: level),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            Container(width: 2, color: Colors.black), // Divider
+                            Expanded(child: buildMeterBridge()),
+                          ],
+                        )
+                      // PORTRAIT: Stack them (Tools on top, Meters below)
+                      : Column(
+                          children: [
+                            Container(
+                              height: 36,
+                              width: double.infinity,
+                              color: Colors.black26,
+                              padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                              alignment: Alignment.centerLeft,
+                              child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: buildToolGroup()),
                             ),
-                          ),
-                        );
-                      },
-                    );
-                  }),
+                            Expanded(child: buildMeterBridge()),
+                          ],
+                        ),
                 ),
 
                 // ── Horizontal zoom ──────────────────────────────────────────
@@ -2597,7 +2632,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                 // ── Workspace: Timeline + Sidebar ─────────────────────────────────────────────
                 Expanded(
                   child: Column(children: [
-                    // Play Button & Ruler
                     Row(children: [
                       Container(
                         width: 46,
@@ -2616,16 +2650,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                           child: TimelineRulerWidget(dawState: this),
                         ),
                       ),
-                      // Spacer above the sidebar so the ruler stretches fully
                       SizedBox(width: isLandscape ? 100 : 50),
                     ]),
-                    
-                    // Main Canvas Area
                     Expanded(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Left: Vertical Zoom (Existing)
                           Padding(
                             padding: const EdgeInsets.only(left: 8.0),
                             child: SizedBox(
@@ -2643,8 +2673,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                               ),
                             ),
                           ),
-                          
-                          // Middle: Timeline Canvas
                           Expanded(
                             child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
                                 ? Center(
@@ -2674,10 +2702,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                     verticalScrollController: verticalScrollController,
                                   ),
                           ),
-                          
-                          // Right: The New Responsive Vertical Sidebar
+                          // 8. The New Sidebar (Grid Icon Removed)
                           Container(
-                            width: isLandscape ? 100 : 50, // Doubles in landscape to form a 2x2 grid
+                            width: isLandscape ? 100 : 50,
                             decoration: BoxDecoration(
                               color: Colors.grey[900],
                               border: const Border(left: BorderSide(color: Colors.black, width: 2)),
@@ -2687,9 +2714,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                                 child: Wrap(
                                   alignment: WrapAlignment.center,
-                                  runSpacing: 4.0, // Space between rows
+                                  runSpacing: 4.0,
                                   children: [
-                                    // 1. Add Marker
                                     Tooltip(
                                       message: 'Add Marker',
                                       child: IconButton(
@@ -2697,8 +2723,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                         onPressed: () { /* Add Marker Logic */ },
                                       ),
                                     ),
-                                    
-                                    // 2. X-Ray Toggle
                                     Tooltip(
                                       message: 'Toggle X-Ray',
                                       child: isXrayProcessing
@@ -2708,17 +2732,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                               onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null,
                                             ),
                                     ),
-                                    
-                                    // 3. Grid Snap (Placeholder)
-                                    Tooltip(
-                                      message: 'Snap to Grid',
-                                      child: IconButton(
-                                        icon: const Icon(Icons.grid_on, size: 22, color: Colors.white70),
-                                        onPressed: () { /* Grid logic */ },
-                                      ),
-                                    ),
-
-                                    // Divider for Undo/Redo grouping
                                     SizedBox(
                                       width: double.infinity,
                                       child: Padding(
@@ -2726,8 +2739,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                         child: Divider(color: Colors.grey[800], thickness: 2),
                                       ),
                                     ),
-
-                                    // 4. Undo
                                     Tooltip(
                                       message: 'Undo',
                                       child: IconButton(
@@ -2736,8 +2747,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                                         onPressed: undoStack.isNotEmpty ? _undo : null,
                                       ),
                                     ),
-                                    
-                                    // 5. Redo
                                     Tooltip(
                                       message: 'Redo',
                                       child: IconButton(
