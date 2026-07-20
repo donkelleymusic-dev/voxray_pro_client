@@ -473,8 +473,12 @@ mixin DawApiService on VoxrayDAWStateBase {
                 targetStemsSelection = returnedStems.toSet();
                 generatedStems = returnedStems.toSet();
                 
+                // Ensure activeEditableStem does not default to 'instrumental'
                 if (targetStem == 'mix' && returnedStems.isNotEmpty) {
-                    activeEditableStem = returnedStems.first;
+                    activeEditableStem = returnedStems.firstWhere(
+                      (s) => s != 'instrumental', 
+                      orElse: () => returnedStems.first
+                    );
                 }
               }
 
@@ -488,17 +492,31 @@ mixin DawApiService on VoxrayDAWStateBase {
                  }
                  allStemsNotes[targetStem] = stemNotes;
                  generatedStems.add(targetStem);
-                 activePlaybackSources.add(targetStem);
+                 
+                 // Exclude instrumental from active playback sources
+                 if (targetStem != 'instrumental') {
+                   activePlaybackSources.add(targetStem);
+                 }
                  processingMessage = 'Downloading audio for ${targetStem.toUpperCase()}...';
               } else {
                  if (result['all_stems_notes'] != null) {
                      allStemsNotes = Map<String, List<dynamic>>.from(result['all_stems_notes']);
                  }
                  for (var s in generatedStems) {
-                     activePlaybackSources.add(s);
+                     // Exclude instrumental so audio isn't doubled
+                     if (s != 'instrumental') {
+                       activePlaybackSources.add(s);
+                     }
                  }
                  processingMessage = 'Downloading audio stems...';
               }
+
+              // --- DEFAULT MUTING ---
+              // Mute instrumental (remains cached for .vxp archives, but muted & hidden in UI)
+              getChannelState('instrumental').isMuted = true;
+              
+              // Mute synth channel by default for newly processed audio
+              getChannelState('synth').isMuted = true;
 
               if (result['stem_rms_data'] != null) {
                 Map<String, dynamic> envelopes = result['stem_rms_data'];
@@ -506,10 +524,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                 
                 for (String stemName in envelopes.keys) {
                    var state = getChannelState(stemName);
-                   // Convert the JSON list to a strict List<double> and assign it!
                    state.rmsEnvelope = (envelopes[stemName] as List).map<double>((e) => (e as num).toDouble()).toList();
-                   
-                   // This will tell you exactly how many 10ms frames of data were generated for the track
                    logToSupabase("DEBUG: Successfully assigned ${state.rmsEnvelope.length} RMS frames to track: $stemName");
                 }
               } else {
