@@ -1393,7 +1393,42 @@ mixin DawApiService on VoxrayDAWStateBase {
     return Uint8List.fromList(ZipEncoder().encode(archive)!);
   }
 
-  Future<void> saveVoxrayProject() async {
+  Future<void> saveVoxrayProjectAs() async {
+    final bytes = await packageProjectBytes();
+    String defaultSaveName = originalFileName.contains('.')
+        ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+        : (originalFileName.isNotEmpty ? originalFileName : projectName);
+  
+    try {
+      // 1. Correct v11 API: Direct call on FilePicker, no '.platform', no 'bytes' passed
+      String? path = await FilePicker.saveFile(
+        dialogTitle: 'Save VoxRay Project',
+        fileName: '$defaultSaveName.vxp', 
+        type: FileType.custom,
+        allowedExtensions: ['vxp'],
+      );
+  
+      if (path != null && path.isNotEmpty) {
+        // 2. Write natively via Dart I/O to avoid the C++ plugin stack overflow
+        final file = File(path);
+        await file.writeAsBytes(bytes);
+  
+        setState(() { 
+          currentProjectPath = path; 
+          hasBeenSaved = true; 
+          dirtyStems.clear(); 
+        });
+        showSaveConfirmation('Project saved successfully as offline .vxp archive.');
+      } else {
+        showSaveConfirmation('Save cancelled.');
+      }
+    } catch (e) {
+      showSaveConfirmation('Save failed: $e');
+    }
+  }
+
+  
+  Future<void> saveVoxrayProject_crossplatform_problems() async {
     logToSupabase('client saveVoxrayProject()');
     if (currentProjectPath == null || kIsWeb || currentProjectPath!.startsWith('content://')) {
       
