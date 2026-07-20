@@ -405,7 +405,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
   
   // ── Public DSP method (No underscore) ───────────────────────────────────
   void applyStemPlugins(String stemName) {
-    applyStemPlugins
+    return;
     final state = getChannelState(stemName);
     final source = stemSources[stemName];
     final handle = stemHandles[stemName]; // No need to reassign this anymore!
@@ -488,7 +488,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
   // ── Public Master DSP method ────────────────────────────────────────────
   void applyMasterPlugins() {
-    applyStemPlugins
+    return;
     final state = getChannelState('master');
     final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
 
