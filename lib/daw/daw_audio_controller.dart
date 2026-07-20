@@ -165,9 +165,9 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
         // Pre-load / bypass filter configuration
         try {
-          newSource.filters.freeverbFilter.activate();
-          newSource.filters.compressorFilter.activate();
-          newSource.filters.biquadFilter.activate();
+          //newSource.filters.freeverbFilter.activate();
+          //newSource.filters.compressorFilter.activate();
+          //newSource.filters.biquadFilter.activate();
           
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
@@ -405,6 +405,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
   
   // ── Public DSP method (No underscore) ───────────────────────────────────
   void applyStemPlugins(String stemName) {
+    applyStemPlugins
     final state = getChannelState(stemName);
     final source = stemSources[stemName];
     final handle = stemHandles[stemName]; // No need to reassign this anymore!
@@ -487,6 +488,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
   // ── Public Master DSP method ────────────────────────────────────────────
   void applyMasterPlugins() {
+    applyStemPlugins
     final state = getChannelState('master');
     final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
 
