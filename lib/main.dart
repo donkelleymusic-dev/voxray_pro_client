@@ -228,36 +228,6 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
   //  mixerState['synth']?.isMuted = true;
   //});
     
-  void resetMixerToDefaults() {
-    setState(() {
-      // 1. Reset core channels using your dawState controller reference
-      List<String> coreChannels = ['master', 'original', 'synth'];
-      for (String stem in coreChannels) {
-        final state = dawState.getChannelState(stem); // Added dawState. prefix
-        state.volume = 0.8;
-        state.pan = 0.0;
-        state.plugin1 = 'None';
-        state.plugin2 = 'None';
-        state.plugin3 = 'None';
-        state.plugin4 = 'None';
-        state.isMuted = (stem == 'synth'); // Mute synth by default
-      }
-
-      // 2. Reset active stems using dawState.stemSources
-      for (String stem in dawState.stemSources.keys) {
-        final state = dawState.getChannelState(stem); // Added dawState. prefix
-        state.volume = 0.8;
-        state.pan = 0.0;
-        state.plugin1 = 'None';
-        state.plugin2 = 'None';
-        state.plugin3 = 'None';
-        state.plugin4 = 'None';
-        
-        // Mute INSTRUMENTAL by default
-        state.isMuted = (stem == 'instrumental');
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
