@@ -212,6 +212,43 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
     });
   }
 
+  //Where to trigger this next function (TODO!):
+
+  //    Call resetMixerToDefaults(); inside your "New Project" / "Clear Project" function before the new audio loads.
+  
+  //    In your file loading/uploading function (e.g., loadOriginalAudio()), call it right after the file is successfully parsed.
+  
+  //    In your API return function (where stems finish generating and are added to the timeline), run a quick check to ensure they are muted:
+  
+  //Dart
+  
+  // When stems arrive from API (should help with synth and instrumental not being muted sometimes):
+  //setState(() {
+  //  mixerState['instrumental']?.isMuted = true;
+  //  mixerState['synth']?.isMuted = true;
+  //});
+    
+  void resetMixerToDefaults() {
+    setState(() {
+      for (String stem in mixerState.keys) {
+        // Reset basic levels
+        mixerState[stem]!.volume = 0.8; // Standard default headroom
+        mixerState[stem]!.pan = 0.0;    // Center
+        
+        // Clear DSP FX
+        mixerState[stem]!.reverbSend = 0.0;
+        mixerState[stem]!.delaySend = 0.0;
+        
+        // Mute Instrumental and Synth automatically
+        if (stem == 'instrumental' || stem == 'synth') {
+          mixerState[stem]!.isMuted = true;
+        } else {
+          mixerState[stem]!.isMuted = false;
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // 1. App is loading session or verifying subscription status
@@ -1032,41 +1069,36 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
   void _showStudioMixer() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
+      isScrollControlled: true, // Crucial for overriding default constraints
       backgroundColor: Colors.transparent,
       builder: (context) => SafeArea(
         child: StatefulBuilder(
           builder: (context, setMixerState) {
-            Widget buildChannelStrip(String title, String key, Color highlight,
-                {bool isMaster = false}) {
+            
+            // 1. Detect if we are in Landscape Mode inside the builder
+            bool isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+            Widget buildChannelStrip(String title, String key, Color highlight, {bool isMaster = false}) {
               final state       = getChannelState(key);
-              bool isAudible    = activePlaybackSources.contains(key) ||
-                  (isMaster && activePlaybackSources.isNotEmpty);
+              bool isAudible    = activePlaybackSources.contains(key) || (isMaster && activePlaybackSources.isNotEmpty);
               double simulatedMeterValue = 0.0;
               if (isPlaying && isAudible) {
-                simulatedMeterValue =
-                    (0.3 + (math.Random().nextDouble() * 0.6)) * state.volume;
+                simulatedMeterValue = (0.3 + (math.Random().nextDouble() * 0.6)) * state.volume;
               }
 
               return Container(
                 width: 68,
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 decoration: BoxDecoration(
-                  color: isMaster
-                      ? Colors.redAccent.withOpacity(0.1)
-                      : Colors.black87,
-                  border: Border.all(
-                      color: isMaster ? Colors.redAccent : Colors.white24),
+                  color: isMaster ? Colors.redAccent.withOpacity(0.1) : Colors.black87,
+                  border: Border.all(color: isMaster ? Colors.redAccent : Colors.white24),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.all(4.0),
                     child: Text(title,
-                        style: TextStyle(
-                            color: highlight,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10),
+                        style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 10),
                         overflow: TextOverflow.ellipsis),
                   ),
 
@@ -1074,14 +1106,13 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                   ValueListenableBuilder<double>(
                     valueListenable: channelLevels[key]!,
                     builder: (context, currentLevel, child) {
-                      // Force visual to 0 if track is paused or muted
                       double displayLevel = (isPlaying && isAudible && !state.isMuted) ? currentLevel : 0.0;
                       return ChannelVuMeter(level: displayLevel);
                     },
                   ),
                   const SizedBox(height: 8),
 
-                  // 🎛️ PLUGIN SLOTS (Updated to use applyStemPlugins)
+                  // 🎛️ PLUGIN SLOTS 
                   _pluginSlot(key,state.plugin1, highlight, (val) {
                     if (state.plugin1 != val) {
                       setMixerState(() => state.plugin1 = val!);
@@ -1125,11 +1156,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                         this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                         double targetVol = state.isMuted ? 0.0 : state.volume;
                         if (key == 'original') {
-                          if (masterHandle != null)
-                            SoLoud.instance.setVolume(masterHandle!, targetVol);
+                          if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, targetVol);
                         } else if (key == 'synth') {
-                          if (synthHandle != null)
-                            SoLoud.instance.setVolume(synthHandle!, targetVol);
+                          if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, targetVol);
                         } else if (stemHandles.containsKey(key)) {
                           SoLoud.instance.setVolume(stemHandles[key]!, targetVol);
                         }
@@ -1234,11 +1263,13 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
             }
 
             return Container(
-              height: MediaQuery.of(context).size.height * 0.52,
+              // 2. THE FIX: Dynamic height based on orientation!
+              height: isLandscape 
+                  ? MediaQuery.of(context).size.height * 0.90 // 90% in landscape
+                  : MediaQuery.of(context).size.height * 0.52, // 52% in portrait
               decoration: BoxDecoration(
                 color: Colors.grey[900],
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 border: const Border(top: BorderSide(color: Colors.white24)),
               ),
               child: Column(children: [
@@ -2583,25 +2614,28 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
 
                 // 7. Dynamic Tools & Meter Bridge Row
                 Container(
-                  height: 52,
                   decoration: BoxDecoration(
                     color: Colors.grey[900],
                     border: const Border(bottom: BorderSide(color: Colors.black, width: 2)),
                   ),
                   child: isLandscape
                       // LANDSCAPE: Tools and Meters live on the SAME horizontal strip
-                      ? Row(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(left: 6.0, right: 8.0),
-                              child: buildToolGroup(),
-                            ),
-                            Container(width: 2, color: Colors.black), // Divider
-                            Expanded(child: buildMeterBridge()),
-                          ],
+                      ? SizedBox(
+                          height: 52,
+                          child: Row(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(left: 6.0, right: 8.0),
+                                child: buildToolGroup(),
+                              ),
+                              Container(width: 2, color: Colors.black),
+                              Expanded(child: buildMeterBridge()),
+                            ],
+                          ),
                         )
-                      // PORTRAIT: Stack them (Tools on top, Meters below)
+                      // PORTRAIT: Stack them cleanly with full unclipped height
                       : Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Container(
                               height: 36,
@@ -2611,7 +2645,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
                               alignment: Alignment.centerLeft,
                               child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: buildToolGroup()),
                             ),
-                            Expanded(child: buildMeterBridge()),
+                            // Restored full container height for portrait mode so text & meters never clip
+                            SizedBox(
+                              height: 52,
+                              child: buildMeterBridge(),
+                            ),
                           ],
                         ),
                 ),
