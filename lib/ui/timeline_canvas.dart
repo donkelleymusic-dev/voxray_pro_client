@@ -99,13 +99,21 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         exactPlayheadTime.value = uiPlayheadTime; 
 
         // --- UPDATE VU METERS ---
+        // 1. Synth Meter (Respects mute state)
+        var synthState = widget.dawState.getChannelState('synth');
+        double synthEffectiveVol = synthState.isMuted ? 0.0 : synthState.volume;
         widget.dawState.channelLevels['synth']?.value = 
-            calculateSynthLevel(uiVuMeterTime, widget.dawState.rawNotes) * widget.dawState.getChannelState('synth').volume;
+            calculateSynthLevel(uiVuMeterTime, widget.dawState.rawNotes) * synthEffectiveVol;
             
+        // 2. Audio Stem Meters (Excludes 'instrumental' and respects mute state)
         for (String stemName in widget.dawState.stemSources.keys) {
+           if (stemName == 'instrumental') continue; // Exclude instrumental from VU meters
+           
            var state = widget.dawState.getChannelState(stemName);
+           double effectiveVol = state.isMuted ? 0.0 : state.volume;
+           
            widget.dawState.channelLevels[stemName]?.value = 
-               calculateAudioLevel(uiVuMeterTime, state.rmsEnvelope) * state.volume;
+               calculateAudioLevel(uiVuMeterTime, state.rmsEnvelope) * effectiveVol;
         }
         
         // 6. HORIZONTAL SCROLL
