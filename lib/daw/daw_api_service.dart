@@ -21,6 +21,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'dart:io' show Platform, File;
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 import '../models/channel_state.dart';
 import '../audio/vox_synth.dart';
 import '../services/supabase_service.dart';
@@ -1352,22 +1355,6 @@ mixin DawApiService on VoxrayDAWStateBase {
           'original_audio.dat', originalAudioBytes!.length, originalAudioBytes));
     }
 
-    // App version (commented to test FIX below for web):
-    //for (var entry in cachedStemPaths.entries) {
-    //  try {
-    //    final bytes = await File(entry.value).readAsBytes();
-    //    archive.addFile(ArchiveFile('${entry.key}.ogg', bytes.length, bytes));
-    //  } catch (e) {
-    //    logToSupabase('Skipping missing file for package: ${entry.key}');
-    //  }
-    //}
-    // --- FIX: Store bytes in memory rather than reading from File path ---
-    // Ensure your controller has a Map<String, Uint8List> called 'cachedStemBytes' 
-    // that you populate when downloading stems.
-    // This might work for all.  if not, try it for web only, leaving app version above otherwise
-    //for (var entry in cachedStemBytes.entries) {
-    //    archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
-    //}
     // 1. Pack from RAM (Always works on Web, and works for fresh downloads on Android)
     for (var entry in cachedStemBytes.entries) {
       archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
@@ -1395,9 +1382,8 @@ mixin DawApiService on VoxrayDAWStateBase {
     logToSupabase('client saveVoxrayProject()');
     if (currentProjectPath == null || kIsWeb || currentProjectPath!.startsWith('content://')) {
       
-      logToSupabase('client saveVoxrayProject - currentProjectPath: ${currentProjectPath}, kIsWeb: ${kIsWeb}, currentProjectPath-startWith"content://" = ${currentProjectPath!.startsWith("content://")}');
-      await ();
-      return;
+      logToSupabase('client saveVoxrayProject - currentProjectPath: ${currentProjectPath}, kIsWeb: ${kIsWeb}, currentProjectPath-startWith"content://" = ${currentProjectPath?.startsWith("content://")}');
+      return; // Bails out safely on mobile cached URIs
     }
     final bytes = await packageProjectBytes();
     try {
@@ -1418,29 +1404,56 @@ mixin DawApiService on VoxrayDAWStateBase {
     String defaultSaveName = originalFileName.contains('.')
         ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
         : (originalFileName.isNotEmpty ? originalFileName : projectName);
-  
+ 
     try {
-      // 1. Correct v11 API: Direct call on FilePicker, no '.platform', no 'bytes' passed
-      String? path = await FilePicker.saveFile(
-        dialogTitle: 'Save VoxRay Project',
-        fileName: '$defaultSaveName.vxp', 
-        type: FileType.custom,
-        allowedExtensions: ['vxp'],
-      );
-  
-      if (path != null && path.isNotEmpty) {
-        // 2. Write natively via Dart I/O to avoid the C++ plugin stack overflow
-        final file = File(path);
-        await file.writeAsBytes(bytes);
-  
-        setState(() { 
-          currentProjectPath = path; 
-          hasBeenSaved = true; 
-          dirtyStems.clear(); 
-        });
-        showSaveConfirmation('Project saved successfully as offline .vxp archive.');
-      } else {
-        showSaveConfirmation('Save cancelled.');
+      String? path;
+
+      // 1. MOBILE & WEB: Must provide bytes directly to FilePicker due to Scoped Storage
+      if (kIsWeb || Platform.isAndroid || Platform.isIOS) {
+        // Note: Make sure to use .platform.saveFile for the latest file_picker API
+        path = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save VoxRay Project',
+          fileName: '$defaultSaveName.vxp', 
+          type: FileType.custom,
+          allowedExtensions: ['vxp'],
+          bytes: bytes, // <-- THE FIX: Hands the memory directly to the Mobile OS
+        );
+        
+        // On Web, path is null but the file downloads automatically.
+        // On Mobile, FilePicker writes the file and returns the URI path.
+        if (path != null || kIsWeb) {
+          setState(() { 
+            if (path != null) currentProjectPath = path; 
+            hasBeenSaved = true; 
+            dirtyStems.clear(); 
+          });
+          showSaveConfirmation('Project saved successfully.');
+        } else {
+          showSaveConfirmation('Save cancelled.');
+        }
+      } 
+      // 2. DESKTOP (Windows/Mac/Linux): Get path from OS, write natively via Dart I/O
+      else {
+        path = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save VoxRay Project',
+          fileName: '$defaultSaveName.vxp', 
+          type: FileType.custom,
+          allowedExtensions: ['vxp'],
+        );
+ 
+        if (path != null && path.isNotEmpty) {
+          final file = File(path);
+          await file.writeAsBytes(bytes); // Native Dart I/O write
+ 
+          setState(() { 
+            currentProjectPath = path; 
+            hasBeenSaved = true; 
+            dirtyStems.clear(); 
+          });
+          showSaveConfirmation('Project saved successfully as offline .vxp archive.');
+        } else {
+          showSaveConfirmation('Save cancelled.');
+        }
       }
     } catch (e) {
       showSaveConfirmation('Save failed: $e');
