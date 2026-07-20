@@ -1411,7 +1411,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       // 1. MOBILE & WEB: Must provide bytes directly to FilePicker due to Scoped Storage
       if (kIsWeb || Platform.isAndroid || Platform.isIOS) {
         // Note: Make sure to use .platform.saveFile for the latest file_picker API
-        path = await FilePicker.platform.saveFile(
+        path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
           fileName: '$defaultSaveName.vxp', 
           type: FileType.custom,
@@ -1434,7 +1434,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       } 
       // 2. DESKTOP (Windows/Mac/Linux): Get path from OS, write natively via Dart I/O
       else {
-        path = await FilePicker.platform.saveFile(
+        path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
           fileName: '$defaultSaveName.vxp', 
           type: FileType.custom,
