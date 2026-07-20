@@ -198,7 +198,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                 children: [
                   RadioListTile<String>(
                     title: const Text("Standard / Pop / Modern", style: TextStyle(color: Colors.white)),
-                    subtitle: const Text("Optimized for Vocals, Drums, Guitars, Synths", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    subtitle: const Text("Optimized for Vocals, Drums, Guitars, Bass, Keys...", style: TextStyle(color: Colors.white54, fontSize: 12)),
                     value: 'standard',
                     groupValue: selectedProfile,
                     activeColor: Colors.tealAccent,
@@ -206,7 +206,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                   ),
                   RadioListTile<String>(
                     title: const Text("Classical / Orchestral", style: TextStyle(color: Colors.white)),
-                    subtitle: const Text("Optimized for Piano, Strings, Woodwinds, Brass", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    subtitle: const Text("Optimized for Piano WITH Strings, Woodwinds, Brass", style: TextStyle(color: Colors.white54, fontSize: 12)),
                     value: 'classical',
                     groupValue: selectedProfile,
                     activeColor: Colors.tealAccent,
