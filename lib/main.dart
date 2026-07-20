@@ -126,12 +126,12 @@ class _HorizontalVuMeterPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const int segments = 8; // 8 blocks fits nicely into 48 pixels
+    const int segments = 8; 
     final double segmentWidth = (size.width / segments) - 1; 
     
-    // Scale level logarithmically for better visual feedback, then clamp
-    final double logLevel = math.log(level * 9.0 + 1.0) / math.log(10.0);
-    final int activeSegments = (logLevel * segments).ceil().clamp(0, segments);
+    // NO MORE MATH HERE. We already did the perfect dB conversion in timeline_canvas.dart!
+    // Just multiply the incoming 0.0-1.0 level by 8 segments.
+    final int activeSegments = (level * segments).ceil().clamp(0, segments);
 
     for (int i = 0; i < segments; i++) {
       final double x = i * (segmentWidth + 1);
@@ -160,7 +160,7 @@ class _HorizontalVuMeterPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HorizontalVuMeterPainter oldDelegate) {
-    // Only rebuild the widget if the discrete number of active blocks changes
+    // Now correctly checks if the actual NUMBER of lit LEDs changed
     return (oldDelegate.level * 8).ceil() != (level * 8).ceil();
   }
 }
