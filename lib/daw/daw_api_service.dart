@@ -1428,7 +1428,7 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   
-  Future<void> saveVoxrayProject_crossplatform_problems() async {
+  Future<void> saveVoxrayProject() async {
     logToSupabase('client saveVoxrayProject()');
     if (currentProjectPath == null || kIsWeb || currentProjectPath!.startsWith('content://')) {
       
