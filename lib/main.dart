@@ -230,27 +230,36 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
     
   void resetMixerToDefaults() {
     setState(() {
-      // List all possible standard channels to reset
-      List<String> channelsToReset = ['master', 'original', 'synth', ...targetStemsSelection];
-      
-      for (String stem in channelsToReset) {
-        final state = getChannelState(stem);
-        
-        // Reset basic levels and pans
-        state.volume = 0.8;
-        state.pan = 0.0;
-        
-        // Clear plugins/DSP slots if your state has them
-        state.plugin1 = 'None';
-        state.plugin2 = 'None';
-        state.plugin3 = 'None';
-        state.plugin4 = 'None';
-        
-        // Mute Instrumental and Synth automatically by default
-        if (stem == 'instrumental' || stem == 'synth') {
-          state.isMuted = true;
-        } else {
-          state.isMuted = false;
+      // 1. Reset standard fixed channels safely using your mixerState map
+      List<String> coreChannels = ['master', 'original', 'synth'];
+      for (String stem in coreChannels) {
+        if (mixerState.containsKey(stem)) {
+          final state = mixerState[stem]!;
+          state.volume = 0.8;
+          state.pan = 0.0;
+          state.plugin1 = 'None';
+          state.plugin2 = 'None';
+          state.plugin3 = 'None';
+          state.plugin4 = 'None';
+          
+          // Mute synth by default
+          state.isMuted = (stem == 'synth');
+        }
+      }
+
+      // 2. Reset all active stems from your selection list
+      for (String stem in targetStemsSelection) {
+        if (mixerState.containsKey(stem)) {
+          final state = mixerState[stem]!;
+          state.volume = 0.8;
+          state.pan = 0.0;
+          state.plugin1 = 'None';
+          state.plugin2 = 'None';
+          state.plugin3 = 'None';
+          state.plugin4 = 'None';
+          
+          // Automatically mute INSTRUMENTAL by default
+          state.isMuted = (stem == 'instrumental');
         }
       }
     });
