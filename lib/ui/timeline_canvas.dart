@@ -47,15 +47,15 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     
     // 2. Initialize the hardware-locked ticker to poll audio time directly
     _audioSyncTicker = createTicker((elapsed) {
+      return;
 
       if (widget.dawState.isUploading) return; // do nothing but upload while uploading!
 
       // ONLY fetch time and update playhead
-      if (widget.dawState.masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(widget.dawState.masterHandle!)) {
-        double rawHardwareTime = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
-        exactPlayheadTime.value = math.max(0.0, rawHardwareTime - playheadVisualOffset);
-      }
-          return;
+      //if (widget.dawState.masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(widget.dawState.masterHandle!)) {
+      //  double rawHardwareTime = SoLoud.instance.getPosition(widget.dawState.masterHandle!).inMilliseconds / 1000.0;
+      //  exactPlayheadTime.value = math.max(0.0, rawHardwareTime - playheadVisualOffset);
+      //}
       if (widget.dawState.isPlaying) {
         
         double rawHardwareTime = widget.dawState.currentPosition;
