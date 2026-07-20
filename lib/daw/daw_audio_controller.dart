@@ -405,147 +405,35 @@ mixin DawAudioController on VoxrayDAWStateBase {
   
   // ── Public DSP method (No underscore) ───────────────────────────────────
   void applyStemPlugins(String stemName) {
-    return;
-    final state = getChannelState(stemName);
     final source = stemSources[stemName];
-    final handle = stemHandles[stemName]; // No need to reassign this anymore!
-    
+    final handle = stemHandles[stemName];
     if (source == null) return;
-
-    final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
-
-    try {
-      // ── REVERB ─────────────────────────────────────────────────────────────
-      if (plugins.contains('Reverb')) {
-        // Safety check: If the slider is at 0, bump it to 0.5 so it actually turns on!
-        double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
-        
-        source.filters.freeverbFilter.wet().value = safeMix;
-        source.filters.freeverbFilter.roomSize().value = state.reverbRoomSize;
-        if (handle != null) {
-          source.filters.freeverbFilter.wet(soundHandle: handle).value = safeMix;
-          source.filters.freeverbFilter.roomSize(soundHandle: handle).value = state.reverbRoomSize;
-        }
-      } else {
-        source.filters.freeverbFilter.wet().value = 0.0;
-        if (handle != null) source.filters.freeverbFilter.wet(soundHandle: handle).value = 0.0;
-      }
-
-      // ── EQ (Low Pass Filter) ────────────────────────────────────────────────
-      if (plugins.contains('EQ')) {
-        source.filters.biquadFilter.wet().value = 1.0; 
-        source.filters.biquadFilter.type().value = 0; // 0 = Low Pass
-        
-        double targetFrequency = sliderToFrequency(state.eqCutoff);
-        source.filters.biquadFilter.frequency().value = targetFrequency;
-        
-        if (handle != null) {
-          source.filters.biquadFilter.wet(soundHandle: handle).value = 1.0;
-          source.filters.biquadFilter.type(soundHandle: handle).value = 0;
-          source.filters.biquadFilter.frequency(soundHandle: handle).value = targetFrequency;
-        }
-      } else {
-        source.filters.biquadFilter.wet().value = 0.0;
-        if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
-      }
-
-      // ── COMPRESSOR (Option 1: Always On, Real-time update) ─────────────────
-      if (plugins.contains('Compressor')) {
-        // Set the base source
-        source.filters.compressorFilter.wet().value = 1.0;
-        
-        if (handle != null) {
-          // 1. Instantly turn the compressor on for the active voice
-          source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
-          
-          // 2. Stream the parameters directly to the engine
-          source.filters.compressorFilter.threshold(soundHandle: handle).value = state.compressorThreshold;
-          source.filters.compressorFilter.ratio(soundHandle: handle).value = state.compressorRatio;
-          
-          // 3. Custom Auto-Makeup Gain mapping
-          double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
-          double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-          double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
-          
-          SoLoud.instance.setVolume(handle, finalVolume);
-        }
-      } else {
-        // Ensure compressor is completely bypassed
-        source.filters.compressorFilter.wet().value = 0.0;
-        
-        if (handle != null) {
-          source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
-          
-          // IMPORTANT: Restore the normal track volume since makeup gain is turned off
-          SoLoud.instance.setVolume(handle, state.isMuted ? 0.0 : state.volume);
-        }
-      }
-
-    } catch (e) {
-      logToSupabase('Stem DSP update failed for $stemName: $e', severity: 'ERROR');
+  
+    // ── FORCE ALL WET MIXES TO ZERO ──────────────────────────────────────────
+    source.filters.freeverbFilter.wet().value = 0.0;
+    source.filters.biquadFilter.wet().value = 0.0;
+    source.filters.compressorFilter.wet().value = 0.0;
+  
+    if (handle != null) {
+      source.filters.freeverbFilter.wet(soundHandle: handle).value = 0.0;
+      source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
+      source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
+  
+      // Reset volume to clean track volume (no compressor makeup gain)
+      final state = getChannelState(stemName);
+      SoLoud.instance.setVolume(handle, state.isMuted ? 0.0 : state.volume);
     }
+    return; // Skip rest of method logic
   }
-
-  // ── Public Master DSP method ────────────────────────────────────────────
+  
   void applyMasterPlugins() {
-    return;
+    // ── FORCE MASTER WET MIXES TO ZERO ───────────────────────────────────────
+    SoLoud.instance.filters.freeverbFilter.wet.value = 0.0;
+    SoLoud.instance.filters.biquadResonantFilter.wet.value = 0.0;
+    SoLoud.instance.filters.compressorFilter.wet.value = 0.0;
+  
     final state = getChannelState('master');
-    final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
-
-    try {
-      // ── MASTER REVERB ───────────────────────────────────────────────────
-      if (plugins.contains('Reverb')) {
-        if (!SoLoud.instance.filters.freeverbFilter.isActive) {
-          SoLoud.instance.filters.freeverbFilter.activate();
-        }
-        double safeMix = state.reverbMix;
-        //double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
-        // Global parameters are properties, not methods! (No parentheses)
-        SoLoud.instance.filters.freeverbFilter.wet.value = safeMix;
-        SoLoud.instance.filters.freeverbFilter.roomSize.value = state.reverbRoomSize;
-      } else {
-        SoLoud.instance.filters.freeverbFilter.wet.value = 0.0;
-      }
-
-      // ── MASTER EQ (Biquad Resonant Filter) ──────────────────────────────
-      if (plugins.contains('EQ')) {
-        if (!SoLoud.instance.filters.biquadResonantFilter.isActive) {
-          SoLoud.instance.filters.biquadResonantFilter.activate();
-        }
-        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 1.5;
-        SoLoud.instance.filters.biquadResonantFilter.wet.value = 1.0;
-        SoLoud.instance.filters.biquadResonantFilter.type.value = 0; // Low Pass
-        
-        // ADD THIS LINE: Give the filter enough resonance to be audible!
-        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 2.0; 
-        
-        double targetFrequency = sliderToFrequency(state.eqCutoff);
-        SoLoud.instance.filters.biquadResonantFilter.frequency.value = targetFrequency;
-      } else {
-        SoLoud.instance.filters.biquadResonantFilter.wet.value = 0.0;
-      }
-
-      // ── MASTER COMPRESSOR ────────────────────────────────────────────────
-      if (plugins.contains('Compressor')) {
-        if (!SoLoud.instance.filters.compressorFilter.isActive) {
-          SoLoud.instance.filters.compressorFilter.activate();
-        }
-        SoLoud.instance.filters.compressorFilter.wet.value = 1.0;
-        SoLoud.instance.filters.compressorFilter.threshold.value = state.compressorThreshold;
-        SoLoud.instance.filters.compressorFilter.ratio.value = state.compressorRatio;
-        
-        // Apply Global Makeup Gain
-        double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
-        double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-        double finalGlobalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
-        
-        SoLoud.instance.setGlobalVolume(finalGlobalVolume);
-      } else {
-        SoLoud.instance.filters.compressorFilter.wet.value = 0.0;
-        SoLoud.instance.setGlobalVolume(state.isMuted ? 0.0 : state.volume);
-      }
-    } catch (e) {
-      logToSupabase('Master DSP update failed: $e', severity: 'ERROR');
-    }
+    SoLoud.instance.setGlobalVolume(state.isMuted ? 0.0 : state.volume);
+    return; // Skip rest of method logic
   }
 }
