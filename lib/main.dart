@@ -80,7 +80,9 @@ Future<void> main() async {
   );
 
   // 1. Initialize your audio engine BEFORE the app UI runs!
-  await SoLoud.instance.init();
+  await SoLoud.instance.init(
+    bufferSize: 2048, // or 1024 or whatever, to stop audio glitching without bt earbuds etc.
+  );
 
   // 2. Wrap your actual app logic directly inside Sentry's appRunner
   await SentryFlutter.init(
