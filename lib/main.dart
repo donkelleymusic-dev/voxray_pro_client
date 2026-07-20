@@ -101,9 +101,9 @@ Future<void> main() async {
 
   // 1. Initialize your audio engine BEFORE the app UI runs!
   await SoLoud.instance.init(
-    sampleRate: 48000,     // Force standard CD-quality sample rate across all devices
-    bufferSize: 8192,      // Bump from 2048 to 4096 to give the phone speaker thread breathing room
-    channels: Channels.stereo,
+    //sampleRate: 48000,     // Force standard CD-quality sample rate across all devices
+    bufferSize: 256,      // Bump from 2048 to 4096 to give the phone speaker thread breathing room
+    //channels: Channels.stereo,
   );
 
   // 2. Wrap your actual app logic directly inside Sentry's appRunner
