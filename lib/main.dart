@@ -123,6 +123,45 @@ Future<void> main() async {
   // Notice: The duplicate runApp() that used to be down here is now completely removed!
 }
 
+enum XrayCompareMode { overlay, split }
+
+class DualTakeXraySettings {
+  // Take Data
+  Uint8List? takeBAudioBytes;
+  String takeBName;
+  List<dynamic> takeBNotes;
+  
+  // Visuals
+  double takeBOffsetSeconds; 
+  double opacityB;            
+  XrayCompareMode mode;
+  Color colorA;
+  Color colorB;
+  
+  // Auto-Align & Forensic Match Data
+  bool hasMatch;
+  double matchStartSeconds;
+  double matchEndSeconds;
+  double matchConfidence; 
+  double lockInPulse; // For the snap animation flare
+
+  DualTakeXraySettings({
+    this.takeBAudioBytes,
+    this.takeBName = "Secondary Vocal",
+    this.takeBNotes = const [],
+    this.takeBOffsetSeconds = 0.0,
+    this.opacityB = 0.55,
+    this.mode = XrayCompareMode.overlay,
+    this.colorA = const Color(0xFF00E5FF), // Cyan
+    this.colorB = const Color(0xFFFF007F), // Magenta
+    this.hasMatch = false,
+    this.matchStartSeconds = 0.0,
+    this.matchEndSeconds = 0.0,
+    this.matchConfidence = 0.0,
+    this.lockInPulse = 0.0,
+  });
+}
+
 // =========================================================================
 // HARDWARE OPTIMIZED VU METER
 // =========================================================================
