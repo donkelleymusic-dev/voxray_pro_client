@@ -2544,6 +2544,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
   List<PopupMenuEntry<String>> _buildMainMenu() {
     bool canSaveAs = isProjectLoaded;
+    
+    // Evaluate this cleanly outside the list
+    bool hasVocalStem = generatedStems.contains('vocals') ||
+        cachedStemBytes.containsKey('vocals') ||
+        cachedStemPaths.containsKey('vocals') ||
+        activeEditableStem == 'vocals';
 
     return [
       const PopupMenuItem(
@@ -2598,6 +2604,23 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           child: ListTile(
               leading: Icon(Icons.troubleshoot, color: Colors.pinkAccent),
               title: Text('Dual-Take Comparison (Beta)'))),
+      
+      // AI Vocal Detection Menu Item
+      PopupMenuItem(
+        value: 'detect_ai_vocal',
+        enabled: hasVocalStem && !isAnalyzingAiVocal,
+        child: ListTile(
+          leading: Icon(
+            Icons.psychology_outlined,
+            color: hasVocalStem ? Colors.cyanAccent : Colors.white24,
+          ),
+          title: Text(
+            'Detect AI Vocals',
+            style: TextStyle(color: hasVocalStem ? Colors.white : Colors.white38),
+          ),
+        ),
+      ),
+
       const PopupMenuItem(
           value: 'import_stem',
           child: ListTile(
@@ -2635,31 +2658,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               leading: Icon(Icons.mic_external_on, color: isLiveModeActive ? Colors.redAccent : Colors.white),
               title: Text(isLiveModeActive ? 'Disable Live Pedagogy' : 'Enable Live Pedagogy',
                   style: TextStyle(color: isLiveModeActive ? Colors.redAccent : Colors.white)))),
-
-      bool hasVocalStem = generatedStems.contains('vocals') ||
-        cachedStemBytes.containsKey('vocals') ||
-        cachedStemPaths.containsKey('vocals') ||
-        activeEditableStem == 'vocals';
-
-      // Add inside return list:
-      PopupMenuItem(
-        value: 'detect_ai_vocal',
-        enabled: hasVocalStem && !isAnalyzingAiVocal,
-        child: ListTile(
-          leading: Icon(
-            Icons.psychology_outlined,
-            color: hasVocalStem ? Colors.cyanAccent : Colors.white24,
-          ),
-          title: Text(
-            'Detect AI Vocals',
-            style: TextStyle(color: hasVocalStem ? Colors.white : Colors.white38),
-          ),
-        ),
-      ),
       
       const PopupMenuDivider(),
       
-      // Debug Section
       const PopupMenuItem(enabled: false, child: Text('    DEBUG USE', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold))),
       const PopupMenuItem(
           value: 'reprocess',
@@ -2672,11 +2673,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               leading: Icon(Icons.bug_report, color: isTestModeActive ? Colors.redAccent : Colors.white38),
               title: Text(isTestModeActive ? 'Disable MOCK API Mode' : 'Enable MOCK API Mode',
                   style: TextStyle(color: isTestModeActive ? Colors.redAccent : Colors.white)))),
-      
-      // HIDDEN ITEMS
-      // const PopupMenuItem(value: 'stem_tree', child: ListTile(leading: Icon(Icons.account_tree), title: Text('Stem Select Tree'))),
-      // PopupMenuItem(value: 'save', enabled: canSave, child: ListTile(leading: Icon(Icons.save), title: Text('Save Project (Overwrite)'))),
-      // PopupMenuItem(value: 'processing_mode', child: ListTile(title: Text('Mode: ADVANCED'))),
     ];
   }
 
