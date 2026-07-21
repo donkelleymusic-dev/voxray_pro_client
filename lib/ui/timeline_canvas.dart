@@ -175,6 +175,89 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     //super.dispose();
   }
 
+  Widget _buildAiInspectorBadge() {
+    if (widget.dawState.aiResult == null) return const SizedBox.shrink();
+
+    final aiResult = widget.dawState.aiResult!;
+    final double percentage = aiResult.overallConfidence * 100;
+    final Color statusColor = aiResult.isAiDetected ? Colors.redAccent : Colors.tealAccent;
+
+    return Positioned(
+      top: 10,
+      left: 42, // Offset past key column
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: statusColor, width: 1.5),
+            boxShadow: [
+              BoxShadow(color: statusColor.withOpacity(0.3), blurRadius: 8, spreadRadius: 1)
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    aiResult.isAiDetected ? Icons.memory : Icons.record_voice_over,
+                    color: statusColor,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    aiResult.isAiDetected ? "AI SYNTHETIC VOICE DETECTED" : "HUMAN VOCAL CONFIRMED",
+                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 10),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    "${percentage.toStringAsFixed(1)}%",
+                    style: TextStyle(color: statusColor, fontWeight: FontWeight.black, fontSize: 13),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      widget.dawState.setState(() {
+                        widget.dawState.aiResult = null;
+                      });
+                    },
+                    child: const Icon(Icons.close, size: 14, color: Colors.white54),
+                  ),
+                ],
+              ),
+              if (aiResult.detectedArtifacts.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: aiResult.detectedArtifacts.map((artifact) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 0.5),
+                      ),
+                      child: Text(
+                        artifact,
+                        style: const TextStyle(color: Colors.white70, fontSize: 9),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ]
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
   double calculateSynthLevel(double currentPlayheadSeconds, List<dynamic> rawNotes) {
     for (var note in rawNotes) {
       if (note['isDeleted'] == true || note['isMuted'] == true) continue;
@@ -414,6 +497,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                       onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
                       onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
                       child: Stack(
+                        // Floating AI Inspector Badge
+                        if (widget.dawState.aiResult != null)
+                          _buildAiInspectorBadge(),
                         children: [
                           // ORIGINAL PIANO ROLL
                           RepaintBoundary(
@@ -445,6 +531,18 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                                   zoomY: widget.dawState.zoomY,
                                   minMidi: minMidi,
                                   maxMidi: maxMidi,
+                                ),
+                              ),
+                            ),
+                          // Heatmap Overlay (Rendered directly under piano roll)
+                          if (widget.dawState.aiResult != null && widget.dawState.aiResult!.heatmap.isNotEmpty)
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(timelineWidth, totalHeight),
+                                painter: AiHeatmapOverlayPainter(
+                                  heatmap: widget.dawState.aiResult!.heatmap,
+                                  zoomX: widget.dawState.zoomX,
+                                  trackHeight: totalHeight,
                                 ),
                               ),
                             ),
@@ -671,6 +769,62 @@ class XrayDualTakePainter extends CustomPainter {
   bool shouldRepaint(covariant XrayDualTakePainter oldDelegate) => true; 
 }
 
+class AiHeatmapOverlayPainter extends CustomPainter {
+  final List<Map<String, dynamic>> heatmap;
+  final double zoomX;
+  final double trackHeight;
+
+  AiHeatmapOverlayPainter({
+    required this.heatmap,
+    required this.zoomX,
+    required this.trackHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (heatmap.isEmpty) return;
+
+    final Paint fillPaint = Paint()..style = PaintingStyle.fill;
+    const double barHeight = 12.0; // Height of heatmap strip at canvas floor
+    final double topY = size.height - barHeight;
+
+    for (int i = 0; i < heatmap.length - 1; i++) {
+      double t1 = (heatmap[i]['time'] as num).toDouble();
+      double t2 = (heatmap[i + 1]['time'] as num).toDouble();
+      double score = (heatmap[i]['score'] as num).toDouble();
+
+      double x1 = t1 * zoomX;
+      double x2 = t2 * zoomX;
+      double width = x2 - x1;
+
+      if (width <= 0) continue;
+
+      Color frameColor;
+      if (score > 0.75) {
+        frameColor = Colors.redAccent.withOpacity(0.85);
+      } else if (score > 0.45) {
+        frameColor = Colors.orangeAccent.withOpacity(0.65);
+      } else {
+        frameColor = Colors.tealAccent.withOpacity(0.20);
+      }
+
+      fillPaint.color = frameColor;
+      canvas.drawRect(Rect.fromLTWH(x1, topY, width, barHeight), fillPaint);
+
+      if (score > 0.75) {
+        final Paint linePaint = Paint()
+          ..color = Colors.redAccent
+          ..strokeWidth = 2.0;
+        canvas.drawLine(Offset(x1, topY), Offset(x2, topY), linePaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant AiHeatmapOverlayPainter oldDelegate) {
+    return oldDelegate.heatmap != heatmap || oldDelegate.zoomX != zoomX;
+  }
+}
 
 class AdvancedPianoRollPainter extends CustomPainter {
   final List<Map<String, dynamic>> notes;
