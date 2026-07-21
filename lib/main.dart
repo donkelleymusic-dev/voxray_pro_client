@@ -125,6 +125,31 @@ Future<void> main() async {
   // Notice: The duplicate runApp() that used to be down here is now completely removed!
 }
 
+class AiDetectionResult {
+  final double overallConfidence; // 0.0 to 1.0
+  final bool isAiDetected;
+  final List<String> detectedArtifacts;
+  final List<Map<String, dynamic>> heatmap;
+
+  AiDetectionResult({
+    required this.overallConfidence,
+    required this.isAiDetected,
+    required this.detectedArtifacts,
+    required this.heatmap,
+  });
+
+  factory AiDetectionResult.fromJson(Map<String, dynamic> json) {
+    return AiDetectionResult(
+      overallConfidence: (json['overall_synthetic_confidence'] ?? 0.0).toDouble(),
+      isAiDetected: json['is_ai_detected'] ?? false,
+      detectedArtifacts: List<String>.from(json['detected_artifacts'] ?? []),
+      heatmap: List<Map<String, dynamic>>.from(
+        (json['heatmap'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
+      ),
+    );
+  }
+}
+
 enum XrayCompareMode { overlay, split }
 
 class DualTakeXraySettings {
@@ -366,6 +391,10 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   bool isSynthRendering = false;
   String synthMessage   = '';
   String processingMode = 'advanced';
+
+  // ── AI Vocal Inspector State ──────────────────────────────────────────────
+  AiDetectionResult? aiResult;
+  bool isAnalyzingAiVocal = false;
 
   Map<String, ChannelState> mixerState = {
     'master': ChannelState(), 'synth': ChannelState(),
@@ -796,6 +825,63 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
   void _toggleMasterTransport() {
     if (isPlaying) pauseAllPlayers(); else playAllPlayers();
+  }
+
+  // =========================================================================
+  // AI VOCAL INSPECTION LOGIC
+  // =========================================================================
+
+  Future<void> _runAiVocalInspection() async {
+    Uint8List? audioBytes;
+
+    // Retrieve vocal stem bytes from RAM or disk cache
+    if (cachedStemBytes.containsKey('vocals')) {
+      audioBytes = cachedStemBytes['vocals'];
+    } else if (cachedStemPaths.containsKey('vocals')) {
+      audioBytes = await File(cachedStemPaths['vocals']!).readAsBytes();
+    } else if (activeEditableStem == 'vocals' && originalAudioBytes != null) {
+      audioBytes = originalAudioBytes;
+    }
+
+    if (audioBytes == null) {
+      _showSaveConfirmation('No vocal stem audio available to inspect.');
+      return;
+    }
+
+    setState(() {
+      isAnalyzingAiVocal = true;
+      isLoading = true;
+      processingMessage = "Analyzing vocal stem for AI synthetic signatures...";
+    });
+
+    try {
+      var uri = Uri.parse('$apiBase/detect-ai-vocal');
+      var request = http.MultipartRequest('POST', uri)
+        ..files.add(http.MultipartFile.fromBytes('file', audioBytes, filename: 'vocal_stem.wav'));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          aiResult = AiDetectionResult.fromJson(data);
+        });
+        _showSaveConfirmation(
+            'AI Inspection Complete (${(aiResult!.overallConfidence * 100).toStringAsFixed(1)}% Synthetic confidence)');
+      } else {
+        _showSaveConfirmation('AI Vocal Inspection failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint("AI Inspection Error: $e");
+      _showSaveConfirmation('AI Inspection Error: $e');
+    } finally {
+      setState(() {
+        isAnalyzingAiVocal = false;
+        isLoading = false;
+        processingMessage = '';
+      });
+    }
   }
 
   // =========================================================================
@@ -2549,6 +2635,27 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               leading: Icon(Icons.mic_external_on, color: isLiveModeActive ? Colors.redAccent : Colors.white),
               title: Text(isLiveModeActive ? 'Disable Live Pedagogy' : 'Enable Live Pedagogy',
                   style: TextStyle(color: isLiveModeActive ? Colors.redAccent : Colors.white)))),
+
+      bool hasVocalStem = generatedStems.contains('vocals') ||
+        cachedStemBytes.containsKey('vocals') ||
+        cachedStemPaths.containsKey('vocals') ||
+        activeEditableStem == 'vocals';
+
+      // Add inside return list:
+      PopupMenuItem(
+        value: 'detect_ai_vocal',
+        enabled: hasVocalStem && !isAnalyzingAiVocal,
+        child: ListTile(
+          leading: Icon(
+            Icons.psychology_outlined,
+            color: hasVocalStem ? Colors.cyanAccent : Colors.white24,
+          ),
+          title: Text(
+            'Detect AI Vocals',
+            style: TextStyle(color: hasVocalStem ? Colors.white : Colors.white38),
+          ),
+        ),
+      ),
       
       const PopupMenuDivider(),
       
@@ -2592,6 +2699,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'downloads':       _showAdvancedDownloadsDialog(); break;
       case 'live_mode':       setState(() => isLiveModeActive = !isLiveModeActive); break;
       case 'reprocess':       forceReprocessXray(context); break;
+      case 'detect_ai_vocal': _runAiVocalInspection(); break;
       case 'test_mode':       setState(() => isTestModeActive = !isTestModeActive); break;
       case 'account_settings':
         Navigator.push(context, MaterialPageRoute(builder: (_) => AccountSettingsScreen()));
@@ -3095,6 +3203,34 @@ Tooltip(
                     constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
                     icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
                     onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null,
+                  ),
+          ),
+
+          // AI Vocal Detection Tool Icon
+          Tooltip(
+            message: 'Detect AI Synthetic Vocals',
+            child: isAnalyzingAiVocal
+                ? const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent),
+                    ),
+                  )
+                : IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                    icon: Icon(
+                      Icons.psychology_outlined,
+                      size: 20,
+                      color: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
+                          ? Colors.cyanAccent
+                          : Colors.white24,
+                    ),
+                    onPressed: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
+                        ? _runAiVocalInspection
+                        : null,
                   ),
           ),
 
