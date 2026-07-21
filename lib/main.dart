@@ -470,6 +470,13 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   bool isXrayMode       = false;
   bool isXrayProcessing = false;
 
+  // ── Dual-Take Experimental ────────────────────────────────────────────────
+  bool isDualTakeMode = false;
+  DualTakeXraySettings? dualTakeSettings;
+  AnimationController? alignAnimationController;
+  Animation<double>? offsetAnimation;
+  Animation<double>? pulseAnimation;
+
   // ── File info ─────────────────────────────────────────────────────────────
   String originalFileName = 'Unknown File';
   String originalFilePath = '';
@@ -554,7 +561,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 // =========================================================================
 // FINAL DAW STATE (Assembles the Base + Audio Mixin + API Mixin)
 // =========================================================================
-class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiService {
+class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, DawAudioController, DawApiService {
 
   @override
   void showSaveConfirmation(String message, {bool isPreview = false}) {
@@ -827,6 +834,165 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
     }
   }
 
+
+  // =========================================================================
+  // DUAL-TAKE FORENSIC LOGIC
+  // =========================================================================
+
+  Future<void> _loadSecondaryVocalTake() async {
+    try {
+      import 'package:file_picker/file_picker.dart';
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['wav', 'mp3', 'm4a', 'flac', 'aac'],
+        withData: true, 
+      );
+
+      if (result != null && result.files.single.bytes != null) {
+        PlatformFile file = result.files.single;
+
+        // Trigger your Mix vs Stem popup
+        bool? isMix = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              backgroundColor: Colors.grey[900],
+              title: const Text("Audio Type", style: TextStyle(color: Colors.white)),
+              content: const Text(
+                "Is this file a full mix or an isolated vocal stem?",
+                style: TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text("Full Mix (Run Roformer)", style: TextStyle(color: Color(0xFFFF007F))),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text("Vocal Stem", style: TextStyle(color: Colors.black)),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (isMix != null) {
+          setState(() {
+            isDualTakeMode = true;
+            isLoading = true;
+            processingMessage = isMix ? "Isolating vocals..." : "Extracting X-ray data for Take B...";
+            
+            dualTakeSettings = DualTakeXraySettings(
+              takeBAudioBytes: file.bytes,
+              takeBName: file.name,
+            );
+          });
+
+          // Send to your new Modal Endpoint
+          var uri = Uri.parse('$apiBase/api/dual-take/process-secondary');
+          var request = http.MultipartRequest('POST', uri)
+            ..fields['is_mix'] = isMix.toString()
+            ..fields['session_id'] = currentTaskId ?? 'temp_session'
+            ..files.add(http.MultipartFile.fromBytes('file', file.bytes!, filename: file.name));
+
+          var streamedResponse = await request.send();
+          var response = await http.Response.fromStream(streamedResponse);
+
+          if (response.statusCode == 200) {
+            var data = json.decode(response.body);
+            setState(() {
+              dualTakeSettings!.takeBNotes = data['notes'] ?? [];
+              if (data['isolated_audio_base64'] != null) {
+                dualTakeSettings!.takeBAudioBytes = base64Decode(data['isolated_audio_base64']);
+              }
+            });
+          }
+          setState(() => isLoading = false);
+        }
+      }
+    } catch (e) {
+      debugPrint("Secondary load error: $e");
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _runForensicAutoAlign() async {
+    if (dualTakeSettings == null || dualTakeSettings!.takeBAudioBytes == null || rawNotes.isEmpty) return;
+    
+    setState(() {
+      isLoading = true;
+      processingMessage = "Cross-correlating phase relationships...";
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('$apiBase/api/dual-take/align'),
+        body: {
+          'session_id': currentTaskId ?? '',
+          'take_b_path': '/data/takeB_${currentTaskId ?? 'temp_session'}.wav', // Handled by Modal
+          'notes_a_json': jsonEncode(rawNotes),
+          'notes_b_json': jsonEncode(dualTakeSettings!.takeBNotes),
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        double offsetSeconds = data['offset_ms'] / 1000.0;
+        
+        _animateSnapToFit(
+          startOffset: dualTakeSettings!.takeBOffsetSeconds,
+          targetOffset: offsetSeconds,
+          confidence: data['confidence_score'] ?? 0.0,
+          matchStart: data['match_start_sec'] ?? 0.0,
+          matchEnd: data['match_end_sec'] ?? 0.0,
+        );
+      }
+    } catch (e) {
+      debugPrint("Alignment Error: $e");
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  void _animateSnapToFit({
+    required double startOffset, required double targetOffset, 
+    required double confidence, required double matchStart, required double matchEnd
+  }) {
+    alignAnimationController?.dispose();
+    alignAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+
+    offsetAnimation = Tween<double>(begin: startOffset, end: targetOffset).animate(
+      CurvedAnimation(parent: alignAnimationController!, curve: Curves.easeInOutCubic),
+    );
+
+    pulseAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 70),
+    ]).animate(CurvedAnimation(parent: alignAnimationController!, curve: const Interval(0.6, 1.0, curve: Curves.easeOut)));
+
+    offsetAnimation!.addListener(() {
+      setState(() {
+        dualTakeSettings!.takeBOffsetSeconds = offsetAnimation!.value;
+        dualTakeSettings!.lockInPulse = pulseAnimation!.value;
+      });
+    });
+
+    alignAnimationController!.forward().then((_) {
+      setState(() {
+        dualTakeSettings!.hasMatch = true;
+        dualTakeSettings!.matchConfidence = confidence;
+        dualTakeSettings!.matchStartSeconds = matchStart;
+        dualTakeSettings!.matchEndSeconds = matchEnd;
+        dualTakeSettings!.mode = XrayCompareMode.overlay;
+      });
+    });
+  }
+  
   // =========================================================================
   // NEW PROJECT
   // =========================================================================
@@ -2340,6 +2506,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
               leading: Icon(Icons.download, color: Colors.blueAccent),
               title: Text('Advanced Downloads'))),
       const PopupMenuItem(
+          value: 'dual_take',
+          child: ListTile(
+              leading: Icon(Icons.troubleshoot, color: Colors.pinkAccent),
+              title: Text('Dual-Take Comparison (Beta)'))),
+      const PopupMenuItem(
           value: 'import_stem',
           child: ListTile(
               leading: Icon(Icons.file_open, color: Colors.tealAccent),
@@ -2430,6 +2601,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         Navigator.push(context, MaterialPageRoute(builder: (_) => const FeedbackScreen()));
         //Navigator.push(context, MaterialPageRoute(builder: (_) => FeedbackScreen(contentKey: 'bugs_feedback', pageTitle: 'Submit Bugs / Feedback')));
         break;
+      case 'dual_take':       _loadSecondaryVocalTake(); break;
     }
   }
 
