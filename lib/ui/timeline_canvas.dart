@@ -415,7 +415,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                       onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
                       child: Stack(
                         children: [
-                          // 4. Wrap CustomPaint in RepaintBoundary to cache the heavy vector graphics
+                          // ORIGINAL PIANO ROLL
                           RepaintBoundary(
                             child: CustomPaint(
                               size: Size(timelineWidth, totalHeight),
@@ -433,7 +433,22 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               ),
                             ),
                           ),
-                          // 5. ValueListenableBuilder explicitly for the lightweight Playhead
+                          // NEW DUAL TAKE CANVAS LAYER
+                          if (widget.dawState.isDualTakeMode && widget.dawState.dualTakeSettings != null)
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(timelineWidth, totalHeight),
+                                painter: XrayDualTakePainter(
+                                  takeBNotes: widget.dawState.dualTakeSettings!.takeBNotes,
+                                  settings: widget.dawState.dualTakeSettings!,
+                                  zoomX: widget.dawState.zoomX,
+                                  zoomY: widget.dawState.zoomY,
+                                  minMidi: minMidi,
+                                  maxMidi: maxMidi,
+                                ),
+                              ),
+                            ),
+                          // ORIGINAL PLAYHEAD
                           ValueListenableBuilder<double>(
                             valueListenable: exactPlayheadTime,
                             builder: (context, timeValue, child) {
@@ -564,6 +579,98 @@ class PianoKeysPainter extends CustomPainter {
   @override 
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
+
+class XrayDualTakePainter extends CustomPainter {
+  final List<dynamic> takeBNotes;
+  final DualTakeXraySettings settings;
+  final double zoomX;
+  final double zoomY;
+  final int minMidi;
+  final int maxMidi;
+
+  XrayDualTakePainter({
+    required this.takeBNotes,
+    required this.settings,
+    required this.zoomX,
+    required this.zoomY,
+    required this.minMidi,
+    required this.maxMidi,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (takeBNotes.isEmpty) return;
+
+    if (settings.hasMatch) {
+      _drawSuspiciousRegion(canvas, size);
+    }
+
+    Color dynamicColor = Color.lerp(settings.colorB, Colors.white, settings.lockInPulse)!;
+    double extraGlowRadius = settings.lockInPulse * 12.0;
+
+    final Paint linePaint = Paint()
+      ..color = dynamicColor.withOpacity(settings.opacityB)
+      ..strokeWidth = 3.0 + (settings.lockInPulse * 2.0)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final Paint glowPaint = Paint()
+      ..color = dynamicColor.withOpacity(0.4 + (settings.lockInPulse * 0.5))
+      ..strokeWidth = 8.0 + extraGlowRadius
+      ..style = PaintingStyle.stroke
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4 + extraGlowRadius);
+
+    final Path path = Path();
+    bool isFirst = true;
+
+    for (var note in takeBNotes) {
+      double startTime = (note['start_time'] ?? 0.0) + settings.takeBOffsetSeconds;
+      double pitch = (note['pitch'] ?? 60.0).toDouble(); 
+
+      double x = startTime * zoomX;
+      double y = (maxMidi - pitch) * zoomY + (zoomY / 2);
+
+      if (isFirst) {
+        path.moveTo(x, y);
+        isFirst = false;
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    canvas.drawPath(path, glowPaint);
+    canvas.drawPath(path, linePaint);
+  }
+
+  void _drawSuspiciousRegion(Canvas canvas, Size size) {
+    double startX = settings.matchStartSeconds * zoomX;
+    double endX = settings.matchEndSeconds * zoomX;
+    
+    Color alertColor = settings.matchConfidence > 0.90 ? Colors.redAccent : Colors.orangeAccent;
+    final Rect matchRect = Rect.fromLTRB(startX, 0, endX, size.height);
+    
+    canvas.drawRect(matchRect, Paint()..color = alertColor.withOpacity(0.15)..style = PaintingStyle.fill);
+    
+    final Paint borderPaint = Paint()..color = alertColor..strokeWidth = 2.0..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset(startX, 0), Offset(endX, 0), borderPaint);
+    canvas.drawLine(Offset(startX, size.height), Offset(endX, size.height), borderPaint);
+    canvas.drawLine(Offset(startX, 0), Offset(startX, size.height), borderPaint);
+    canvas.drawLine(Offset(endX, 0), Offset(endX, size.height), borderPaint);
+
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: " MATCH DETECTED: ${(settings.matchConfidence * 100).toStringAsFixed(1)}% ",
+        style: TextStyle(color: alertColor, fontSize: 12, fontWeight: FontWeight.bold, backgroundColor: Colors.black87),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    textPainter.paint(canvas, Offset(startX + 4, 4));
+  }
+
+  @override
+  bool shouldRepaint(covariant XrayDualTakePainter oldDelegate) => true; 
+}
+
 
 class AdvancedPianoRollPainter extends CustomPainter {
   final List<Map<String, dynamic>> notes;
