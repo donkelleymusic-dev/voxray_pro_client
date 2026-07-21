@@ -1569,6 +1569,28 @@ mixin DawApiService on VoxrayDAWStateBase {
       if (synthHandle  != null) SoLoud.instance.stop(synthHandle!);
       isLoading         = true;
       processingMessage = 'Unpacking .vxp archive and loading offline files...';
+
+      // Force-mute hidden/utility tracks so they don't blast on load
+      if (mixerState.containsKey('original')) {
+        mixerState['original']!.isMuted = true;
+      }
+      if (mixerState.containsKey('instrumental')) {
+        mixerState['instrumental']!.isMuted = true;
+      }
+      if (mixerState.containsKey('synth')) {
+        mixerState['synth']!.isMuted = true;
+      }
+      
+      // Also ensure their audio engine handles are muted immediately if they exist
+      if (masterHandle != null) {
+        SoLoud.instance.setVolume(masterHandle!, 0.0);
+      }
+      if (synthHandle != null) {
+        SoLoud.instance.setVolume(synthHandle!, 0.0);
+      }
+      if (stemHandles.containsKey('instrumental')) {
+        SoLoud.instance.setVolume(stemHandles['instrumental']!, 0.0);
+      }
     });
 
     Archive archive;
