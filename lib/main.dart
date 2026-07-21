@@ -69,6 +69,8 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:audio_session/audio_session.dart';
+import 'package:file_picker/file_picker.dart';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTRY POINT
@@ -841,8 +843,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
   Future<void> _loadSecondaryVocalTake() async {
     try {
-      import 'package:file_picker/file_picker.dart';
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      //import 'package:file_picker/file_picker.dart';
+      FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['wav', 'mp3', 'm4a', 'flac', 'aac'],
         withData: true, 
