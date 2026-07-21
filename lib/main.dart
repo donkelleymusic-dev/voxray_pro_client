@@ -2589,11 +2589,20 @@ class VoxrayDAWState extends VoxrayDAWStateBase with DawAudioController, DawApiS
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('voXRAY ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
+            /*const Text('voXRAY ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
               child: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
+            ),*/
+            // ✅ TRANSPARENT LOGO REPLACEMENT
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Image.asset(
+                'assets/images/voxray_logo.png', // <--- Your asset path
+                height: isLandscape ? 22 : 30,    // Dynamically scales to toolbar height
+                fit: BoxFit.contain,
+              ),
             ),
             const SizedBox(width: 4),
             if (!isLandscape) // Hide subtitle in landscape to save horizontal space
