@@ -217,7 +217,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                   const SizedBox(width: 10),
                   Text(
                     "${percentage.toStringAsFixed(1)}%",
-                    style: TextStyle(color: statusColor, fontWeight: FontWeight.black, fontSize: 13),
+                    style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 13), // Fixed from FontWeight.black
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
@@ -353,7 +353,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     final ScrollPhysics? scrollPhysics = (widget.dawState.currentDragMode != DragMode.off || draggingNoteIndex != null)
         ? const NeverScrollableScrollPhysics() : null;
 
-    return Stack(
+    return (
       children: [
         SingleChildScrollView(
           controller: widget.verticalScrollController,
@@ -497,11 +497,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                       onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
                       onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
                       child: Stack(
-                        // Floating AI Inspector Badge
-                        if (widget.dawState.aiResult != null)
-                          _buildAiInspectorBadge(),
                         children: [
-                          // ORIGINAL PIANO ROLL
+                          // 1. ORIGINAL PIANO ROLL
                           RepaintBoundary(
                             child: CustomPaint(
                               size: Size(timelineWidth, totalHeight),
@@ -519,7 +516,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               ),
                             ),
                           ),
-                          // NEW DUAL TAKE CANVAS LAYER
+                          
+                          // 2. DUAL TAKE LAYER
                           if (widget.dawState.isDualTakeMode && widget.dawState.dualTakeSettings != null)
                             RepaintBoundary(
                               child: CustomPaint(
@@ -534,7 +532,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                                 ),
                               ),
                             ),
-                          // Heatmap Overlay (Rendered directly under piano roll)
+
+                          // 3. AI HEATMAP OVERLAY LAYER
                           if (widget.dawState.aiResult != null && widget.dawState.aiResult!.heatmap.isNotEmpty)
                             RepaintBoundary(
                               child: CustomPaint(
@@ -546,15 +545,12 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                                 ),
                               ),
                             ),
-                          // ORIGINAL PLAYHEAD
+
+                          // 4. PLAYHEAD
                           ValueListenableBuilder<double>(
                             valueListenable: exactPlayheadTime,
                             builder: (context, timeValue, child) {
-                              // 1. Calculate the exact pixel position
                               double rawX = timeValue * widget.dawState.zoomX;
-                              
-                              // 2. QUANTIZATION: Round to the nearest integer pixel. 
-                              // This kills the jitter because fluctuations < 0.5 pixels are ignored.
                               double snappedX = rawX.floorToDouble(); 
                           
                               return Positioned(
@@ -569,6 +565,10 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               color: Colors.redAccent.withOpacity(0.8),
                             ),
                           ),
+
+                          // 5. FLOATING AI BADGE
+                          if (widget.dawState.aiResult != null)
+                            _buildAiInspectorBadge(),
                         ],
                       ),
                     ),
