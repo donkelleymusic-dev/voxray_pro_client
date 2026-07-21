@@ -2810,7 +2810,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: Image.asset(
-                'assets/images/voxray_logo.png', // <--- Your asset path
+                'assets/images/voXRay_logo_transparent_crop.png', // <--- Your asset path
                 height: isLandscape ? 22 : 30,    // Dynamically scales to toolbar height
                 fit: BoxFit.contain,
               ),
