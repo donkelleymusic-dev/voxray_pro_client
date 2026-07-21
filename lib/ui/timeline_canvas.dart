@@ -353,7 +353,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     final ScrollPhysics? scrollPhysics = (widget.dawState.currentDragMode != DragMode.off || draggingNoteIndex != null)
         ? const NeverScrollableScrollPhysics() : null;
 
-    return (
+    return Stack (
       children: [
         SingleChildScrollView(
           controller: widget.verticalScrollController,
