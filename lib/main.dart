@@ -1107,6 +1107,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       });
     });
   }
+
+  // Clear AI display and data in newProject and loadProject calls.
+  void _resetAiDetectorState() {
+    setState(() {
+      aiDetectionScore = 0.0;
+      isAiDetected = false;
+      aiDetectedArtifacts.clear();
+      aiHeatmapData.clear();
+      showAiHeatmapOverlay = false; // Toggle this off too if you have a visibility flag
+    });
+  }
   
   // =========================================================================
   // NEW PROJECT
@@ -1171,6 +1182,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       undoStack.clear();
       redoStack.clear();
     });
+
+    _resetAiDetectorState();
 
     final dir  = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/voxray_autosave.json');
