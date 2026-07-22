@@ -71,6 +71,9 @@ import 'package:http/http.dart' as http;
 import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
 
+import 'models/audio_channel.dart';
+import 'ui/dual_xray_dialog.dart';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTRY POINT
@@ -408,6 +411,10 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   final ScrollController verticalScrollController   = ScrollController();
   final ScrollController rulerScrollController      = ScrollController();
 
+  // ── Dynamic Channel Pools ──────────────────────────────────────────────
+  List<AudioChannel> activeChannels = [];
+  List<AudioChannel> trashBin = [];
+  
   // ── Note / x-ray data ────────────────────────────────────────────────────
   Map<String, List<dynamic>> allStemsNotes        = {};
   Map<String, List<dynamic>> allStemsContinuousXray = {};
@@ -596,6 +603,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
 } // <--- This closes VoxrayDAWStateBase!
 
+
 // =========================================================================
 // FINAL DAW STATE (Assembles the Base + Audio Mixin + API Mixin)
 // =========================================================================
@@ -670,6 +678,81 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
   void notifyChanged() => setState(() {});
 
+  // =========================================================================
+  // DYNAMIC STEM MANAGEMENT
+  // =========================================================================
+
+  void addImportedStem(String baseType, String filePath, {bool isGenerated = true}) {
+    final String normalizedType = baseType.toLowerCase().trim();
+    
+    // Count existing channels of this exact base type
+    final int existingCount = activeChannels.where((c) => c.baseType == normalizedType).length;
+    
+    // Create the unique stemKey (e.g. 'vocals', 'vocals2', 'vocals3')
+    final String stemKey = existingCount == 0 
+        ? normalizedType 
+        : '$normalizedType${existingCount + 1}';
+
+    // Create the UI display name (e.g. 'Vocals', 'Vocals 2')
+    final String displayName = existingCount == 0 
+        ? _capitalize(normalizedType) 
+        : '${_capitalize(normalizedType)} ${existingCount + 1}';
+
+    setState(() {
+      // 1. Add to the new dynamic pool
+      activeChannels.add(
+        AudioChannel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          name: displayName,
+          stemKey: stemKey,
+          baseType: normalizedType,
+          filePath: filePath,
+        ),
+      );
+
+      // 2. Bridge it into your existing DAW rendering logic
+      targetStemsSelection.add(stemKey);
+      if (isGenerated) {
+        generatedStems.add(stemKey);
+      }
+      
+      // Auto-set as active editable stem
+      activeEditableStem = stemKey;
+    });
+  }
+
+  void deleteChannel(String stemKey) {
+    setState(() {
+      // Find the channel
+      final index = activeChannels.indexWhere((c) => c.stemKey == stemKey);
+      if (index != -1) {
+        final removedChannel = activeChannels.removeAt(index);
+        trashBin.add(removedChannel);
+        
+        // Remove from active UI sets, but KEEP in cached bytes/paths so it isn't lost
+        targetStemsSelection.remove(stemKey);
+        generatedStems.remove(stemKey);
+        
+        // Mute it in the audio engine
+        if (stemHandles.containsKey(stemKey)) {
+          SoLoud.instance.setVolume(stemHandles[stemKey]!, 0.0);
+        }
+      }
+    });
+  }
+
+  void restoreChannel(AudioChannel channel) {
+    setState(() {
+      trashBin.remove(channel);
+      activeChannels.add(channel);
+      
+      targetStemsSelection.add(channel.stemKey);
+      generatedStems.add(channel.stemKey);
+    });
+  }
+
+  String _capitalize(String s) => s.isEmpty ? '' : '${s[0].toUpperCase()}${s.substring(1)}';
+  
   // =========================================================================
   // UNDO / REDO
   // =========================================================================
@@ -2713,10 +2796,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               leading: Icon(Icons.download, color: Colors.blueAccent),
               title: Text('Advanced Downloads'))),
       const PopupMenuItem(
-          value: 'sync_vocals',
+          value: 'dual_xray_compare',
           child: ListTile(
               leading: Icon(Icons.compare_arrows, color: Colors.pinkAccent),
-              title: Text('Auto-Sync Vocals (1 & 2)'))),
+              title: Text('Dual Stem X-Ray Compare'))),
       
       // AI Vocal Detection Menu Item
       /*PopupMenuItem(
@@ -2821,7 +2904,19 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         //Navigator.push(context, MaterialPageRoute(builder: (_) => FeedbackScreen(contentKey: 'bugs_feedback', pageTitle: 'Submit Bugs / Feedback')));
         break;
       case 'dual_take':       _loadSecondaryVocalTake(); break; // obsolete... fun for earli prototesting but not useful.
-      case 'sync_vocals':     _syncVocalTakes(); break;
+      //case 'sync_vocals':     _syncVocalTakes(); break;
+        // Inside _handleMenuSelection(String value), add the case handler:
+      case 'dual_xray_compare':
+        showDialog(
+          context: context,
+          builder: (context) => DualXRayComparatorDialog(
+            availableChannels: activeChannels,
+            onRunComparison: (source, target) {
+              _runAnyToAnyForensicAlign(source, target);
+            },
+          ),
+        );
+        break;
     }
   }
 
