@@ -463,7 +463,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
   // ── Stem catalogue ────────────────────────────────────────────────────────
   final List<String> popStems = [
-    'vocals','vocals2','instrumental','drums','bass','guitar','piano','other'
+    'vocals','instrumental','drums','bass','guitar','piano','other'
   ];
   final List<String> orchStems = [
     'violin','cello','contrabass','flute','oboe','bassoon',
