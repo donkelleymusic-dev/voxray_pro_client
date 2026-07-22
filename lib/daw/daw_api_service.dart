@@ -41,6 +41,8 @@ mixin DawApiService on VoxrayDAWStateBase {
   Future<void> loadStemPlayerSource(String stemName, String apiBase, String taskId);
   Future<void> loadSynthSource();
 
+  void resetAiDetectorState();
+
   //String getPlatformString() {
   //  if (kIsWeb) return 'flutter_web';
   //  return 'flutter_${Platform.operatingSystem}';
