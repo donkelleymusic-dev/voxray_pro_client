@@ -949,7 +949,14 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       request.files.add(http.MultipartFile.fromBytes('file_1', bytes1, filename: source.name));
       request.files.add(http.MultipartFile.fromBytes('file_2', bytes2, filename: target.name));
 
-      var streamedResponse = await request.send();
+      // Add the 10-minute timeout right here!
+      var streamedResponse = await request.send().timeout(
+        const Duration(minutes: 10), 
+        onTimeout: () {
+          throw TimeoutException('The server took longer than 10 minutes to analyze the tracks.');
+        },
+      );
+      
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
