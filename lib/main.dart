@@ -921,6 +921,59 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // AI VOCAL INSPECTION LOGIC
   // =========================================================================
 
+  // =========================================================================
+  // DUAL-STEM ANY-TO-ANY COMPARISON
+  // =========================================================================
+
+  Future<void> _runAnyToAnyForensicAlign(AudioChannel source, AudioChannel target) async {
+    setState(() {
+      isLoading = true;
+      processingMessage = "Comparing ${source.name} vs ${target.name}...";
+    });
+
+    try {
+      // Point this to your FastAPI/Modal route for the dual-xray worker
+      var uri = Uri.parse('$apiBase/api/dual-take/compare'); 
+      
+      final response = await http.post(
+        uri,
+        body: {
+          'session_id': currentTaskId ?? '',
+          'file_path_1': source.filePath,
+          'file_path_2': target.filePath,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        if (data['status'] == 'success') {
+          final double variance = data['contour_variance_delta'] ?? 0.0;
+          final String matchQuality = data['match_quality'] ?? 'Unknown';
+          
+          _showSaveConfirmation(
+            'Comparison Complete! Variance: ${variance.toStringAsFixed(2)} | Quality: $matchQuality',
+            isPreview: true // Uses your purple UI popup
+          );
+          
+          // If you want to draw the contours later, data['contour_1'] and data['contour_2'] are available here!
+        } else {
+          _showSaveConfirmation('Comparison failed: ${data['message']}');
+        }
+      } else {
+        _showSaveConfirmation('Server error: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint("Dual Comparison Error: $e");
+      _showSaveConfirmation('Comparison Error: $e');
+    } finally {
+      setState(() {
+        isLoading = false;
+        processingMessage = '';
+      });
+    }
+  }
+  
   Future<void> _runAiVocalInspection() async {
     Uint8List? audioBytes;
 
