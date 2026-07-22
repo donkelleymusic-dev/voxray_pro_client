@@ -3097,19 +3097,18 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         const Icon(Icons.music_note, size: 48, color: Colors.white24),
-                                        const SizedBox(height: 16),
-                                        Text(
-                                            'The ${activeEditableStem.isNotEmpty ? activeEditableStem.toUpperCase() : 'selected'} stem has not been extracted yet.',
-                                            style: const TextStyle(color: Colors.white54)),
-                                        const SizedBox(height: 24),
-                                        ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
+                                        if (!isLoading && activeEditableStem.isNotEmpty) ...[
+                                          const SizedBox(height: 24),
+                                          ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
                                               backgroundColor: Colors.teal,
-                                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16)),
-                                          icon: const Icon(Icons.build),
-                                          label: Text('Generate & Analyze ${activeEditableStem.isNotEmpty ? activeEditableStem.toUpperCase() : ''}'),
-                                          onPressed: isLoading || activeEditableStem.isEmpty ? null : () => generateStemOnDemand(activeEditableStem),
-                                        ),
+                                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                                            ),
+                                            icon: const Icon(Icons.build),
+                                            label: Text('Generate & Analyze ${activeEditableStem.toUpperCase()}'),
+                                            onPressed: () => generateStemOnDemand(activeEditableStem),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   )
