@@ -413,6 +413,13 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   Map<String, List<dynamic>> allStemsContinuousXray = {};
   String activeEditableStem = '';
 
+  // Declare the AI state variables here if they aren't already:
+  double aiDetectionScore = 0.0;
+  bool isAiDetected = false;
+  List<String> aiDetectedArtifacts = [];
+  List<Map<String, dynamic>> aiHeatmapData = [];
+  bool showAiHeatmapOverlay = false;
+
   // get control over 60fps updates while doing file uploading:
   bool isUploading = false;
   
