@@ -1607,7 +1607,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       if (stemHandles.containsKey('instrumental')) {
         SoLoud.instance.setVolume(stemHandles['instrumental']!, 0.0);
       }
-      _resetAiDetectorState();
+      resetAiDetectorState();
     });
 
     Archive archive;
