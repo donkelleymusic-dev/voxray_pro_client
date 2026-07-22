@@ -918,11 +918,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   void _toggleMasterTransport() {
     if (isPlaying) pauseAllPlayers(); else playAllPlayers();
   }
-
-  // =========================================================================
-  // AI VOCAL INSPECTION LOGIC
-  // =========================================================================
-
+  
   // =========================================================================
   // DUAL-STEM ANY-TO-ANY COMPARISON
   // =========================================================================
@@ -934,17 +930,27 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     });
 
     try {
-      // Point this to your FastAPI/Modal route for the dual-xray worker
       var uri = Uri.parse('$apiBase/api/dual-take/compare'); 
+      var request = http.MultipartRequest('POST', uri);
       
-      final response = await http.post(
-        uri,
-        body: {
-          'session_id': currentTaskId ?? '',
-          'file_path_1': source.filePath,
-          'file_path_2': target.filePath,
-        },
-      );
+      request.fields['session_id'] = currentTaskId ?? 'temp_session';
+
+      // Pull the actual audio bytes from the RAM cache using the dynamic stemKeys
+      Uint8List? bytes1 = cachedStemBytes[source.stemKey];
+      Uint8List? bytes2 = cachedStemBytes[target.stemKey];
+
+      if (bytes1 == null || bytes2 == null) {
+        _showSaveConfirmation('Error: Audio data missing from RAM cache.');
+        setState(() { isLoading = false; processingMessage = ''; });
+        return;
+      }
+
+      // Attach the physical bytes to the payload
+      request.files.add(http.MultipartFile.fromBytes('file_1', bytes1, filename: source.name));
+      request.files.add(http.MultipartFile.fromBytes('file_2', bytes2, filename: target.name));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -955,10 +961,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           
           _showSaveConfirmation(
             'Comparison Complete! Variance: ${variance.toStringAsFixed(2)} | Quality: $matchQuality',
-            isPreview: true // Uses your purple UI popup
+            isPreview: true 
           );
-          
-          // If you want to draw the contours later, data['contour_1'] and data['contour_2'] are available here!
         } else {
           _showSaveConfirmation('Comparison failed: ${data['message']}');
         }
