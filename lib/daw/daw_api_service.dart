@@ -1418,7 +1418,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       
       // 2. DESKTOP (Windows/Mac/Linux): Use FilePicker + Manual Write
       else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-        String? path = await FilePicker.platform.saveFile(
+        String? path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
           fileName: '$defaultSaveName.vxp',
         );
