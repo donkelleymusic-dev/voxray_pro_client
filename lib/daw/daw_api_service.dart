@@ -1397,48 +1397,69 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   Future<void> saveVoxrayProjectAs() async {
     final bytes = await packageProjectBytes();
+    
     String defaultSaveName = originalFileName.contains('.')
         ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
         : (originalFileName.isNotEmpty ? originalFileName : projectName);
-
+  
     try {
-      // 1. MUST use FilePicker.platform.saveFile
-      // 2. MUST include bytes for Android/iOS native saving
-      // 3. MUST use FileType.any so the mobile OS doesn't sniff the ZIP headers and append .zip
-      String? path = await FilePicker.saveFile(
-        dialogTitle: 'Save VoxRay Project',
-        fileName: '$defaultSaveName.vxp',
-        type: FileType.any, 
-        bytes: bytes,
-      );
-
-      // On Web, path is usually null after a successful download, so we check for kIsWeb
-      if (path != null || kIsWeb) {
-        
-        // Desktop (Windows/Mac/Linux) FilePicker only returns the path string. 
-        // We must write the bytes to disk manually!
-        if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
-          if (path != null) {
-            // Clean up in case desktop OS hid the extension or added .zip
-            if (path.endsWith('.zip')) path = path.substring(0, path.length - 4);
-            if (!path.endsWith('.vxp')) path = '$path.vxp';
-
-            final file = File(path);
-            await file.writeAsBytes(bytes);
-          }
+      // 1. WEB: Handle web-specific download
+      if (kIsWeb) {
+        // (Keep your existing web logic here, e.g., AnchorElement or FileSaver.web)
+        await FileSaver.instance.saveAs(
+          name: defaultSaveName, 
+          bytes: bytes, 
+          fileExtension: 'vxp', 
+          mimeType: MimeType.custom, 
+          customMimeType: 'application/octet-stream'
+        );
+        showSaveConfirmation('Project saved via browser download.');
+      } 
+      
+      // 2. DESKTOP (Windows/Mac/Linux): Use FilePicker + Manual Write
+      else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+        String? path = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save VoxRay Project',
+          fileName: '$defaultSaveName.vxp',
+        );
+  
+        if (path != null) {
+          // Ensure extension is correct
+          if (path.endsWith('.zip')) path = path.substring(0, path.length - 4);
+          if (!path.endsWith('.vxp')) path = '$path.vxp';
+  
+          final file = File(path);
+          await file.writeAsBytes(bytes);
+          
+          setState(() {
+            currentProjectPath = path;
+            hasBeenSaved = true;
+            dirtyStems.clear();
+          });
+          showSaveConfirmation('Project saved successfully.');
         }
-
-        setState(() {
-          if (path != null) {
-            // Guarantee .zip is removed from our internal state if the mobile OS forced it
-            currentProjectPath = path.endsWith('.zip') ? path.substring(0, path.length - 4) : path;
-          }
-          hasBeenSaved = true;
-          dirtyStems.clear();
-        });
-        showSaveConfirmation('Project saved successfully as offline .vxp archive.');
-      } else {
-        showSaveConfirmation('Save cancelled.');
+      } 
+      
+      // 3. MOBILE (Android/iOS): Use the OLD Working FileSaver Method
+      else if (Platform.isAndroid || Platform.isIOS) {
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultSaveName, 
+          bytes: bytes, 
+          fileExtension: 'vxp',
+          mimeType: MimeType.custom, 
+          customMimeType: 'application/octet-stream'
+        );
+  
+        if (path != null && path.isNotEmpty) {
+          setState(() {
+            currentProjectPath = path;
+            hasBeenSaved = true;
+            dirtyStems.clear();
+          });
+          showSaveConfirmation('Project saved successfully as offline .vxp archive.');
+        } else {
+          showSaveConfirmation('Save cancelled.');
+        }
       }
     } catch (e) {
       showSaveConfirmation('Save failed: $e');
