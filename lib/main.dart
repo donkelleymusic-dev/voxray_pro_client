@@ -978,7 +978,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             );
           });
 
-          // Send to your new Modal Endpoint
+          // 1. Send the file and instantly get a job ticket
           var uri = Uri.parse('$apiBase/api/dual-take/process-secondary');
           var request = http.MultipartRequest('POST', uri)
             ..fields['is_mix'] = isMix.toString()
@@ -990,13 +990,40 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
           if (response.statusCode == 200) {
             var data = json.decode(response.body);
-            setState(() {
-              dualTakeSettings!.takeBNotes = data['notes'] ?? [];
-              if (data['isolated_audio_base64'] != null) {
-                dualTakeSettings!.takeBAudioBytes = base64Decode(data['isolated_audio_base64']);
+            String jobId = data['job_id']; // Grab the ticket!
+
+            // 2. Poll the server safely until the heavy lifting finishes
+            bool isComplete = false;
+            while (!isComplete) {
+              await Future.delayed(const Duration(seconds: 3));
+              var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
+              
+              if (statusRes.statusCode == 200) {
+                var statusData = json.decode(statusRes.body);
+                
+                setState(() {
+                  processingMessage = statusData['message'] ?? 'Processing secondary take...';
+                });
+
+                if (statusData['status'] == 'complete') {
+                  isComplete = true;
+                  var result = statusData['result'];
+                  
+                  setState(() {
+                    dualTakeSettings!.takeBNotes = result['notes'] ?? [];
+                    if (result['isolated_audio_base64'] != null) {
+                      dualTakeSettings!.takeBAudioBytes = base64Decode(result['isolated_audio_base64']);
+                    }
+                  });
+                } else if (statusData['status'] == 'error') {
+                  throw Exception(statusData['message']);
+                }
               }
-            });
+            }
+          } else {
+             throw Exception('Server error: ${response.statusCode}');
           }
+          
           setState(() => isLoading = false);
         }
       }
