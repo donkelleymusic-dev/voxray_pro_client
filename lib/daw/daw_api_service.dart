@@ -411,6 +411,9 @@ mixin DawApiService on VoxrayDAWStateBase {
       originalFileName   = result.files.single.name;
       isLoading          = true;
       processingMessage  = 'Importing $uniqueStemKey and generating tracking matrices...';
+
+      isProjectLoaded = true;
+      hasBeenSaved = false;
       
       // Cache the file locally under the new unique key
       cachedStemBytes[uniqueStemKey] = bytes;
