@@ -410,7 +410,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       originalAudioBytes = bytes;
       originalFileName   = result.files.single.name;
       isLoading          = true;
-      processingMessage  = 'Ingesting $uniqueStemKey and generating tracking matrices...';
+      processingMessage  = 'Importing $uniqueStemKey and generating tracking matrices...';
       
       // Cache the file locally under the new unique key
       cachedStemBytes[uniqueStemKey] = bytes;
