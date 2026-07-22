@@ -1116,7 +1116,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   }
 
   // Clear AI display and data in newProject and loadProject calls.
-  void _resetAiDetectorState() {
+  void resetAiDetectorState() {
     setState(() {
       aiDetectionScore = 0.0;
       isAiDetected = false;
@@ -1190,7 +1190,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       redoStack.clear();
     });
 
-    _resetAiDetectorState();
+    resetAiDetectorState();
 
     final dir  = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/voxray_autosave.json');
