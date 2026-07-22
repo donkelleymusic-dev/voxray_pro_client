@@ -456,7 +456,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
   // ── Stem catalogue ────────────────────────────────────────────────────────
   final List<String> popStems = [
-    'vocals','instrumental','drums','bass','guitar','piano','other'
+    'vocals','vocals2','instrumental','drums','bass','guitar','piano','other'
   ];
   final List<String> orchStems = [
     'violin','cello','contrabass','flute','oboe','bassoon',
@@ -934,6 +934,72 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // DUAL-TAKE FORENSIC LOGIC
   // =========================================================================
 
+  // =========================================================================
+  // DUAL-TAKE AUTO-SYNC LOGIC
+  // =========================================================================
+
+  Future<void> _syncVocalTakes() async {
+    if (!generatedStems.contains('vocals') || !generatedStems.contains('vocals2')) {
+      _showSaveConfirmation('You must import both "vocals" and "vocals2" to sync them.');
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+      processingMessage = "Mathematically syncing vocals2 to vocals...";
+    });
+
+    pauseAllPlayers();
+
+    try {
+      var uri = Uri.parse('$apiBase/api/dual-take/align-and-sync');
+      var request = http.MultipartRequest('POST', uri)
+        ..fields['session_id'] = currentTaskId ?? ''
+        ..fields['take_a_id'] = 'vocals'
+        ..fields['take_b_id'] = 'vocals2'
+        ..fields['notes_b_json'] = jsonEncode(allStemsNotes['vocals2'] ?? []);
+
+      var response = await request.send().timeout(const Duration(seconds: 60));
+      var responseData = await http.Response.fromStream(response);
+
+      if (responseData.statusCode == 200) {
+        var data = json.decode(responseData.body);
+        if (data['status'] == 'success') {
+          
+          setState(() {
+            // 1. Update the JSON notes
+            allStemsNotes['vocals2'] = data['shifted_notes'];
+            
+            // 2. Clear the old audio from RAM
+            cachedStemBytes.remove('vocals2');
+            if (stemHandles.containsKey('vocals2')) {
+              SoLoud.instance.stop(stemHandles['vocals2']!);
+              stemHandles.remove('vocals2');
+            }
+          });
+
+          // 3. Download the newly padded/trimmed audio file
+          await loadStemPlayerSource('vocals2', apiBase, currentTaskId!);
+          
+          // 4. Force the UI to repaint
+          dirtyStems.add('vocals2');
+          registerUndoSnapshot();
+          
+          _showSaveConfirmation('Takes Synced! Offset applied: ${(data['offset_sec'] * 1000).toStringAsFixed(0)} ms.');
+        } else {
+          _showSaveConfirmation('Sync failed: ${data['message']}');
+        }
+      } else {
+        _showSaveConfirmation('Server error: ${responseData.statusCode}');
+      }
+    } catch (e) {
+      debugPrint("Sync Error: $e");
+      _showSaveConfirmation('Sync Error: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+  
   Future<void> _loadSecondaryVocalTake() async {
     try {
       //import 'package:file_picker/file_picker.dart';
@@ -2647,10 +2713,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               leading: Icon(Icons.download, color: Colors.blueAccent),
               title: Text('Advanced Downloads'))),
       const PopupMenuItem(
-          value: 'dual_take',
+          value: 'sync_vocals',
           child: ListTile(
-              leading: Icon(Icons.troubleshoot, color: Colors.pinkAccent),
-              title: Text('Dual-Take Comparison (Beta)'))),
+              leading: Icon(Icons.compare_arrows, color: Colors.pinkAccent),
+              title: Text('Auto-Sync Vocals (1 & 2)'))),
       
       // AI Vocal Detection Menu Item
       /*PopupMenuItem(
@@ -2754,7 +2820,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         Navigator.push(context, MaterialPageRoute(builder: (_) => const FeedbackScreen()));
         //Navigator.push(context, MaterialPageRoute(builder: (_) => FeedbackScreen(contentKey: 'bugs_feedback', pageTitle: 'Submit Bugs / Feedback')));
         break;
-      case 'dual_take':       _loadSecondaryVocalTake(); break;
+      case 'dual_take':       _loadSecondaryVocalTake(); break; // obsolete... fun for earli prototesting but not useful.
+      case 'sync_vocals':     _syncVocalTakes(); break;
     }
   }
 
