@@ -28,6 +28,7 @@ import '../models/channel_state.dart';
 import '../audio/vox_synth.dart';
 import '../services/supabase_service.dart';
 import '../main.dart'; // Gives access to VoxrayDAWStateBase
+import '../models/audio_channel.dart';
 
 /// Drop this mixin onto VoxrayDAWState.
 mixin DawApiService on VoxrayDAWStateBase {
