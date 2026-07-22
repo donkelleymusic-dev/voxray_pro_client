@@ -593,6 +593,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   void showSaveConfirmation(String message, {bool isPreview = false});
   void showEngineRecommendationDialog();
   void registerUndoSnapshot();
+  
+  void addImportedStem(String baseType, String filePath, {bool isGenerated = true});
 
   // Abstract hooks for audio mixin methods called by API mixin
   void pauseAllPlayers();
