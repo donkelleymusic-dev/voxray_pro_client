@@ -484,8 +484,8 @@ mixin DawApiService on VoxrayDAWStateBase {
             setState(() {
               if (result['valid_stems'] != null) {
                 List<String> returnedStems = List<String>.from(result['valid_stems']);
-                targetStemsSelection = returnedStems.toSet();
-                generatedStems = returnedStems.toSet();
+                targetStemsSelection.addAll(returnedStems);
+                generatedStems.addAll(returnedStems);
                 
                 // Ensure activeEditableStem does not default to 'instrumental'
                 if (targetStem == 'mix' && returnedStems.isNotEmpty) {
