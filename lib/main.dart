@@ -2653,7 +2653,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               title: Text('Dual-Take Comparison (Beta)'))),
       
       // AI Vocal Detection Menu Item
-      PopupMenuItem(
+      /*PopupMenuItem(
         value: 'detect_ai_vocal',
         enabled: hasVocalStem && !isAnalyzingAiVocal,
         child: ListTile(
@@ -2666,7 +2666,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             style: TextStyle(color: hasVocalStem ? Colors.white : Colors.white38),
           ),
         ),
-      ),
+      ),*/
 
       const PopupMenuItem(
           value: 'import_stem',
