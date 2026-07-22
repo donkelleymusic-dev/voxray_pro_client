@@ -401,20 +401,30 @@ mixin DawApiService on VoxrayDAWStateBase {
     );
     if (chosenIdentity == null) return;
 
+    // --- THE FIX: DYNAMIC KEY CALCULATION ---
+    final String normalizedType = chosenIdentity.toLowerCase().trim();
+    final int existingCount = activeChannels.where((c) => c.baseType == normalizedType).length;
+    final String uniqueStemKey = existingCount == 0 ? normalizedType : '$normalizedType${existingCount + 1}';
+
     setState(() {
       originalAudioBytes = bytes;
       originalFileName   = result.files.single.name;
       isLoading          = true;
-      processingMessage  = 'Ingesting stem and generating tracking matrices...';
-      targetStemsSelection.add(chosenIdentity);
-      activeEditableStem = chosenIdentity;
+      processingMessage  = 'Ingesting $uniqueStemKey and generating tracking matrices...';
+      
+      // Cache the file locally under the new unique key
+      cachedStemBytes[uniqueStemKey] = bytes;
+      
+      // Spawn the dynamic channel (this cleanly handles targetStemsSelection and activeEditableStem for us)
+      addImportedStem(normalizedType, result.files.single.name, isGenerated: false);
     });
 
     try {
       var req = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
         ..fields['upload_type']      = 'stem'
-        ..fields['stem_target']      = chosenIdentity
-        ..fields['instruments_json'] = jsonEncode([chosenIdentity])
+        // Pass the dynamically numbered key to the server so it doesn't overwrite!
+        ..fields['stem_target']      = uniqueStemKey 
+        ..fields['instruments_json'] = jsonEncode([uniqueStemKey])
         ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: result.files.single.name));
 
       // =========================================================
@@ -432,7 +442,9 @@ mixin DawApiService on VoxrayDAWStateBase {
       var data = jsonDecode(await res.stream.bytesToString());
       currentTaskId = data['task_id'];
       currentJobId  = data['job_id'];
-      pollForStemData(currentJobId!, chosenIdentity);
+      
+      // Pass the UNIQUE key to the poller
+      pollForStemData(currentJobId!, uniqueStemKey); 
     } catch (e) {
       
       // =========================================================
