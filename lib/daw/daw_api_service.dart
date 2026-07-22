@@ -1797,6 +1797,28 @@ mixin DawApiService on VoxrayDAWStateBase {
       applyStemPlugins(stem); 
     }
 
+    // --- REBUILD DYNAMIC CHANNELS FROM GENERATED STEMS ---
+    activeChannels.clear();
+    for (String stem in generatedStems) {
+      final String baseType = stem.replaceAll(RegExp(r'\d+$'), ''); // e.g. 'vocals2' -> 'vocals'
+      final String displayName = stem == 'vocals' ? 'Vocals' : stem.toUpperCase();
+      
+      activeChannels.add(
+        AudioChannel(
+          id: DateTime.now().millisecondsSinceEpoch.toString() + stem,
+          name: displayName,
+          stemKey: stem,
+          baseType: baseType,
+          filePath: cachedStemPaths[stem] ?? '',
+        ),
+      );
+    }
+    // -----------------------------------------------------
+
+    seekAllPlayers(0.0);
+    setState(() { currentPosition = 0.0; isLoading = false; processingMessage = ''; });
+    showSaveConfirmation('Project fully restored from offline archive.');
+
     seekAllPlayers(0.0);
     setState(() { currentPosition = 0.0; isLoading = false; processingMessage = ''; });
     showSaveConfirmation('Project fully restored from offline archive.');
