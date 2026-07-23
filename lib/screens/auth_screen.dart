@@ -115,16 +115,18 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-      // ✅ TRANSPARENT LOGO REPLACEMENT
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Image.asset(
-                'assets/images/voXRay_logo_transparent_crop.png', // <--- Your asset path
-                height: isLandscape ? 22 : 30,    // Dynamically scales to toolbar height
-                fit: BoxFit.contain,
-              ),
-            ),
-        /*title: const Text('voXRay Beta Login')*/),
+        // ✅ Assign the logo correctly to the title property
+        title: Padding(
+          padding: const EdgeInsets.only(right: 8.0),
+          child: Image.asset(
+            'assets/images/voXRay_logo_transparent_crop.png',
+            height: isLandscape ? 22 : 30,
+            fit: BoxFit.contain,
+          ),
+        ),
+        centerTitle: false, // Set to true if you want it centered
+      ),
+        /*title: const Text('voXRay Beta Login')),*/
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
