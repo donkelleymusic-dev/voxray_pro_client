@@ -1377,6 +1377,13 @@ mixin DawApiService on VoxrayDAWStateBase {
       'active_editable_stem': activeEditableStem,
       'history': {'undo_stack': undoStack, 'redo_stack': redoStack},
       'markers': markers,
+      // dual ray state:
+      'is_dual_contour_active': isDualContourOverlayActive,
+      'dual_contour_1': dualContour1,
+      'dual_contour_2': dualContour2,
+      'identical_match_regions': identicalMatchRegions,
+      'dual_label_1': dualLabel1,
+      'dual_label_2': dualLabel2,
     };
 
     List<int> jsonBytes = utf8.encode(json.encode(projectData));
@@ -1388,15 +1395,13 @@ mixin DawApiService on VoxrayDAWStateBase {
           'original_audio.dat', originalAudioBytes!.length, originalAudioBytes));
     }
 
-    // 1. Pack from RAM (Always works on Web, and works for fresh downloads on Android)
+    // This automatically packs the shifted/aligned audio bytes from RAM!
     for (var entry in cachedStemBytes.entries) {
       archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
     }
 
-    // 2. Pack from Disk (Fallback for Android if it streamed from an offline save)
     if (!kIsWeb) {
       for (var entry in cachedStemPaths.entries) {
-        // Only pack from disk if we didn't already pack it from RAM!
         if (!cachedStemBytes.containsKey(entry.key)) {
           try {
             final bytes = await File(entry.value).readAsBytes();
@@ -1699,6 +1704,15 @@ mixin DawApiService on VoxrayDAWStateBase {
       originalFileName      = projectData['original_file'] ?? 'Unknown File';
       originalFilePath      = projectData['original_file_path'] ?? '';
       isOriginalMixAvailable = projectData['is_original_mix_available'] ?? true;
+
+      // ── ADD THESE LINES TO RESTORE DUAL X-RAY STATE ─────────────────────
+      isDualContourOverlayActive = projectData['is_dual_contour_active'] ?? false;
+      dualContour1 = projectData['dual_contour_1'] ?? [];
+      dualContour2 = projectData['dual_contour_2'] ?? [];
+      identicalMatchRegions = projectData['identical_match_regions'] ?? [];
+      dualLabel1 = projectData['dual_label_1'] ?? '';
+      dualLabel2 = projectData['dual_label_2'] ?? '';
+      // ───────────────────────────────────────────────────────────────────
 
       if (projectData.containsKey('song_duration')) {
         songDuration = (projectData['song_duration'] as num).toDouble();
