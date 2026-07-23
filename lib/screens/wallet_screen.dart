@@ -83,7 +83,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 '$_currentBalance DSP',
                 style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 48),
+              /*const SizedBox(height: 48),
               if (_isLoading)
                 const CircularProgressIndicator()
               else
@@ -96,7 +96,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
                   ),
-                ),
+                ),*/
             ],
           ),
         ),
