@@ -954,9 +954,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       request.files.add(http.MultipartFile.fromBytes('file_1', bytes1, filename: source.name));
       request.files.add(http.MultipartFile.fromBytes('file_2', bytes2, filename: target.name));
 
-      // 10-Minute Timeout Applied Here
+      // 20-Minute Timeout Applied Here
       var streamedResponse = await request.send().timeout(
-        const Duration(minutes: 10),
+        const Duration(minutes: 20), // Bump this to 20 to match the server
         onTimeout: () => throw TimeoutException('Alignment timed out.'),
       );
       var response = await http.Response.fromStream(streamedResponse);
