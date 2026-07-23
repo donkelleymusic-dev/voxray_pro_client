@@ -120,7 +120,7 @@ class _AuthScreenState extends State<AuthScreen> {
           padding: const EdgeInsets.only(right: 8.0),
           child: Image.asset(
             'assets/images/voXRay_logo_transparent_crop.png',
-            height: isLandscape ? 22 : 30,
+            height: 30,
             fit: BoxFit.contain,
           ),
         ),
