@@ -988,7 +988,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 final double offsetSec = statusData['offset_sec'] ?? 0.0;
                 
                 setState(() {
-                  processingProgress = 1.0;
                   if (statusData['shifted_notes'] != null) {
                     allStemsNotes[target.stemKey] = statusData['shifted_notes'];
                   }
@@ -999,7 +998,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   dualLabel1 = source.name;
                   dualLabel2 = target.name;
                   isDualContourOverlayActive = true;
-
+              
                   cachedStemBytes.remove(target.stemKey);
                   if (stemHandles.containsKey(target.stemKey)) {
                     SoLoud.instance.stop(stemHandles[target.stemKey]!);
