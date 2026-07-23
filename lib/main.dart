@@ -3189,11 +3189,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       
       const PopupMenuDivider(),
       
-      const PopupMenuItem(
+      /*const PopupMenuItem(
           value: 'account_settings',
           child: ListTile(
               leading: Icon(Icons.person, color: Colors.blueAccent),
-              title: Text('Account & Billing'))),
+              title: Text('Account & Billing'))),*/
       const PopupMenuItem(
           value: 'about_info',
           child: ListTile(
