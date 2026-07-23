@@ -926,7 +926,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   Future<void> _runAnyToAnyForensicAlign(AudioChannel source, AudioChannel target) async {
     setState(() {
       isLoading = true;
-      processingMessage = "Comparing ${source.name} vs ${target.name}...";
+      processingMessage = "Mathematically auto-aligning ${target.name} to ${source.name}...";
     });
 
     try {
@@ -934,8 +934,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       var request = http.MultipartRequest('POST', uri);
       
       request.fields['session_id'] = currentTaskId ?? 'temp_session';
+      request.fields['notes_b_json'] = jsonEncode(allStemsNotes[target.stemKey] ?? []);
 
-      // Pull the actual audio bytes from the RAM cache using the dynamic stemKeys
       Uint8List? bytes1 = cachedStemBytes[source.stemKey];
       Uint8List? bytes2 = cachedStemBytes[target.stemKey];
 
@@ -945,33 +945,52 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         return;
       }
 
-      // Attach the physical bytes to the payload
       request.files.add(http.MultipartFile.fromBytes('file_1', bytes1, filename: source.name));
       request.files.add(http.MultipartFile.fromBytes('file_2', bytes2, filename: target.name));
 
-      // Add the 10-minute timeout right here!
       var streamedResponse = await request.send().timeout(
-        const Duration(minutes: 10), 
-        onTimeout: () {
-          throw TimeoutException('The server took longer than 10 minutes to analyze the tracks.');
-        },
+        const Duration(minutes: 10),
+        onTimeout: () => throw TimeoutException('Alignment timed out.'),
       );
-      
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         
         if (data['status'] == 'success') {
-          final double variance = data['contour_variance_delta'] ?? 0.0;
-          final String matchQuality = data['match_quality'] ?? 'Unknown';
+          final double offsetSec = data['offset_sec'] ?? 0.0;
+          
+          setState(() {
+            // 1. Update the note grid JSON with the newly shifted timing
+            if (data['shifted_notes'] != null) {
+              allStemsNotes[target.stemKey] = data['shifted_notes'];
+            }
+            
+            // 2. Clear the old unaligned audio from RAM cache
+            cachedStemBytes.remove(target.stemKey);
+            if (stemHandles.containsKey(target.stemKey)) {
+              SoLoud.instance.stop(stemHandles[target.stemKey]!);
+              stemHandles.remove(target.stemKey);
+            }
+
+            // 3. Inject the newly aligned audio bytes directly into RAM cache
+            if (data['aligned_audio_base64'] != null) {
+              cachedStemBytes[target.stemKey] = base64Decode(data['aligned_audio_base64']);
+            }
+          });
+
+          // 4. Reload the player source so it plays instantly in sync
+          await loadStemPlayerSource(target.stemKey, apiBase, currentTaskId ?? 'temp_session');
+          
+          dirtyStems.add(target.stemKey);
+          registerUndoSnapshot();
           
           _showSaveConfirmation(
-            'Comparison Complete! Variance: ${variance.toStringAsFixed(2)} | Quality: $matchQuality',
-            isPreview: true 
+            'Auto-Aligned! Offset applied: ${(offsetSec * 1000).toStringAsFixed(0)} ms.',
+            isPreview: true
           );
         } else {
-          _showSaveConfirmation('Comparison failed: ${data['message']}');
+          _showSaveConfirmation('Alignment failed: ${data['message']}');
         }
       } else {
         _showSaveConfirmation('Server error: ${response.statusCode}');
