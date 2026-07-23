@@ -533,6 +533,23 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               ),
                             ),
 
+                          // 🩻 2.5. DUAL X-RAY CONTOUR OVERLAY LAYER (NEW)
+                          if (widget.dawState.isDualContourOverlayActive)
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(timelineWidth, totalHeight),
+                                painter: DualXRayContourPainter(
+                                  contour1: widget.dawState.dualContour1,
+                                  contour2: widget.dawState.dualContour2,
+                                  identicalRegions: widget.dawState.identicalMatchRegions,
+                                  zoomX: widget.dawState.zoomX,
+                                  zoomY: widget.dawState.zoomY,
+                                  minMidi: minMidi,
+                                  maxMidi: maxMidi,
+                                ),
+                              ),
+                            ),
+
                           // 3. AI HEATMAP OVERLAY LAYER
                           if (widget.dawState.aiResult != null && widget.dawState.aiResult!.heatmap.isNotEmpty)
                             RepaintBoundary(
@@ -825,6 +842,101 @@ class AiHeatmapOverlayPainter extends CustomPainter {
     return oldDelegate.heatmap != heatmap || oldDelegate.zoomX != zoomX;
   }
 }
+
+class DualXRayContourPainter extends CustomPainter {
+  final List<dynamic> contour1;
+  final List<dynamic> contour2;
+  final List<dynamic> identicalRegions;
+  final double zoomX;
+  final double zoomY;
+  final int minMidi;
+  final int maxMidi;
+
+  DualXRayContourPainter({
+    required this.contour1,
+    required this.contour2,
+    required this.identicalRegions,
+    required this.zoomX,
+    required this.zoomY,
+    required this.minMidi,
+    required this.maxMidi,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1. Draw Green Identical Match Regions First (Background Highlights)
+    final Paint matchPaint = Paint()
+      ..color = Colors.greenAccent.withOpacity(0.25)
+      ..style = PaintingStyle.fill;
+
+    for (var region in identicalRegions) {
+      double startSec = (region['start'] ?? 0.0).toDouble();
+      double endSec = (region['end'] ?? 0.0).toDouble();
+      double startX = startSec * zoomX;
+      double endX = endSec * zoomX;
+
+      canvas.drawRect(
+        Rect.fromLTRB(startX, 0, endX, size.height),
+        matchPaint,
+      );
+    }
+
+    // 2. Helper to draw a contour path
+    void drawContour(List<dynamic> contour, Color color) {
+      if (contour.isEmpty) return;
+
+      final Paint paint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round;
+
+      final Path path = Path();
+      bool isStarted = false;
+
+      for (var point in contour) {
+        if (point is List && point.length >= 2) {
+          double time = (point[0] ?? 0.0).toDouble();
+          double freq = (point[1] ?? 0.0).toDouble();
+
+          // Convert frequency (Hz) to MIDI note number for correct vertical alignment on canvas
+          // MIDI = 69 + 12 * log2(freq / 440)
+          if (freq > 0) {
+            double midi = 69.0 + (12.0 * (math.log(freq / 440.0) / math.ln2));
+            double x = time * zoomX;
+            double y = (maxMidi - midi) * zoomY + (zoomY / 2);
+
+            if (!isStarted) {
+              path.moveTo(x, y);
+              isStarted = true;
+            } else {
+              path.lineTo(x, y);
+            }
+          } else {
+            isStarted = false; // Break path on unvoiced/zero-frequency gaps
+          }
+        }
+      }
+      canvas.drawPath(path, paint);
+    }
+
+    // 3. Draw Contour 1 (Cyan - Source)
+    drawContour(contour1, const Color(0xFF00E5FF));
+
+    // 4. Draw Contour 2 (Magenta - Target/Aligned)
+    drawContour(contour2, const Color(0xFFFF007F));
+  }
+
+  @override
+  bool shouldRepaint(covariant DualXRayContourPainter oldDelegate) {
+    return oldDelegate.contour1 != contour1 ||
+           oldDelegate.contour2 != contour2 ||
+           oldDelegate.identicalRegions != identicalRegions ||
+           oldDelegate.zoomX != zoomX ||
+           oldDelegate.zoomY != zoomY;
+  }
+}
+
 
 class AdvancedPianoRollPainter extends CustomPainter {
   final List<Map<String, dynamic>> notes;
