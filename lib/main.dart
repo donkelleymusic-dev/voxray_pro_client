@@ -1095,7 +1095,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               
                   // 1. Clear old audio from RAM cache for the target stem
                   cachedStemBytes.remove(target.stemKey);
-                  
+
                   // 2. Stop any active playback handle for this target stem
                   if (stemHandles.containsKey(target.stemKey)) {
                     SoLoud.instance.stop(stemHandles[target.stemKey]!);
@@ -1106,9 +1106,37 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   if (statusData['aligned_audio_b64'] != null) {
                     cachedStemBytes[target.stemKey] = base64Decode(statusData['aligned_audio_b64']);
                   }
+  
+                  // ── SHIFT THE VU METER ENVELOPE TO MATCH THE AUDIO ──
+                  final trackState = getChannelState(target.stemKey);
+                  if (trackState.rmsEnvelope.isNotEmpty && songDuration > 0) {
+                    double fps = trackState.rmsEnvelope.length / songDuration;
+                    int frameShift = (offsetSec * fps).round();
+                    
+                    if (frameShift > 0) {
+                      // Audio was delayed: Pad the beginning of the VU array with silence (0.0)
+                      trackState.rmsEnvelope = [
+                        ...List.filled(frameShift, 0.0), 
+                        ...trackState.rmsEnvelope
+                      ];
+                    } else if (frameShift < 0) {
+                      // Audio was pulled early: Trim the beginning of the VU array
+                      int trim = frameShift.abs();
+                      trackState.rmsEnvelope = trim < trackState.rmsEnvelope.length 
+                          ? trackState.rmsEnvelope.sublist(trim) 
+                          : [];
+                    }
+                  }
+                  // ────────────────────────────────────────────────────
+
+                  
+                  // 4. Inject the newly time-aligned audio bytes from the server response
+                  if (statusData['aligned_audio_b64'] != null) {
+                    cachedStemBytes[target.stemKey] = base64Decode(statusData['aligned_audio_b64']);
+                  }
                 });
               
-                // 4. Reload the audio player source so it uses the aligned audio buffer
+                // 5. Reload the audio player source so it uses the aligned audio buffer
                 await loadStemPlayerSource(target.stemKey, apiBase, currentTaskId ?? 'temp_session');
                 dirtyStems.add(target.stemKey);
                 registerUndoSnapshot();
@@ -1116,7 +1144,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 _showSaveConfirmation(
                   'Auto-Aligned! Offset applied: ${(offsetSec * 1000).toStringAsFixed(0)} ms.',
                   isPreview: true
-                ); // <--- Added closing parenthesis and semicolon here
+                );
                 
                 _showMatchSummaryModal(
                   offsetSec: offsetSec,
