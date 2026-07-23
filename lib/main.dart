@@ -1022,10 +1022,91 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // DUAL-STEM ANY-TO-ANY COMPARISON
   // =========================================================================
 
+  Future<bool> _ensureXrayGenerated(String stemKey) async {
+    List<dynamic> notes = allStemsNotes[stemKey] ?? [];
+    
+    // Check if it already has contour data
+    if (notes.isNotEmpty && notes.any((n) => n.containsKey('contour') && n['contour'] != null)) {
+      return true; 
+    }
+
+    setState(() {
+      isLoading = true;
+      processingMessage = 'Auto-generating high-res X-Ray data for ${stemKey.toUpperCase()}...';
+    });
+
+    try {
+      if (currentTaskId == null) {
+        if (!cachedStemPaths.containsKey(stemKey)) return false;
+        var sessionReq = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
+          ..fields['upload_type']      = 'stem'
+          ..fields['stem_target']      = stemKey
+          ..fields['instruments_json'] = jsonEncode([stemKey])
+          ..files.add(await http.MultipartFile.fromPath('file', cachedStemPaths[stemKey]!));
+
+        var sessionRes = await sessionReq.send();
+        if (sessionRes.statusCode == 200) {
+          currentTaskId = jsonDecode(await sessionRes.stream.bytesToString())['task_id'];
+        } else return false;
+      }
+
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-xray'))
+        ..fields['task_id']         = currentTaskId!
+        ..fields['stem_target']     = stemKey
+        ..fields['notes_manifest']  = jsonEncode(enrichManifestWithPolyphonicContext(notes));
+
+      var response = await request.send();
+      if (response.statusCode == 200) {
+        var data  = jsonDecode(await response.stream.bytesToString());
+        String jobId = data['job_id'];
+
+        bool isComplete = false;
+        while (!isComplete) {
+          await Future.delayed(const Duration(seconds: 3));
+          var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
+          if (statusRes.statusCode == 200) {
+            var statusData = json.decode(statusRes.body);
+            setState(() => processingMessage = statusData['message'] ?? 'Processing X-Ray...');
+
+            if (statusData['status'] == 'complete') {
+              final result = statusData['result'];
+              setState(() {
+                allStemsNotes[stemKey] = result['notes'];
+                if (result['continuous_xray'] != null) {
+                  allStemsContinuousXray[stemKey] = result['continuous_xray'];
+                }
+              });
+              return true;
+            } else if (statusData['status'] == 'error') {
+              return false;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      logToSupabase('Auto X-Ray error for $stemKey: $e');
+    }
+    return false;
+  }
+  
   Future<void> _runAnyToAnyForensicAlign(AudioChannel source, AudioChannel target) async {
     setState(() {
       isLoading = true;
       processingProgress = 0.0;
+      processingMessage = "Preparing audio and validating X-Ray data...";
+    });
+
+    // ── 1. ENSURE HIGH-RES X-RAY DATA EXISTS FOR BOTH TRACKS ──
+    bool sourceReady = await _ensureXrayGenerated(source.stemKey);
+    bool targetReady = await _ensureXrayGenerated(target.stemKey);
+
+    if (!sourceReady || !targetReady) {
+      _showSaveConfirmation('Error: Could not generate required high-res X-Ray data.');
+      setState(() { isLoading = false; processingMessage = ''; });
+      return;
+    }
+
+    setState(() {
       processingMessage = "Uploading ${target.name} and ${source.name} for alignment...";
     });
 
@@ -1049,7 +1130,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       request.files.add(http.MultipartFile.fromBytes('file_1', bytes1, filename: source.name));
       request.files.add(http.MultipartFile.fromBytes('file_2', bytes2, filename: target.name));
 
-      // 1. Send files and receive job ticket & task ID
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
@@ -1065,7 +1145,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             processingMessage = "[5%] Initializing task on Modal GPU...";
           });
 
-          // 2. Poll the server every 2 seconds for live status and updates
           bool isComplete = false;
           while (!isComplete) {
             await Future.delayed(const Duration(seconds: 2));
@@ -1082,10 +1161,24 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 final double offsetSec = statusData['offset_sec'] ?? 0.0;
                 
                 setState(() {
+                  // ── 2. SHIFT JSON NOTES ──
                   if (statusData['shifted_notes'] != null) {
                     allStemsNotes[target.stemKey] = statusData['shifted_notes'];
                   }
+
+                  // ── 3. SHIFT CONTINUOUS X-RAY TRACE ──
+                  if (allStemsContinuousXray.containsKey(target.stemKey)) {
+                    List<dynamic> originalCont = allStemsContinuousXray[target.stemKey]!;
+                    List<dynamic> shiftedCont = [];
+                    for (var point in originalCont) {
+                      double t = (point[0] as num).toDouble() + offsetSec;
+                      double f = (point[1] as num).toDouble();
+                      shiftedCont.add([t, f]);
+                    }
+                    allStemsContinuousXray[target.stemKey] = shiftedCont;
+                  }
                   
+                  // ── 4. POPULATE UI LEGEND DATA ──
                   dualContour1 = statusData['contour_1'] ?? [];
                   dualContour2 = statusData['contour_2'] ?? [];
                   identicalMatchRegions = statusData['identical_regions'] ?? [];
@@ -1093,50 +1186,38 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   dualLabel2 = target.name;
                   isDualContourOverlayActive = true;
               
-                  // 1. Clear old audio from RAM cache for the target stem
+                  // ── 5. PREP AUDIO CACHE & STOP PLAYER ──
                   cachedStemBytes.remove(target.stemKey);
-
-                  // 2. Stop any active playback handle for this target stem
                   if (stemHandles.containsKey(target.stemKey)) {
                     SoLoud.instance.stop(stemHandles[target.stemKey]!);
                     stemHandles.remove(target.stemKey);
                   }
                   
-                  // 3. Inject the newly time-aligned audio bytes from the server response
                   if (statusData['aligned_audio_b64'] != null) {
                     cachedStemBytes[target.stemKey] = base64Decode(statusData['aligned_audio_b64']);
                   }
-  
-                  // ── SHIFT THE VU METER ENVELOPE TO MATCH THE AUDIO ──
+
+                  // ── 6. SHIFT VU METER ENVELOPE ──
                   final trackState = getChannelState(target.stemKey);
                   if (trackState.rmsEnvelope.isNotEmpty && songDuration > 0) {
                     double fps = trackState.rmsEnvelope.length / songDuration;
                     int frameShift = (offsetSec * fps).round();
                     
                     if (frameShift > 0) {
-                      // Audio was delayed: Pad the beginning of the VU array with silence (0.0)
                       trackState.rmsEnvelope = [
                         ...List.filled(frameShift, 0.0), 
                         ...trackState.rmsEnvelope
                       ];
                     } else if (frameShift < 0) {
-                      // Audio was pulled early: Trim the beginning of the VU array
                       int trim = frameShift.abs();
                       trackState.rmsEnvelope = trim < trackState.rmsEnvelope.length 
                           ? trackState.rmsEnvelope.sublist(trim) 
                           : [];
                     }
                   }
-                  // ────────────────────────────────────────────────────
-
-                  
-                  // 4. Inject the newly time-aligned audio bytes from the server response
-                  if (statusData['aligned_audio_b64'] != null) {
-                    cachedStemBytes[target.stemKey] = base64Decode(statusData['aligned_audio_b64']);
-                  }
                 });
               
-                // 5. Reload the audio player source so it uses the aligned audio buffer
+                // Reload player with the new buffer
                 await loadStemPlayerSource(target.stemKey, apiBase, currentTaskId ?? 'temp_session');
                 dirtyStems.add(target.stemKey);
                 registerUndoSnapshot();
@@ -1153,8 +1234,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   sourceName: source.name,
                   targetName: target.name,
                 );
+                
               } else if (statusData['status'] == 'processing') {
-                // Read progress percentage & stage message from server payload
                 int percent = statusData['progress'] ?? 0;
                 String stage = statusData['stage'] ?? 'Processing...';
                 
@@ -3571,6 +3652,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                           verticalScrollController: verticalScrollController,
                                         ),
                                       ),
+                                      // ── EXISTING DUAL X-RAY LEGEND OVERLAY ──
                                       if (isDualContourOverlayActive)
                                         Positioned(
                                           bottom: 30, // Moved to the bottom
@@ -3632,11 +3714,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                         padding: EdgeInsets.zero,
                                         constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
                                         icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.white70),
-                                        // FIX: Clean function reference, no trailing parenthesis
                                         onPressed: addMarkerAtCurrentPlayhead,
                                       ),
                                     ),
-                          
+                            
                                     // 2. Go To Marker (Dropdown)
                                     if (markers.isNotEmpty)
                                       PopupMenuButton<double>(
@@ -3658,7 +3739,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                         }).toList(),
                                         onSelected: (time) => jumpToTimelinePosition(time),
                                       ),
-                          
+                            
                                     // 3. Set Loop Region Dropdown
                                     if (markers.length >= 2)
                                       PopupMenuButton<String>(
@@ -3682,7 +3763,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                           setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
                                         },
                                       ),
-                          
+                            
                                     // 4. Loop On / Off Toggle
                                     Tooltip(
                                       message: 'Toggle Loop Playback',
@@ -3717,7 +3798,58 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                               onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null,
                                             ),
                                     ),
-                          
+                                    
+                                    // ── NEW: DUAL X-RAY LAUNCHER & TOGGLE ──
+                                    Tooltip(
+                                      message: 'Dual X-Ray Comparison',
+                                      child: IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                        icon: Stack(
+                                          children: [
+                                            // Base Fingerprint (Cyan or Grey)
+                                            Icon(
+                                              Icons.fingerprint, 
+                                              size: 20, 
+                                              color: isDualContourOverlayActive ? const Color(0xFF00E5FF) : Colors.white38
+                                            ),
+                                            // Offset Top Fingerprint (Magenta or Grey with transparency)
+                                            Positioned(
+                                              left: 3,
+                                              top: 3,
+                                              child: Icon(
+                                                Icons.fingerprint, 
+                                                size: 20, 
+                                                color: isDualContourOverlayActive 
+                                                    ? const Color(0xFFFF007F).withOpacity(0.8) 
+                                                    : Colors.white24
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        onPressed: () {
+                                          // 1. If we already have dual contours in memory, toggle the view on/off
+                                          if (dualContour1.isNotEmpty && dualContour2.isNotEmpty) {
+                                            setState(() {
+                                              isDualContourOverlayActive = !isDualContourOverlayActive;
+                                            });
+                                          } 
+                                          // 2. If we don't have dual data yet, launch the comparator dialog
+                                          else {
+                                            showDialog(
+                                              context: context,
+                                              builder: (context) => DualXRayComparatorDialog(
+                                                availableChannels: activeChannels,
+                                                onRunComparison: (source, target) {
+                                                  _runAnyToAnyForensicAlign(source, target);
+                                                },
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ),
+                            
                                     // AI Vocal Detection Tool Icon
                                     /*Tooltip(
                                       message: 'Detect AI Synthetic Vocals (experimental)',
@@ -3745,15 +3877,14 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                                   : null,
                                             ),
                                     ),*/
-                          
+                            
                                     // Divider for Undo/Redo grouping
-                                    // FIX: Uses parent width to force a full-width break in the Wrap without crashing
                                     Container(
                                       width: isLandscape ? 100 : 50,
                                       padding: const EdgeInsets.symmetric(horizontal: 8.0),
                                       child: Divider(color: Colors.grey[800], thickness: 1.5),
                                     ),
-                          
+                            
                                     // 6. Undo
                                     Tooltip(
                                       message: 'Undo',
