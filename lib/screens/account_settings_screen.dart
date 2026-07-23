@@ -111,7 +111,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 ),
                 const SizedBox(height: 32),
                 
-                if (_isSubscribed)
+                /*if (_isSubscribed)
                   ElevatedButton.icon(
                     onPressed: () => _launchStripe('portal'),
                     icon: const Icon(Icons.credit_card),
@@ -132,7 +132,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                     label: const Text('Subscribe Yearly (Includes 2000 Tokens)'),
                     style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), backgroundColor: Colors.amberAccent, foregroundColor: Colors.black),
                   ),
-                ],
+                ],*/
 
                 const Spacer(),
                 OutlinedButton.icon(
