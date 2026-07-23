@@ -29,7 +29,7 @@
 // ── What lives here ──────────────────────────────────────────────────────────
 //   main()          — app entry point and Supabase init
 //   VoxrayDAW       — StatefulWidget shell
-//   VoxrayDAWState  — widget lifecycle, UI state fields, build(), all dialogs
+//     — widget lifecycle, UI state fields, build(), all dialogs
 //
 // ── What was extracted ───────────────────────────────────────────────────────
 //   models/channel_state.dart   ← ChannelState, DragMode
@@ -349,7 +349,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
 class VoxrayDAW extends StatefulWidget {
   const VoxrayDAW({Key? key}) : super(key: key);
   @override
-  State<VoxrayDAW> createState() => VoxrayDAWState();
+  State<VoxrayDAW> createState() => ();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -429,6 +429,95 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
   // get control over 60fps updates while doing file uploading:
   bool isUploading = false;
+
+  void _showMatchSummaryModal({
+    required double offsetSec,
+    required double confidence,
+    required int matchRegionsCount,
+    required String sourceName,
+    required String targetName,
+  }) {
+    double offsetMs = offsetSec * 1000.0;
+    bool isTightMatch = confidence >= 0.85;
+    bool isSamePerformance = confidence >= 0.70;
+
+    String verdict = isTightMatch
+        ? "VERDICT: Exceptional alignment. Highly probable double-track or exact take match."
+        : isSamePerformance
+            ? "VERDICT: Moderate correlation. Consistent performance with minor timing variance."
+            : "VERDICT: Low correlation. Distinct performances or divergent phrasing detected.";
+
+    Color verdictColor = isTightMatch ? Colors.tealAccent : (isSamePerformance ? Colors.amberAccent : Colors.redAccent);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF161616),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: Color(0xFF333333)),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.analytics, color: Color(0xFF00E5FF)),
+            const SizedBox(width: 10),
+            const Text(
+              'FORENSIC MATCH SUMMARY',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Comparing "$targetName" against master "$sourceName"',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const Divider(color: Color(0xFF333333), height: 20),
+            _summaryRow('Time Shift Offset', '${offsetMs.toStringAsFixed(1)} ms'),
+            _summaryRow('Confidence Score', '${(confidence * 100).toStringAsFixed(1)}%'),
+            _summaryRow('Identical Regions', '$matchRegionsCount matched segments'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: verdictColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: verdictColor.withOpacity(0.4)),
+              ),
+              child: Text(
+                verdict,
+                style: TextStyle(color: verdictColor, fontSize: 12, fontWeight: FontWeight.bold, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E5FF)),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+  
   
   // ── Global Log Multiplexer ──────────────────────────────────────────────
   String getPlatformString() {
@@ -1022,6 +1111,13 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 _showSaveConfirmation(
                   'Auto-Aligned! Offset applied: ${(offsetSec * 1000).toStringAsFixed(0)} ms.',
                   isPreview: true
+                  _showMatchSummaryModal(
+                    offsetSec: offsetSec,
+                    confidence: statusData['confidence_score'] ?? 0.0,
+                    matchRegionsCount: identicalMatchRegions.length,
+                    sourceName: source.name,
+                    targetName: target.name,
+                  );
                 );
               } else if (statusData['status'] == 'processing') {
                 // Read progress percentage & stage message from server payload
