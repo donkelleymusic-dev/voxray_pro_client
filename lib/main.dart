@@ -3545,60 +3545,36 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                       ),
                                       if (isDualContourOverlayActive)
                                         Positioned(
-                                          left: dualLegendLeft,
-                                          top: dualLegendTop,
-                                          child: GestureDetector(
-                                            onPanUpdate: (details) {
-                                              setState(() {
-                                                dualLegendLeft += details.delta.dx;
-                                                dualLegendTop += details.delta.dy;
-                                              });
-                                            },
-                                            child: Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withOpacity(0.85),
-                                                borderRadius: BorderRadius.circular(6),
-                                                border: Border.all(color: Colors.white38),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black.withOpacity(0.5),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 4),
-                                                  )
-                                                ]
-                                              ),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  const Row(
-                                                    children: [
-                                                      Icon(Icons.drag_indicator, color: Colors.white38, size: 12),
-                                                      SizedBox(width: 4),
-                                                      Text('DUAL X-RAY KEY', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 6),
-                                                  Row(children: [
-                                                    Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
-                                                    const SizedBox(width: 6),
-                                                    Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
-                                                  ]),
-                                                  const SizedBox(height: 4),
-                                                  Row(children: [
-                                                    Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
-                                                    const SizedBox(width: 6),
-                                                    Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11)),
-                                                  ]),
-                                                  const SizedBox(height: 4),
-                                                  Row(children: [
-                                                    Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.3)),
-                                                    const SizedBox(width: 6),
-                                                    const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11)),
-                                                  ]),
-                                                ],
-                                              ),
+                                          bottom: 30, // Moved to the bottom
+                                          left: 20,   // Moved to the left
+                                          child: IgnorePointer( // <--- Allows clicks/drags to pass through to the canvas underneath!
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Text(
+                                                  'DUAL X-RAY KEY', 
+                                                  style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 4)])
+                                                ),
+                                                const SizedBox(height: 6),
+                                                Row(children: [
+                                                  Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
+                                                  const SizedBox(width: 6),
+                                                  Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                ]),
+                                                const SizedBox(height: 4),
+                                                Row(children: [
+                                                  Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
+                                                  const SizedBox(width: 6),
+                                                  Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                ]),
+                                                const SizedBox(height: 4),
+                                                Row(children: [
+                                                  Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.8)),
+                                                  const SizedBox(width: 6),
+                                                  const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                ]),
+                                              ],
                                             ),
                                           ),
                                         ),
@@ -3606,179 +3582,178 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                   ),
                           ),
                           // Right: The Fully Restored Marker & Tool Sidebar
-// Right: The Fully Restored Marker & Tool Sidebar
-Container(
-  width: isLandscape ? 100 : 50,
-  decoration: BoxDecoration(
-    color: Colors.grey[900],
-    border: const Border(left: BorderSide(color: Colors.black, width: 2)),
-  ),
-  child: SingleChildScrollView(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 4.0, // Horizontal space between icons in landscape
-        runSpacing: 8.0, // Vertical space between rows
-        children: [
-          
-          // 1. Add Marker
-          Tooltip(
-            message: 'Add Marker',
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-              icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.white70),
-              // FIX: Clean function reference, no trailing parenthesis
-              onPressed: addMarkerAtCurrentPlayhead,
-            ),
-          ),
+                          Container(
+                            width: isLandscape ? 100 : 50,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[900],
+                              border: const Border(left: BorderSide(color: Colors.black, width: 2)),
+                            ),
+                            child: SingleChildScrollView(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child: Wrap(
+                                  alignment: WrapAlignment.center,
+                                  spacing: 4.0, // Horizontal space between icons in landscape
+                                  runSpacing: 8.0, // Vertical space between rows
+                                  children: [
+                                    
+                                    // 1. Add Marker
+                                    Tooltip(
+                                      message: 'Add Marker',
+                                      child: IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                        icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.white70),
+                                        // FIX: Clean function reference, no trailing parenthesis
+                                        onPressed: addMarkerAtCurrentPlayhead,
+                                      ),
+                                    ),
+                          
+                                    // 2. Go To Marker (Dropdown)
+                                    if (markers.isNotEmpty)
+                                      PopupMenuButton<double>(
+                                        icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
+                                        padding: EdgeInsets.zero,
+                                        tooltip: 'Go to Marker',
+                                        itemBuilder: (context) => markers.map((marker) {
+                                          int totalSeconds = (marker['time'] as double).round();
+                                          String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
+                                          return PopupMenuItem<double>(
+                                            value: marker['time'],
+                                            child: Row(children: [
+                                              const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
+                                              const SizedBox(width: 4),
+                                              Text('${marker['label']}  '),
+                                              Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                            ]),
+                                          );
+                                        }).toList(),
+                                        onSelected: (time) => jumpToTimelinePosition(time),
+                                      ),
+                          
+                                    // 3. Set Loop Region Dropdown
+                                    if (markers.length >= 2)
+                                      PopupMenuButton<String>(
+                                        icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
+                                        padding: EdgeInsets.zero,
+                                        tooltip: 'Set Loop Region',
+                                        itemBuilder: (context) {
+                                          List<PopupMenuItem<String>> items = [];
+                                          for (int i = 0; i < markers.length; i++) {
+                                            for (int j = i + 1; j < markers.length; j++) {
+                                              items.add(PopupMenuItem(
+                                                value: '${markers[i]['time']}_${markers[j]['time']}',
+                                                child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
+                                              ));
+                                            }
+                                          }
+                                          return items;
+                                        },
+                                        onSelected: (val) {
+                                          final parts = val.split('_');
+                                          setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
+                                        },
+                                      ),
+                          
+                                    // 4. Loop On / Off Toggle
+                                    Tooltip(
+                                      message: 'Toggle Loop Playback',
+                                      child: IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                        icon: Icon(Icons.loop, size: 20, color: isLoopModeActive ? Colors.tealAccent : Colors.white38),
+                                        onPressed: () {
+                                          setState(() {
+                                            isLoopModeActive = !isLoopModeActive;
+                                          });
+                                        },
+                                      ),
+                                    ),
 
-          // 2. Go To Marker (Dropdown)
-          if (markers.isNotEmpty)
-            PopupMenuButton<double>(
-              icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
-              padding: EdgeInsets.zero,
-              tooltip: 'Go to Marker',
-              itemBuilder: (context) => markers.map((marker) {
-                int totalSeconds = (marker['time'] as double).round();
-                String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
-                return PopupMenuItem<double>(
-                  value: marker['time'],
-                  child: Row(children: [
-                    const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
-                    const SizedBox(width: 4),
-                    Text('${marker['label']}  '),
-                    Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                  ]),
-                );
-              }).toList(),
-              onSelected: (time) => jumpToTimelinePosition(time),
-            ),
-
-          // 3. Set Loop Region Dropdown
-          if (markers.length >= 2)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
-              padding: EdgeInsets.zero,
-              tooltip: 'Set Loop Region',
-              itemBuilder: (context) {
-                List<PopupMenuItem<String>> items = [];
-                for (int i = 0; i < markers.length; i++) {
-                  for (int j = i + 1; j < markers.length; j++) {
-                    items.add(PopupMenuItem(
-                      value: '${markers[i]['time']}_${markers[j]['time']}',
-                      child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
-                    ));
-                  }
-                }
-                return items;
-              },
-              onSelected: (val) {
-                final parts = val.split('_');
-                setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
-              },
-            ),
-
-          // 4. Loop On / Off Toggle
-Tooltip(
-  message: 'Toggle Loop Playback',
-  child: IconButton(
-    padding: EdgeInsets.zero,
-    constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-    icon: Icon(Icons.loop, size: 20, color: isLoopModeActive ? Colors.tealAccent : Colors.white38),
-    onPressed: () {
-      setState(() {
-        isLoopModeActive = !isLoopModeActive;
-      });
-    },
-  ),
-),
-
-          // 5. X-Ray Toggle
-          Tooltip(
-            message: 'Toggle X-Ray',
-            child: isXrayProcessing
-                ? const Padding(
-                    padding: EdgeInsets.all(8.0), 
-                    child: SizedBox(
-                      width: 14, 
-                      height: 14, 
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)
-                    )
-                  )
-                : IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                    icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
-                    onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null,
-                  ),
-          ),
-
-          // AI Vocal Detection Tool Icon
-          /*Tooltip(
-            message: 'Detect AI Synthetic Vocals (experimental)',
-            child: isAnalyzingAiVocal
-                ? const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent),
-                    ),
-                  )
-                : IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                    icon: Icon(
-                      Icons.psychology_outlined,
-                      size: 20,
-                      color: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
-                          ? Colors.cyanAccent
-                          : Colors.white24,
-                    ),
-                    onPressed: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
-                        ? _runAiVocalInspection
-                        : null,
-                  ),
-          ),*/
-
-          // Divider for Undo/Redo grouping
-          // FIX: Uses parent width to force a full-width break in the Wrap without crashing
-          Container(
-            width: isLandscape ? 100 : 50,
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Divider(color: Colors.grey[800], thickness: 1.5),
-          ),
-
-          // 6. Undo
-          Tooltip(
-            message: 'Undo',
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-              icon: const Icon(Icons.undo, size: 20),
-              color: undoStack.isNotEmpty ? Colors.white : Colors.white24,
-              onPressed: undoStack.isNotEmpty ? _undo : null,
-            ),
-          ),
-          
-          // 7. Redo
-          Tooltip(
-            message: 'Redo',
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-              icon: const Icon(Icons.redo, size: 20),
-              color: redoStack.isNotEmpty ? Colors.white : Colors.white24,
-              onPressed: redoStack.isNotEmpty ? _redo : null,
-            ),
-          ),
-        ],
-      ),
-    ),
-  ),
-)
+                                    // 5. X-Ray Toggle
+                                    Tooltip(
+                                      message: 'Toggle X-Ray',
+                                      child: isXrayProcessing
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(8.0), 
+                                              child: SizedBox(
+                                                width: 14, 
+                                                height: 14, 
+                                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)
+                                              )
+                                            )
+                                          : IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
+                                              onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null,
+                                            ),
+                                    ),
+                          
+                                    // AI Vocal Detection Tool Icon
+                                    /*Tooltip(
+                                      message: 'Detect AI Synthetic Vocals (experimental)',
+                                      child: isAnalyzingAiVocal
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(8.0),
+                                              child: SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent),
+                                              ),
+                                            )
+                                          : IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              icon: Icon(
+                                                Icons.psychology_outlined,
+                                                size: 20,
+                                                color: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
+                                                    ? Colors.cyanAccent
+                                                    : Colors.white24,
+                                              ),
+                                              onPressed: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
+                                                  ? _runAiVocalInspection
+                                                  : null,
+                                            ),
+                                    ),*/
+                          
+                                    // Divider for Undo/Redo grouping
+                                    // FIX: Uses parent width to force a full-width break in the Wrap without crashing
+                                    Container(
+                                      width: isLandscape ? 100 : 50,
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                      child: Divider(color: Colors.grey[800], thickness: 1.5),
+                                    ),
+                          
+                                    // 6. Undo
+                                    Tooltip(
+                                      message: 'Undo',
+                                      child: IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                        icon: const Icon(Icons.undo, size: 20),
+                                        color: undoStack.isNotEmpty ? Colors.white : Colors.white24,
+                                        onPressed: undoStack.isNotEmpty ? _undo : null,
+                                      ),
+                                    ),
+                                    
+                                    // 7. Redo
+                                    Tooltip(
+                                      message: 'Redo',
+                                      child: IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                        icon: const Icon(Icons.redo, size: 20),
+                                        color: redoStack.isNotEmpty ? Colors.white : Colors.white24,
+                                        onPressed: redoStack.isNotEmpty ? _redo : null,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          )
                         ],
                       ),
                     ),
