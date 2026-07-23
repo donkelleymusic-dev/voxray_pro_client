@@ -616,6 +616,10 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   List<dynamic> identicalMatchRegions = [];
   String dualLabel1 = '';
   String dualLabel2 = '';
+  
+  // ── UI Draggable States ───────────────────────────────────────────────────
+  double dualLegendLeft = 20.0;
+  double dualLegendTop = 20.0;
 
   // ── File info ─────────────────────────────────────────────────────────────
   String originalFileName = 'Unknown File';
@@ -3541,39 +3545,60 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                       ),
                                       if (isDualContourOverlayActive)
                                         Positioned(
-                                          top: 12,
-                                          right: 12,
-                                          child: Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black87,
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: Colors.white24),
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Text('DUAL X-RAY KEY', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-                                                const SizedBox(height: 4),
-                                                Row(children: [
-                                                  Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
-                                                  const SizedBox(width: 6),
-                                                  Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
-                                                ]),
-                                                const SizedBox(height: 2),
-                                                Row(children: [
-                                                  Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
-                                                  const SizedBox(width: 6),
-                                                  Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11)),
-                                                ]),
-                                                const SizedBox(height: 2),
-                                                Row(children: [
-                                                  Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.3)),
-                                                  const SizedBox(width: 6),
-                                                  const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11)),
-                                                ]),
-                                              ],
+                                          left: dualLegendLeft,
+                                          top: dualLegendTop,
+                                          child: GestureDetector(
+                                            onPanUpdate: (details) {
+                                              setState(() {
+                                                dualLegendLeft += details.delta.dx;
+                                                dualLegendTop += details.delta.dy;
+                                              });
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withOpacity(0.85),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: Colors.white38),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withOpacity(0.5),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 4),
+                                                  )
+                                                ]
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Row(
+                                                    children: [
+                                                      Icon(Icons.drag_indicator, color: Colors.white38, size: 12),
+                                                      SizedBox(width: 4),
+                                                      Text('DUAL X-RAY KEY', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Row(children: [
+                                                    Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
+                                                    const SizedBox(width: 6),
+                                                    Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
+                                                  ]),
+                                                  const SizedBox(height: 4),
+                                                  Row(children: [
+                                                    Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
+                                                    const SizedBox(width: 6),
+                                                    Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11)),
+                                                  ]),
+                                                  const SizedBox(height: 4),
+                                                  Row(children: [
+                                                    Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.3)),
+                                                    const SizedBox(width: 6),
+                                                    const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11)),
+                                                  ]),
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         ),
