@@ -156,14 +156,14 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   child: const Text('Sign In', style: TextStyle(fontSize: 16)),
                 ),
-                const SizedBox(height: 12),
+                /*const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: _signUp,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: const Text('Create Account'),
-                ),
+                ),*/
               ],
             ],
           ),
