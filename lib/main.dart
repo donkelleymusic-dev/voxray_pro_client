@@ -932,6 +932,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   Future<void> _runAnyToAnyForensicAlign(AudioChannel source, AudioChannel target) async {
     setState(() {
       isLoading = true;
+      processingProgress = 0.0;
       processingMessage = "Uploading ${target.name} and ${source.name} for alignment...";
     });
 
@@ -954,7 +955,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       request.files.add(http.MultipartFile.fromBytes('file_1', bytes1, filename: source.name));
       request.files.add(http.MultipartFile.fromBytes('file_2', bytes2, filename: target.name));
 
-      // 1. Send the files and get the ticket (This will complete in a few seconds)
+      // 1. Send files and receive job ticket & task ID
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
@@ -963,17 +964,22 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         
         if (data['status'] == 'processing' && data['call_id'] != null) {
           String callId = data['call_id'];
+          String taskId = data['task_id'] ?? '';
           
           setState(() {
-            processingMessage = "Mathematically auto-aligning and generating X-Rays... This may take a few minutes.";
+            processingProgress = 0.05;
+            processingMessage = "[5%] Initializing task on Modal GPU...";
           });
 
-          // 2. Poll the server every 3 seconds
+          // 2. Poll the server every 2 seconds for live status and updates
           bool isComplete = false;
           while (!isComplete) {
-            await Future.delayed(const Duration(seconds: 3));
+            await Future.delayed(const Duration(seconds: 2));
             
-            var statusResponse = await http.get(Uri.parse('$apiBase/api/dual-take/status/$callId'));
+            var statusResponse = await http.get(
+              Uri.parse('$apiBase/api/dual-take/status/$callId?task_id=$taskId')
+            );
+            
             if (statusResponse.statusCode == 200) {
               final statusData = json.decode(statusResponse.body);
               
@@ -982,6 +988,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 final double offsetSec = statusData['offset_sec'] ?? 0.0;
                 
                 setState(() {
+                  processingProgress = 1.0;
                   if (statusData['shifted_notes'] != null) {
                     allStemsNotes[target.stemKey] = statusData['shifted_notes'];
                   }
@@ -1011,8 +1018,16 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   'Auto-Aligned! Offset applied: ${(offsetSec * 1000).toStringAsFixed(0)} ms.',
                   isPreview: true
                 );
-              } else if (statusData['status'] != 'processing') {
-                // If it returns an error status
+              } else if (statusData['status'] == 'processing') {
+                // Read progress percentage & stage message from server payload
+                int percent = statusData['progress'] ?? 0;
+                String stage = statusData['stage'] ?? 'Processing...';
+                
+                setState(() {
+                  processingProgress = (percent / 100.0).clamp(0.0, 1.0);
+                  processingMessage = "[$percent%] $stage";
+                });
+              } else {
                 isComplete = true;
                 _showSaveConfirmation('Alignment failed on server.');
               }
@@ -1033,6 +1048,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     } finally {
       setState(() {
         isLoading = false;
+        processingProgress = 0.0;
         processingMessage = '';
       });
     }
