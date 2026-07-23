@@ -349,7 +349,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
 class VoxrayDAW extends StatefulWidget {
   const VoxrayDAW({Key? key}) : super(key: key);
   @override
-  State<VoxrayDAW> createState() => VoxrayDAWState();;
+  State<VoxrayDAW> createState() => VoxrayDAWState();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
