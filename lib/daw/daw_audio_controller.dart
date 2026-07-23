@@ -123,80 +123,114 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
   Future<void> loadStemPlayerSource(String stemName, String apiBase, String taskId) async {
     if (stemsCurrentlyFetching.contains(stemName)) return;
-
+  
     setState(() {
       stemsCurrentlyFetching.add(stemName);
       isFetchingStems = true;
     });
-
+  
     bool wasPlaying = isPlaying;
     if (wasPlaying) pauseAllPlayers();
-
+  
     try {
-      if (kIsWeb) {
-        // ── 1. WEB COMPATIBLE PATH ──
-        logToSupabase("Web platform detected. Processing track [$stemName]...");
-        
-        Uint8List bytes;
-        
-        // FIX: Did we just unpack this from a .vxp file? Use the RAM buffer!
-        if (cachedStemBytes.containsKey(stemName)) {
-           bytes = cachedStemBytes[stemName]!;
-        } 
-        // FIX: If not, download it from the API and SAVE it to the RAM buffer so we can export it later!
-        else {
-           bytes = await fetchStemBytes(stemName, apiBase, taskId);
-           cachedStemBytes[stemName] = bytes;
-        }
-        
-        // Force clear old voice handle
+      // ── ALIGNED / RAM BUFFER PRIORITY OVERRIDE ──
+      // If we performed an auto-alignment, the shifted audio bytes live here. 
+      // Force loading them via memory so both web and native play the aligned audio!
+      if (cachedStemBytes.containsKey(stemName)) {
+        logToSupabase("Loading aligned/cached RAM buffer for track [$stemName]...");
+        Uint8List bytes = cachedStemBytes[stemName]!;
+  
         if (stemHandles.containsKey(stemName)) {
           if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
             SoLoud.instance.stop(stemHandles[stemName]!);
           }
           stemHandles.remove(stemName);
         }
-
-        // Web must load into RAM memory buffers (cannot stream via path modes)
+  
+        if (stemSources.containsKey(stemName)) {
+          SoLoud.instance.disposeSource(stemSources[stemName]!);
+          stemSources.remove(stemName);
+        }
+  
+        final newSource = await SoLoud.instance.loadMem(
+          '${taskId}_${stemName}_aligned', 
+          bytes,
+        );
+  
+        try {
+          newSource.filters.freeverbFilter.wet().value = 0.0;
+          newSource.filters.compressorFilter.wet().value = 0.0;
+          newSource.filters.biquadFilter.wet().value = 0.0;
+        } catch (fxError) {
+          logToSupabase("Warning: Could not pre-load filters: $fxError");
+        }
+  
+        stemSources[stemName] = newSource;
+        stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
+        SoLoud.instance.setPause(stemHandles[stemName]!, true);
+  
+        final state = getChannelState(stemName);
+        SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
+        SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
+        
+        applyStemPlugins(stemName);
+        return; // Exit early since we successfully loaded the aligned RAM bytes!
+      }
+  
+      if (kIsWeb) {
+        // ── 1. WEB COMPATIBLE PATH ──
+        logToSupabase("Web platform detected. Processing track [$stemName]...");
+        
+        Uint8List bytes;
+        
+        if (cachedStemBytes.containsKey(stemName)) {
+           bytes = cachedStemBytes[stemName]!;
+        } else {
+           bytes = await fetchStemBytes(stemName, apiBase, taskId);
+           cachedStemBytes[stemName] = bytes;
+        }
+        
+        if (stemHandles.containsKey(stemName)) {
+          if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
+            SoLoud.instance.stop(stemHandles[stemName]!);
+          }
+          stemHandles.remove(stemName);
+        }
+  
         final newSource = await SoLoud.instance.loadMem(
           '${taskId}_$stemName', 
           bytes,
         );
-
-        // Pre-load / bypass filter configuration
+  
         try {
-          //newSource.filters.freeverbFilter.activate();
-          //newSource.filters.compressorFilter.activate();
-          //newSource.filters.biquadFilter.activate();
-          
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
           newSource.filters.biquadFilter.wet().value = 0.0;
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters on web: $fxError");
         }
-
+  
         stemSources[stemName] = newSource;
         stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
         SoLoud.instance.setPause(stemHandles[stemName]!, true);
-
+  
         final state = getChannelState(stemName);
         SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
         applyStemPlugins(stemName);
-
+  
       } else {
         // ── 2. NATIVE PATH (Mobile / Desktop) ──
         bool localFileExists = false;
         String? targetPath = cachedStemPaths[stemName];
-
+  
         if (targetPath != null && targetPath.isNotEmpty) {
           if (await File(targetPath).exists()) {
             localFileExists = true;
           }
         }
-
+  
         if (!localFileExists) {
           if (taskId.isEmpty) {
             throw Exception('Cannot fetch stem: no valid server Task ID or offline cache path available.');
@@ -213,19 +247,19 @@ mixin DawAudioController on VoxrayDAWStateBase {
         } else {
           logToSupabase("Cache verified. Streaming [$stemName] directly from storage path: ${cachedStemPaths[stemName]}");
         }
-
+  
         if (stemHandles.containsKey(stemName)) {
           if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
             SoLoud.instance.stop(stemHandles[stemName]!);
           }
           stemHandles.remove(stemName);
         }
-
+  
         final newSource = await SoLoud.instance.loadFile(
           cachedStemPaths[stemName]!,
           mode: LoadMode.disk,
         );
-
+  
         try {
           newSource.filters.freeverbFilter.activate();
           newSource.filters.compressorFilter.activate();
@@ -237,18 +271,18 @@ mixin DawAudioController on VoxrayDAWStateBase {
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters: $fxError");
         }
-
+  
         stemSources[stemName] = newSource;
         stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
         SoLoud.instance.setPause(stemHandles[stemName]!, true);
-
+  
         final state = getChannelState(stemName);
         SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
         applyStemPlugins(stemName);
       }
-
+  
     } catch (e) {
       logToSupabase('Audio Layer Processing Failure [Track: $stemName]: $e', severity: 'ERROR');
       setState(() => activePlaybackSources.remove(stemName));
