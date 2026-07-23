@@ -3716,8 +3716,8 @@ Tooltip(
           ),
 
           // AI Vocal Detection Tool Icon
-          Tooltip(
-            message: 'Detect AI Synthetic Vocals',
+          /*Tooltip(
+            message: 'Detect AI Synthetic Vocals (experimental)',
             child: isAnalyzingAiVocal
                 ? const Padding(
                     padding: EdgeInsets.all(8.0),
@@ -3741,7 +3741,7 @@ Tooltip(
                         ? _runAiVocalInspection
                         : null,
                   ),
-          ),
+          ),*/
 
           // Divider for Undo/Redo grouping
           // FIX: Uses parent width to force a full-width break in the Wrap without crashing
