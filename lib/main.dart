@@ -521,6 +521,12 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   AnimationController? alignAnimationController;
   Animation<double>? offsetAnimation;
   Animation<double>? pulseAnimation;
+  bool isDualContourOverlayActive = false;
+  List<dynamic> dualContour1 = [];
+  List<dynamic> dualContour2 = [];
+  List<dynamic> identicalMatchRegions = [];
+  String dualLabel1 = '';
+  String dualLabel2 = '';
 
   // ── File info ─────────────────────────────────────────────────────────────
   String originalFileName = 'Unknown File';
@@ -948,6 +954,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       request.files.add(http.MultipartFile.fromBytes('file_1', bytes1, filename: source.name));
       request.files.add(http.MultipartFile.fromBytes('file_2', bytes2, filename: target.name));
 
+      // 10-Minute Timeout Applied Here
       var streamedResponse = await request.send().timeout(
         const Duration(minutes: 10),
         onTimeout: () => throw TimeoutException('Alignment timed out.'),
@@ -961,27 +968,29 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           final double offsetSec = data['offset_sec'] ?? 0.0;
           
           setState(() {
-            // 1. Update the note grid JSON with the newly shifted timing
             if (data['shifted_notes'] != null) {
               allStemsNotes[target.stemKey] = data['shifted_notes'];
             }
             
-            // 2. Clear the old unaligned audio from RAM cache
+            // Store dual contour comparison data for the canvas renderer
+            dualContour1 = data['contour_1'] ?? [];
+            dualContour2 = data['contour_2'] ?? [];
+            identicalMatchRegions = data['identical_regions'] ?? [];
+            dualLabel1 = source.name;
+            dualLabel2 = target.name;
+            isDualContourOverlayActive = true;
+
             cachedStemBytes.remove(target.stemKey);
             if (stemHandles.containsKey(target.stemKey)) {
               SoLoud.instance.stop(stemHandles[target.stemKey]!);
               stemHandles.remove(target.stemKey);
             }
-
-            // 3. Inject the newly aligned audio bytes directly into RAM cache
-            if (data['aligned_audio_base64'] != null) {
-              cachedStemBytes[target.stemKey] = base64Decode(data['aligned_audio_base64']);
+            if (data['aligned_audio_b64'] != null) {
+              cachedStemBytes[target.stemKey] = base64Decode(data['aligned_audio_b64']);
             }
           });
 
-          // 4. Reload the player source so it plays instantly in sync
           await loadStemPlayerSource(target.stemKey, apiBase, currentTaskId ?? 'temp_session');
-          
           dirtyStems.add(target.stemKey);
           registerUndoSnapshot();
           
@@ -3379,10 +3388,54 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                       ],
                                     ),
                                   )
-                                : TimelineCanvasWidget(
-                                    dawState: this,
-                                    horizontalScrollController: horizontalScrollController,
-                                    verticalScrollController: verticalScrollController,
+                                : Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: TimelineCanvasWidget(
+                                          dawState: this,
+                                          horizontalScrollController: horizontalScrollController,
+                                          verticalScrollController: verticalScrollController,
+                                        ),
+                                      ),
+                                      if (isDualContourOverlayActive)
+                                        Positioned(
+                                          top: 12,
+                                          right: 12,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black87,
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(color: Colors.white24),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Text('DUAL X-RAY KEY', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                                                const SizedBox(height: 4),
+                                                Row(children: [
+                                                  Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
+                                                  const SizedBox(width: 6),
+                                                  Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11)),
+                                                ]),
+                                                const SizedBox(height: 2),
+                                                Row(children: [
+                                                  Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
+                                                  const SizedBox(width: 6),
+                                                  Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11)),
+                                                ]),
+                                                const SizedBox(height: 2),
+                                                Row(children: [
+                                                  Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.3)),
+                                                  const SizedBox(width: 6),
+                                                  const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11)),
+                                                ]),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                           ),
                           // Right: The Fully Restored Marker & Tool Sidebar
