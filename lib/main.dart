@@ -349,7 +349,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
 class VoxrayDAW extends StatefulWidget {
   const VoxrayDAW({Key? key}) : super(key: key);
   @override
-  State<VoxrayDAW> createState() => ();
+  State<VoxrayDAW> createState() => VoxrayDAWState();;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1112,13 +1112,14 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 _showSaveConfirmation(
                   'Auto-Aligned! Offset applied: ${(offsetSec * 1000).toStringAsFixed(0)} ms.',
                   isPreview: true
-                  _showMatchSummaryModal(
-                    offsetSec: offsetSec,
-                    confidence: statusData['confidence_score'] ?? 0.0,
-                    matchRegionsCount: identicalMatchRegions.length,
-                    sourceName: source.name,
-                    targetName: target.name,
-                  );
+                ); // <--- Added closing parenthesis and semicolon here
+                
+                _showMatchSummaryModal(
+                  offsetSec: offsetSec,
+                  confidence: statusData['confidence_score'] ?? 0.0,
+                  matchRegionsCount: identicalMatchRegions.length,
+                  sourceName: source.name,
+                  targetName: target.name,
                 );
               } else if (statusData['status'] == 'processing') {
                 // Read progress percentage & stage message from server payload
