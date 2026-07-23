@@ -3222,12 +3222,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           child: ListTile(
               leading: Icon(Icons.sync_problem, color: Colors.orangeAccent),
               title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)))),
-      PopupMenuItem(
+      /*PopupMenuItem(
           value: 'test_mode',
           child: ListTile(
               leading: Icon(Icons.bug_report, color: isTestModeActive ? Colors.redAccent : Colors.white38),
               title: Text(isTestModeActive ? 'Disable MOCK API Mode' : 'Enable MOCK API Mode',
-                  style: TextStyle(color: isTestModeActive ? Colors.redAccent : Colors.white)))),
+                  style: TextStyle(color: isTestModeActive ? Colors.redAccent : Colors.white)))),*/
     ];
   }
 
