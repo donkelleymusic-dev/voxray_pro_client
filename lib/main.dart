@@ -932,7 +932,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   Future<void> _runAnyToAnyForensicAlign(AudioChannel source, AudioChannel target) async {
     setState(() {
       isLoading = true;
-      processingMessage = "Mathematically auto-aligning ${target.name} to ${source.name}...";
+      processingMessage = "Uploading ${target.name} and ${source.name} for alignment...";
     });
 
     try {
@@ -954,55 +954,78 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       request.files.add(http.MultipartFile.fromBytes('file_1', bytes1, filename: source.name));
       request.files.add(http.MultipartFile.fromBytes('file_2', bytes2, filename: target.name));
 
-      // 20-Minute Timeout Applied Here
-      var streamedResponse = await request.send().timeout(
-        const Duration(minutes: 20), // Bump this to 20 to match the server
-        onTimeout: () => throw TimeoutException('Alignment timed out.'),
-      );
+      // 1. Send the files and get the ticket (This will complete in a few seconds)
+      var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         
-        if (data['status'] == 'success') {
-          final double offsetSec = data['offset_sec'] ?? 0.0;
+        if (data['status'] == 'processing' && data['call_id'] != null) {
+          String callId = data['call_id'];
           
           setState(() {
-            if (data['shifted_notes'] != null) {
-              allStemsNotes[target.stemKey] = data['shifted_notes'];
-            }
-            
-            // Store dual contour comparison data for the canvas renderer
-            dualContour1 = data['contour_1'] ?? [];
-            dualContour2 = data['contour_2'] ?? [];
-            identicalMatchRegions = data['identical_regions'] ?? [];
-            dualLabel1 = source.name;
-            dualLabel2 = target.name;
-            isDualContourOverlayActive = true;
-
-            cachedStemBytes.remove(target.stemKey);
-            if (stemHandles.containsKey(target.stemKey)) {
-              SoLoud.instance.stop(stemHandles[target.stemKey]!);
-              stemHandles.remove(target.stemKey);
-            }
-            if (data['aligned_audio_b64'] != null) {
-              cachedStemBytes[target.stemKey] = base64Decode(data['aligned_audio_b64']);
-            }
+            processingMessage = "Mathematically auto-aligning and generating X-Rays... This may take a few minutes.";
           });
 
-          await loadStemPlayerSource(target.stemKey, apiBase, currentTaskId ?? 'temp_session');
-          dirtyStems.add(target.stemKey);
-          registerUndoSnapshot();
-          
-          _showSaveConfirmation(
-            'Auto-Aligned! Offset applied: ${(offsetSec * 1000).toStringAsFixed(0)} ms.',
-            isPreview: true
-          );
+          // 2. Poll the server every 3 seconds
+          bool isComplete = false;
+          while (!isComplete) {
+            await Future.delayed(const Duration(seconds: 3));
+            
+            var statusResponse = await http.get(Uri.parse('$apiBase/api/dual-take/status/$callId'));
+            if (statusResponse.statusCode == 200) {
+              final statusData = json.decode(statusResponse.body);
+              
+              if (statusData['status'] == 'success') {
+                isComplete = true;
+                final double offsetSec = statusData['offset_sec'] ?? 0.0;
+                
+                setState(() {
+                  if (statusData['shifted_notes'] != null) {
+                    allStemsNotes[target.stemKey] = statusData['shifted_notes'];
+                  }
+                  
+                  dualContour1 = statusData['contour_1'] ?? [];
+                  dualContour2 = statusData['contour_2'] ?? [];
+                  identicalMatchRegions = statusData['identical_regions'] ?? [];
+                  dualLabel1 = source.name;
+                  dualLabel2 = target.name;
+                  isDualContourOverlayActive = true;
+
+                  cachedStemBytes.remove(target.stemKey);
+                  if (stemHandles.containsKey(target.stemKey)) {
+                    SoLoud.instance.stop(stemHandles[target.stemKey]!);
+                    stemHandles.remove(target.stemKey);
+                  }
+                  if (statusData['aligned_audio_b64'] != null) {
+                    cachedStemBytes[target.stemKey] = base64Decode(statusData['aligned_audio_b64']);
+                  }
+                });
+
+                await loadStemPlayerSource(target.stemKey, apiBase, currentTaskId ?? 'temp_session');
+                dirtyStems.add(target.stemKey);
+                registerUndoSnapshot();
+                
+                _showSaveConfirmation(
+                  'Auto-Aligned! Offset applied: ${(offsetSec * 1000).toStringAsFixed(0)} ms.',
+                  isPreview: true
+                );
+              } else if (statusData['status'] != 'processing') {
+                // If it returns an error status
+                isComplete = true;
+                _showSaveConfirmation('Alignment failed on server.');
+              }
+            } else {
+              isComplete = true;
+              _showSaveConfirmation('Error checking status: ${statusResponse.statusCode}');
+            }
+          }
         } else {
-          _showSaveConfirmation('Alignment failed: ${data['message']}');
+          _showSaveConfirmation('Server failed to start job.');
         }
       } else {
-        _showSaveConfirmation('Server error: ${response.statusCode}');
+        _showSaveConfirmation('Upload error: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint("Dual Comparison Error: $e");
