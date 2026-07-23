@@ -613,6 +613,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   bool isDualContourOverlayActive = false;
   List<dynamic> dualContour1 = [];
   List<dynamic> dualContour2 = [];
+  List<dynamic> dualContinuous1 = [];
+  List<dynamic> dualContinuous2 = [];
   List<dynamic> identicalMatchRegions = [];
   String dualLabel1 = '';
   String dualLabel2 = '';
@@ -1161,12 +1163,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 final double offsetSec = statusData['offset_sec'] ?? 0.0;
                 
                 setState(() {
-                  // ── 2. SHIFT JSON NOTES ──
+                  // ── 1. APPLY PERFECTLY RECALCULATED NOTES ──
                   if (statusData['shifted_notes'] != null) {
                     allStemsNotes[target.stemKey] = statusData['shifted_notes'];
                   }
-
-                  // ── 3. SHIFT CONTINUOUS X-RAY TRACE ──
+                  
+                  // ── 2. SHIFT CONTINUOUS X-RAY IN DART (INSTANT MATH) ──
                   if (allStemsContinuousXray.containsKey(target.stemKey)) {
                     List<dynamic> originalCont = allStemsContinuousXray[target.stemKey]!;
                     List<dynamic> shiftedCont = [];
@@ -1175,10 +1177,18 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                       double f = (point[1] as num).toDouble();
                       shiftedCont.add([t, f]);
                     }
+                    // Save the shifted array as the new baseline
                     allStemsContinuousXray[target.stemKey] = shiftedCont;
+                    // Pass the shifted array to the Magenta Canvas overlay
+                    dualContinuous2 = shiftedCont; 
+                  } else {
+                    dualContinuous2 = [];
                   }
-                  
-                  // ── 4. POPULATE UI LEGEND DATA ──
+
+                  // Pass the unshifted Master trace to the Cyan Canvas overlay
+                  dualContinuous1 = allStemsContinuousXray[source.stemKey] ?? [];
+
+                  // ── 3. POPULATE UI CANVAS DATA ──
                   dualContour1 = statusData['contour_1'] ?? [];
                   dualContour2 = statusData['contour_2'] ?? [];
                   identicalMatchRegions = statusData['identical_regions'] ?? [];
@@ -1186,7 +1196,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   dualLabel2 = target.name;
                   isDualContourOverlayActive = true;
               
-                  // ── 5. PREP AUDIO CACHE & STOP PLAYER ──
+                  // ── 4. PREP AUDIO CACHE & STOP PLAYER ──
                   cachedStemBytes.remove(target.stemKey);
                   if (stemHandles.containsKey(target.stemKey)) {
                     SoLoud.instance.stop(stemHandles[target.stemKey]!);
@@ -1197,7 +1207,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     cachedStemBytes[target.stemKey] = base64Decode(statusData['aligned_audio_b64']);
                   }
 
-                  // ── 6. SHIFT VU METER ENVELOPE ──
+                  // ── 5. SHIFT VU METER ENVELOPE ──
                   final trackState = getChannelState(target.stemKey);
                   if (trackState.rmsEnvelope.isNotEmpty && songDuration > 0) {
                     double fps = trackState.rmsEnvelope.length / songDuration;
