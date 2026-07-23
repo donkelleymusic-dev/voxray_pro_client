@@ -999,16 +999,22 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   dualLabel2 = target.name;
                   isDualContourOverlayActive = true;
               
+                  // 1. Clear old audio from RAM cache for the target stem
                   cachedStemBytes.remove(target.stemKey);
+                  
+                  // 2. Stop any active playback handle for this target stem
                   if (stemHandles.containsKey(target.stemKey)) {
                     SoLoud.instance.stop(stemHandles[target.stemKey]!);
                     stemHandles.remove(target.stemKey);
                   }
+                  
+                  // 3. Inject the newly time-aligned audio bytes from the server response
                   if (statusData['aligned_audio_b64'] != null) {
                     cachedStemBytes[target.stemKey] = base64Decode(statusData['aligned_audio_b64']);
                   }
                 });
-
+              
+                // 4. Reload the audio player source so it uses the aligned audio buffer
                 await loadStemPlayerSource(target.stemKey, apiBase, currentTaskId ?? 'temp_session');
                 dirtyStems.add(target.stemKey);
                 registerUndoSnapshot();
