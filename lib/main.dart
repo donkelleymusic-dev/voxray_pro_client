@@ -1030,6 +1030,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       var request = http.MultipartRequest('POST', uri);
       
       request.fields['session_id'] = currentTaskId ?? 'temp_session';
+      request.fields['notes_a_json'] = jsonEncode(allStemsNotes[source.stemKey] ?? []);
       request.fields['notes_b_json'] = jsonEncode(allStemsNotes[target.stemKey] ?? []);
 
       Uint8List? bytes1 = cachedStemBytes[source.stemKey];
