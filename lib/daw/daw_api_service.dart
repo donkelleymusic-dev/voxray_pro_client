@@ -444,7 +444,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
-        ..fields['instruments_json']  = jsonEncode(targetStemsSelection.toList())
+        ..fields['instruments_json']  = jsonEncode(requestTargets)
         ..fields['upload_type']       = uploadOptions['type']!
         ..fields['stem_target']       = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'none'
         ..fields['acoustic_profile']  = acousticProfile 
