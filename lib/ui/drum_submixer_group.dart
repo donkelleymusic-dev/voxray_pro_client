@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
-import '../main.dart'; // Make sure this imports your main file so we can access VoxrayDAWState and ChannelVuMeter
+import '../main.dart'; 
 
 class DrumSubmixerGroupWidget extends StatefulWidget {
   final VoxrayDAWState dawState;
@@ -12,7 +12,7 @@ class DrumSubmixerGroupWidget extends StatefulWidget {
 }
 
 class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
-  bool isExpanded = false; // Start collapsed to save horizontal space
+  bool isExpanded = false;
 
   final Map<String, Map<String, dynamic>> drumSubStems = {
     'kick': {'label': 'KICK', 'color': const Color(0xFFFF2A00), 'icon': Icons.circle},
@@ -89,6 +89,34 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
           ),
           const SizedBox(height: 8),
 
+          // 🎛️ PLUGIN SLOTS (Only for individual stems, not the master bus)
+          if (!isMaster) ...[
+            widget.dawState.buildPluginSlot(key, state.plugin1, color, (val) {
+              setState(() => state.plugin1 = val!);
+              widget.dawState.dirtyStems.add(key);
+              widget.dawState.applyStemPlugins(key);
+            }),
+            widget.dawState.buildPluginSlot(key, state.plugin2, color, (val) {
+              setState(() => state.plugin2 = val!);
+              widget.dawState.dirtyStems.add(key);
+              widget.dawState.applyStemPlugins(key);
+            }),
+            widget.dawState.buildPluginSlot(key, state.plugin3, color, (val) {
+              setState(() => state.plugin3 = val!);
+              widget.dawState.dirtyStems.add(key);
+              widget.dawState.applyStemPlugins(key);
+            }),
+            widget.dawState.buildPluginSlot(key, state.plugin4, color, (val) {
+              setState(() => state.plugin4 = val!);
+              widget.dawState.dirtyStems.add(key);
+              widget.dawState.applyStemPlugins(key);
+            }),
+            const SizedBox(height: 4),
+          ] else ...[
+            // Spacer for Master Bus to keep vertical alignment
+            const SizedBox(height: 100), 
+          ],
+
           // Mute Button
           IconButton(
             padding: EdgeInsets.zero,
@@ -145,6 +173,53 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
           const SizedBox(height: 4),
           Text('${(state.volume * 100).round()}%',
               style: const TextStyle(fontSize: 9, color: Colors.white54)),
+          
+          // Pan slider (Only for individual stems)
+          if (!isMaster) ...[
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 16,
+              child: GestureDetector(
+                onDoubleTap: () {
+                  setState(() {
+                    state.pan = 0.0;
+                    widget.dawState.dirtyStems.add(key);
+                  });
+                  if (widget.dawState.stemHandles.containsKey(key)) {
+                     SoLoud.instance.setPan(widget.dawState.stemHandles[key]!, 0.0);
+                  }
+                },
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    overlayShape: SliderComponentShape.noOverlay,
+                    activeTrackColor: color,
+                    inactiveTrackColor: Colors.white10,
+                  ),
+                  child: Slider(
+                    value: state.pan, min: -1.0, max: 1.0,
+                    onChanged: (v) { 
+                      setState(() {
+                        state.pan = v;
+                        widget.dawState.dirtyStems.add(key);
+                      });
+                      if (widget.dawState.stemHandles.containsKey(key)) {
+                         SoLoud.instance.setPan(widget.dawState.stemHandles[key]!, v);
+                      }
+                    }
+                  ),
+                ),
+              ),
+            ),
+            Text(
+              state.pan == 0 ? 'C' : (state.pan < 0 ? 'L ${-(state.pan * 100).round()}' : 'R ${(state.pan * 100).round()}'),
+              style: const TextStyle(fontSize: 8, color: Colors.white54),
+            ),
+          ] else ...[
+            const SizedBox(height: 20), // Alignment spacer
+          ],
+          
           const SizedBox(height: 12),
         ],
       ),
