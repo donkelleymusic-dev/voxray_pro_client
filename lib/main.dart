@@ -1868,28 +1868,28 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   const SizedBox(height: 8),
 
                   // 🎛️ PLUGIN SLOTS 
-                  _pluginSlot(key,state.plugin1, highlight, (val) {
+                  pluginSlot(key,state.plugin1, highlight, (val) {
                     if (state.plugin1 != val) {
                       setMixerState(() => state.plugin1 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
-                  _pluginSlot(key,state.plugin2, highlight, (val) {
+                  pluginSlot(key,state.plugin2, highlight, (val) {
                     if (state.plugin2 != val) {
                       setMixerState(() => state.plugin2 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
-                  _pluginSlot(key,state.plugin3, highlight, (val) {
+                  pluginSlot(key,state.plugin3, highlight, (val) {
                     if (state.plugin3 != val) {
                       setMixerState(() => state.plugin3 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
-                  _pluginSlot(key,state.plugin4, highlight, (val) {
+                  pluginSlot(key,state.plugin4, highlight, (val) {
                     if (state.plugin4 != val) {
                       setMixerState(() => state.plugin4 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
@@ -2081,7 +2081,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   }
 
   // 1. The Updated Plugin Slot (Now with a gear icon!)
-  Widget _pluginSlot(String stemKey, String pluginName, Color highlight, ValueChanged<String?> onChanged) {
+  Widget pluginSlot(String stemKey, String pluginName, Color highlight, ValueChanged<String?> onChanged) {
     return Container(
       height: 20,
       margin: const EdgeInsets.only(bottom: 4),
@@ -2114,7 +2114,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           // Only show the gear if an effect is active
           if (pluginName != 'None')
             GestureDetector(
-              onTap: () => _showPluginSettingsDialog(stemKey, pluginName, highlight),
+              onTap: () => showPluginSettingsDialog(stemKey, pluginName, highlight),
               child: Container(
                 width: 16,
                 alignment: Alignment.center,
@@ -2130,7 +2130,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   }
 
   // 2. The Settings Dialog (Real-time Slider)
-  void _showPluginSettingsDialog(String stemKey, String pluginName, Color highlight) {
+  void showPluginSettingsDialog(String stemKey, String pluginName, Color highlight) {
     final state = getChannelState(stemKey);
 
     showDialog(
@@ -3381,7 +3381,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
     // 4. Extract the Meter Bridge ListView
     Widget buildMeterBridge() {
-      List<String> sortedStems = targetStemsSelection.toList();
+      List<String> sortedStems = targetStemsSelection
+          .where((s) => !['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(s))
+          .toList();
       sortedStems.sort((a, b) {
         if (a == 'instrumental') return 1;
         if (b == 'instrumental') return -1;
