@@ -480,7 +480,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       String targetToPoll = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'mix';
       await registerActiveJob(currentJobId!, currentTaskId!, 'INITIAL_STEM_ANALYSIS', targetToPoll);
-      pollForStemData(currentJobId!, targetToPoll);
+      (currentJobId!, targetToPoll);
 
     } catch (e) {
       logToSupabase('Initialization Failed: $e');
@@ -577,7 +577,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       currentJobId  = data['job_id'];
       
       // Pass the UNIQUE key to the poller
-      pollForStemData(currentJobId!, uniqueStemKey); 
+      (currentJobId!, uniqueStemKey); 
     } catch (e) {
       
       // =========================================================
@@ -641,7 +641,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                  generatedStems.add(targetStem);
                  
                  // Exclude instrumental from active playback sources
-                 if (targetStem != 'instrumental') {
+                 if (targetStem != 'instrumental' && targetStem != 'drums') {
                    activePlaybackSources.add(targetStem);
                  }
                  processingMessage = 'Downloading audio for ${targetStem.toUpperCase()}...';
@@ -651,7 +651,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                  }
                  for (var s in generatedStems) {
                      // Exclude instrumental so audio isn't doubled
-                     if (s != 'instrumental') {
+                     if (s != 'instrumental' && s != 'drums') {
                        activePlaybackSources.add(s);
                      }
                  }
@@ -1931,7 +1931,9 @@ mixin DawApiService on VoxrayDAWStateBase {
     for (String stem in generatedStems) {
       // FIX: Check if the audio exists on Disk OR in RAM!
       if (cachedStemPaths.containsKey(stem) || cachedStemBytes.containsKey(stem)) {
-        activePlaybackSources.add(stem);
+        if (stem != 'drums') {
+          activePlaybackSources.add(stem); 
+        }
         await loadStemPlayerSource(stem, apiBase, currentTaskId ?? '');
         
         applyStemPlugins(stem); 
