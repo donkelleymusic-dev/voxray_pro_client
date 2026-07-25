@@ -690,9 +690,15 @@ mixin DawApiService on VoxrayDAWStateBase {
             // --- AWAIT THE DOWNLOADS FIRST ---
             if (targetStem != 'mix') {
               await loadStemPlayerSource(targetStem, apiBase, currentTaskId!);
+              if (targetStem == 'drums' && stemHandles.containsKey('drums')) {
+                 SoLoud.instance.setVolume(stemHandles['drums']!, 0.0);
+              }
             } else {
               for (var s in generatedStems) {
                   await loadStemPlayerSource(s, apiBase, currentTaskId!);
+                  if (s == 'drums' && stemHandles.containsKey('drums')) {
+                     SoLoud.instance.setVolume(stemHandles['drums']!, 0.0);
+                  }
               }
             }
             
@@ -1927,6 +1933,10 @@ mixin DawApiService on VoxrayDAWStateBase {
         await loadStemPlayerSource(stem, apiBase, currentTaskId ?? '');
         
         applyStemPlugins(stem); 
+        // --- NEW: CLAMP DRUMS TO ZERO AFTER RESTORING PROJECT ---
+        if (stem == 'drums' && stemHandles.containsKey('drums')) {
+          SoLoud.instance.setVolume(stemHandles['drums']!, 0.0);
+        }
       }
     }
 
