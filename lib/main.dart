@@ -64,6 +64,7 @@ import 'screens/wallet_screen.dart';
 import 'screens/account_settings_screen.dart';
 import 'screens/about_info_screen.dart';
 import 'screens/feedback_screen.dart';
+import 'ui/drum_submixer_group.dart';
 
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
@@ -2062,8 +2063,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                         buildChannelStrip('MIX', 'original', Colors.blueGrey),
                         
                       ...targetStemsSelection
-                          .where((stem) => stem != 'instrumental')
+                          .where((stem) => stem != 'instrumental' &&
+                                           !['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(stem))
                           .map((stem) => buildChannelStrip(stem.toUpperCase(), stem, Colors.tealAccent)),
+                          
+                      if (targetStemsSelection.any((s) => ['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(s)))
+                        DrumSubmixerGroupWidget(dawState: this),
                           
                       //if (targetStemsSelection.contains('instrumental'))
                         //buildChannelStrip('INSTRUMENTAL', 'instrumental', Colors.deepOrangeAccent),
