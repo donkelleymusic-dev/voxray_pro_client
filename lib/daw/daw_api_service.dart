@@ -681,9 +681,10 @@ mixin DawApiService on VoxrayDAWStateBase {
               double newDuration = (result['duration'] ?? songDuration).toDouble();
               if (newDuration > 0) {
                 songDuration    = newDuration;
-                loopEndBoundary = songDuration;
+                // --- FIX: Pull loop boundary back 50ms so SoLoud doesn't destroy the handle ---
+                loopEndBoundary = math.max(0.1, songDuration - 0.05); 
                 int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
-                if (endIdx != -1) markers[endIdx]['time'] = songDuration;
+                if (endIdx != -1) markers[endIdx]['time'] = loopEndBoundary;
               }
             });
 
@@ -1874,9 +1875,10 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
 
       // 2. Now adjust the loop boundary based on the loaded markers/duration
-      loopEndBoundary = songDuration;
+      // --- FIX: Pull loop boundary back 50ms so SoLoud doesn't destroy the handle ---
+      loopEndBoundary = math.max(0.1, songDuration - 0.05);
       int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
-      if (endIdx != -1) markers[endIdx]['time'] = songDuration;
+      if (endIdx != -1) markers[endIdx]['time'] = loopEndBoundary;
       
       if (projectData['mixer_state'] != null) {
         Map<String, dynamic> ms = projectData['mixer_state'];
