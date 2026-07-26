@@ -3622,7 +3622,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                             ),
                                             icon: const Icon(Icons.build),
                                             label: Text('Generate & Analyze ${activeEditableStem.toUpperCase()}'),
-                                            onPressed: () => generateStemOnDemand(activeEditableStem),
+                                            onPressed: isApiBusy ? null : () => generateStemOnDemand(activeEditableStem),
                                           ),
                                         ],
                                       ],
@@ -3777,11 +3777,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                               )
                                             )
                                           : IconButton(
-                                              padding: EdgeInsets.zero,
-                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                              icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
-                                              onPressed: generatedStems.contains(activeEditableStem) ? toggleXrayMode : null,
-                                            ),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
+                                            onPressed: (!isApiBusy && generatedStems.contains(activeEditableStem)) ? toggleXrayMode : null,
+                                          ),
                                     ),
                                     
                                     // ── NEW: DUAL X-RAY LAUNCHER & TOGGLE ──
@@ -3812,7 +3812,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                             ),
                                           ],
                                         ),
-                                        onPressed: () {
+                                        onPressed: isApiBusy ? null : () {
                                           // 1. If we already have dual contours in memory, toggle the view on/off
                                           if (dualContour1.isNotEmpty && dualContour2.isNotEmpty) {
                                             setState(() {
@@ -3878,7 +3878,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                         constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
                                         icon: const Icon(Icons.undo, size: 20),
                                         color: undoStack.isNotEmpty ? Colors.white : Colors.white24,
-                                        onPressed: undoStack.isNotEmpty ? _undo : null,
+                                        onPressed: (!isApiBusy && undoStack.isNotEmpty) ? _undo : null,
                                       ),
                                     ),
                                     
@@ -3890,7 +3890,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                         constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
                                         icon: const Icon(Icons.redo, size: 20),
                                         color: redoStack.isNotEmpty ? Colors.white : Colors.white24,
-                                        onPressed: redoStack.isNotEmpty ? _redo : null,
+                                        onPressed: (!isApiBusy && redoStack.isNotEmpty) ? _redo : null,
                                       ),
                                     ),
                                   ],
