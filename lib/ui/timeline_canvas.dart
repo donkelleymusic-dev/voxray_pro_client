@@ -82,7 +82,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
           return;
         }
 
-        // 3. HANDLE LOOP BOUNDARIES
+        // 3. HANDLE LOOP BOUNDARIES (ONLY IF LOOP MODE IS ACTIVELY TURNED ON)
         if (widget.dawState.isLoopModeActive &&
             widget.dawState.loopEndBoundary > widget.dawState.loopStartBoundary &&
             widget.dawState.loopEndBoundary > 0.0 &&
