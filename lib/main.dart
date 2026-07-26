@@ -723,7 +723,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   double loopStartBoundary = 0.0;
   double loopEndBoundary = 30.0;
 
-  bool isUserScrolling = false;
+  bool isUserInteracting = false;
+  
   bool   isExporting   = false;
   bool   isPreviewing  = false;
   String exportMessage = '';
