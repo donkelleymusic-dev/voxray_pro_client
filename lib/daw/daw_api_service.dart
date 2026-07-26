@@ -2064,10 +2064,6 @@ mixin DawApiService on VoxrayDAWStateBase {
     seekAllPlayers(0.0);
     setState(() { currentPosition = 0.0; isLoading = false; processingMessage = ''; });
     showSaveConfirmation('Project fully restored from offline archive.');
-
-    seekAllPlayers(0.0);
-    setState(() { currentPosition = 0.0; isLoading = false; processingMessage = ''; });
-    showSaveConfirmation('Project fully restored from offline archive.');
   }
 
   // =========================================================================
