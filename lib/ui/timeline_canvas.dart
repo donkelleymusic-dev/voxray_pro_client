@@ -394,33 +394,40 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                     } 
                     // 2. User let go AND the fling inertia has completely come to a stop
                     else if (scrollInfo is ScrollEndNotification) {
-                      widget.dawState.isUserInteracting = false;
                       
-                      // Snap the audio to wherever the fling landed
-                      if (widget.dawState.isPlaying) {
-                        double viewportWidth = scrollInfo.metrics.viewportDimension;
-                        double maxScroll = scrollInfo.metrics.maxScrollExtent;
-                        double pixels = scrollInfo.metrics.pixels.clamp(0.0, maxScroll);
+                      // 🛡️ THE FIX: Only execute the snap logic if this is the end of an ACTUAL user interaction!
+                      if (widget.dawState.isUserInteracting) {
+                        widget.dawState.isUserInteracting = false;
                         
-                        double anchorOffset = viewportWidth * 0.25; 
-                        double dynamicAnchor = anchorOffset;
-
-                        if (pixels < anchorOffset) {
-                          dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
-                        } else {
-                          double rightZone = viewportWidth * 0.75;
-                          if (pixels > maxScroll - rightZone) {
-                            double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
-                            dynamicAnchor = anchorOffset + (fraction * rightZone);
+                        // Snap the audio to wherever the fling landed
+                        if (widget.dawState.isPlaying) {
+                          double viewportWidth = scrollInfo.metrics.viewportDimension;
+                          double maxScroll = scrollInfo.metrics.maxScrollExtent;
+                          double pixels = scrollInfo.metrics.pixels.clamp(0.0, maxScroll);
+                          
+                          double anchorOffset = viewportWidth * 0.25; 
+                          double dynamicAnchor = anchorOffset;
+                    
+                          // STATE 1: Smoothly collapse the anchor to 0% as we hit the left edge
+                          if (pixels < anchorOffset) {
+                            dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
+                          } 
+                          // STATE 3: Smoothly push the anchor to 100% as we hit the right edge
+                          else {
+                            double rightZone = viewportWidth * 0.75;
+                            if (pixels > maxScroll - rightZone) {
+                              double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
+                              dynamicAnchor = anchorOffset + (fraction * rightZone);
+                            }
                           }
+                          
+                          double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
+                          double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                          
+                          exactPlayheadTime.value = clampedTime;
+                          widget.dawState.seekAllPlayers(clampedTime);
+                          widget.dawState.currentPosition = clampedTime;
                         }
-                        
-                        double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
-                        double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
-                        
-                        exactPlayheadTime.value = clampedTime;
-                        widget.dawState.seekAllPlayers(clampedTime);
-                        widget.dawState.currentPosition = clampedTime;
                       }
                     }
                     // 3. Maintain your exact scrub mode math during the drag/fling
