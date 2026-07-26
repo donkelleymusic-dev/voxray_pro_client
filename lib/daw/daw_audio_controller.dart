@@ -87,7 +87,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
     // 2. KILL THE ZOMBIE REVERB! 🧟‍♂️🔫
     // Now that the handles are officially saved in the map, force the DSP to sync.
     for (String key in stemSources.keys) {
-      (key); 
+      applyStemPlugins(key); 
     }
     
     // Sync the Master Bus DSP globally!
