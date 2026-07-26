@@ -177,7 +177,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
-        (stemName);
+        applyStemPlugins(stemName);
         return; // Exit early since we successfully loaded the aligned RAM bytes!
       }
   
@@ -222,7 +222,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
-        (stemName);
+        applyStemPlugins(stemName);
   
       } else {
         // ── 2. NATIVE PATH (Mobile / Desktop) ──
@@ -284,7 +284,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
-        (stemName);
+        applyStemPlugins(stemName);
       }
   
     } catch (e) {
