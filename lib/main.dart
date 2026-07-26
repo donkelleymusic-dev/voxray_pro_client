@@ -421,6 +421,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // ── Note / x-ray data ────────────────────────────────────────────────────
   Map<String, List<dynamic>> allStemsNotes        = {};
   Map<String, List<dynamic>> allStemsContinuousXray = {};
+  Map<String, String> baselinePitchStates = {};
   String activeEditableStem = '';
 
   // Declare the AI state variables here if they aren't already:
@@ -881,6 +882,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     }
   }
 
+  void _evaluatePitchDirtyState() {
+    if (activeEditableStem.isNotEmpty && baselinePitchStates.containsKey(activeEditableStem)) {
+      String currentJson = json.encode(allStemsNotes[activeEditableStem] ?? []);
+      if (currentJson == baselinePitchStates[activeEditableStem]) {
+        dirtyStems.remove(activeEditableStem); // It matches the original! Turn the light off.
+      } else {
+        dirtyStems.add(activeEditableStem); // It differs from the baseline. Light it up.
+      }
+    }
+  }
+  
   void _undo() {
     if (undoStack.isNotEmpty) {
       setState(() {
@@ -895,6 +907,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         });
         //allStemsContinuousXray =
         //    json.decode(undoStackContinuous.removeLast());
+        _evaluatePitchDirtyState();
       });
     }
   }
@@ -926,6 +939,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         allStemsContinuousXray = decoded.map((key, value) {
           return MapEntry(key, List<dynamic>.from(value));
         });
+        _evaluatePitchDirtyState();
       });
     }
   }
@@ -1892,28 +1906,29 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   buildPluginSlot(key,state.plugin1, highlight, (val) {
                     if (state.plugin1 != val) {
                       setMixerState(() => state.plugin1 = val!);
-                      this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                      this.setState(() { hasBeenSaved = false; });
+                      //this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
                   buildPluginSlot(key,state.plugin2, highlight, (val) {
                     if (state.plugin2 != val) {
                       setMixerState(() => state.plugin2 = val!);
-                      this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                      this.setState(() { hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
                   buildPluginSlot(key,state.plugin3, highlight, (val) {
                     if (state.plugin3 != val) {
                       setMixerState(() => state.plugin3 = val!);
-                      this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                      this.setState(() { hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
                   buildPluginSlot(key,state.plugin4, highlight, (val) {
                     if (state.plugin4 != val) {
                       setMixerState(() => state.plugin4 = val!);
-                      this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                      this.setState(() { hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
@@ -1929,7 +1944,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                           size: 18),
                       onPressed: () {
                         setMixerState(() => state.isMuted = !state.isMuted);
-                        this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                        this.setState(() { hasBeenSaved = false; });
                         double targetVol = state.isMuted ? 0.0 : state.volume;
                         if (key == 'original') {
                           if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, targetVol);
@@ -1947,7 +1962,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     child: GestureDetector(
                       onDoubleTap: () {
                         setMixerState(() => state.volume = 1.0);
-                        this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                        this.setState(() { hasBeenSaved = false; });
                         if (state.isMuted) return;
                         if (key == 'master') SoLoud.instance.setGlobalVolume(1.0);
                         else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, 1.0); }
@@ -1969,7 +1984,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                             min: 0.0, max: 1.5,
                             onChanged: (v) { 
                               setMixerState(() => state.volume = v);
-                              this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                              this.setState(() { hasBeenSaved = false; });
                               if (state.isMuted) return;
                               if (key == 'master') SoLoud.instance.setGlobalVolume(v);
                               else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v); }
@@ -1992,7 +2007,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     child: GestureDetector(
                       onDoubleTap: () {
                         setMixerState(() => state.pan = 0.0);
-                        this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                        this.setState(() { hasBeenSaved = false; });
                         if (key == 'master') {
                           if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
                           if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
@@ -2013,7 +2028,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                           value: state.pan, min: -1.0, max: 1.0,
                           onChanged: (v) { 
                             setMixerState(() => state.pan = v);
-                            this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
+                            this.setState(() { hasBeenSaved = false; });
                             if (key == 'master') {
                               if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
                               if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
