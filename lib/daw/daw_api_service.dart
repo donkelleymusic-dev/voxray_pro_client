@@ -640,6 +640,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                    stemNotes = json.decode(json.encode(result['notes'] ?? []));
                  }
                  allStemsNotes[targetStem] = stemNotes;
+                 baselinePitchStates[targetStem] = json.encode(stemNotes);
                  generatedStems.add(targetStem);
                  
                  // Exclude instrumental from active playback sources
@@ -650,6 +651,9 @@ mixin DawApiService on VoxrayDAWStateBase {
               } else {
                  if (result['all_stems_notes'] != null) {
                      allStemsNotes = Map<String, List<dynamic>>.from(result['all_stems_notes']);
+                     for (var k in allStemsNotes.keys) {
+                        baselinePitchStates[k] = json.encode(allStemsNotes[k]);
+                     }
                  }
                  for (var s in generatedStems) {
                      // Exclude instrumental so audio isn't doubled
@@ -1185,7 +1189,10 @@ mixin DawApiService on VoxrayDAWStateBase {
         if (!activePlaybackSources.contains(activeStem)) {
           setState(() { activePlaybackSources.add(activeStem); });
         }
-        setState(() => dirtyStems.remove(activeStem));
+        setState(() { 
+          dirtyStems.remove(activeStem); 
+          baselinePitchStates[activeStem] = json.encode(allStemsNotes[activeStem] ?? []);
+        });
         
         logToSupabase('renderStemEdits UI "Stem updated — tap Play to hear edits."');
         showSaveConfirmation('Stem updated — tap Play to hear edits.', isPreview: true);
@@ -1953,6 +1960,9 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
       if (projectData['all_stems_notes'] != null) {
         allStemsNotes = Map<String, List<dynamic>>.from(projectData['all_stems_notes']);
+        for (var k in allStemsNotes.keys) {
+          baselinePitchStates[k] = json.encode(allStemsNotes[k]);
+        }
       }
       if (projectData['all_stems_continuous_xray'] != null) {
         allStemsContinuousXray = Map<String, List<dynamic>>.from(projectData['all_stems_continuous_xray']);
