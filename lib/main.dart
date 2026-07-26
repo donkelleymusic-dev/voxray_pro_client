@@ -454,7 +454,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
     Color verdictColor = isTightMatch ? Colors.tealAccent : (isSamePerformance ? Colors.amberAccent : Colors.redAccent);
 
-    bool get isApiBusy => isLoading || isPreviewing || isExporting || isSynthRendering || isXrayProcessing || isUploading;
+    //bool get isApiBusy => isLoading || isPreviewing || isExporting || isSynthRendering || isXrayProcessing || isUploading;
     
     showDialog(
       context: context,
