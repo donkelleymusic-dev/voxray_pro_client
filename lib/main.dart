@@ -1986,40 +1986,53 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
                   if (!isMaster)
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 2.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           // MUTE
-                          IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 20, minHeight: 24),
-                            icon: Icon(
-                                state.isMuted ? Icons.volume_off : Icons.volume_up,
-                                color: state.isMuted ? Colors.redAccent : highlight,
-                                size: 15),
-                            onPressed: () {
+                          InkWell(
+                            borderRadius: BorderRadius.circular(4),
+                            onTap: () {
                               setMixerState(() => state.isMuted = !state.isMuted);
                               this.setState(() { hasBeenSaved = false; });
                               refreshAllVolumes();
                             },
+                            child: Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: Icon(
+                                state.isMuted ? Icons.volume_off : Icons.volume_up,
+                                color: state.isMuted ? Colors.redAccent : highlight,
+                                size: 15,
+                              ),
+                            ),
                           ),
                           // SOLO
-                          IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 20, minHeight: 24),
-                            icon: Icon(
-                                soloedChannels.contains(key) ? Icons.headphones : Icons.headphones_outlined,
-                                color: soloedChannels.contains(key) ? Colors.yellowAccent : Colors.white38,
-                                size: 15),
-                            onPressed: () {
+                          InkWell(
+                            borderRadius: BorderRadius.circular(4),
+                            onTap: () {
                               setMixerState(() {
-                                if (soloedChannels.contains(key)) soloedChannels.remove(key);
-                                else soloedChannels.add(key);
+                                if (soloedChannels.contains(key)) {
+                                  soloedChannels.remove(key);
+                                } else {
+                                  soloedChannels.add(key);
+                                }
                               });
                               this.setState(() { hasBeenSaved = false; });
                               refreshAllVolumes();
                             },
+                            child: Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: Icon(
+                                soloedChannels.contains(key)
+                                    ? Icons.headphones
+                                    : Icons.headphones_outlined,
+                                color: soloedChannels.contains(key)
+                                    ? Colors.yellowAccent
+                                    : Colors.white38,
+                                size: 15,
+                              ),
+                            ),
                           ),
                         ],
                       ),
