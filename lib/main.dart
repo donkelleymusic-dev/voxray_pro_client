@@ -1640,7 +1640,14 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       showAiHeatmapOverlay = false; // Toggle this off too if you have a visibility flag
     });
   }
-  
+
+  // Inside your PopupMenu / Button Handlers:
+  void _showScorecard() {
+    showDialog(
+      context: context,
+      builder: (context) => PerformanceScorecardDialog(dawState: this),
+    );
+  }
   // =========================================================================
   // NEW PROJECT
   // =========================================================================
@@ -3149,7 +3156,14 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               title: Text(isScrubMode ? 'Play from Selected Note' : 'Play Continuous (Scrub off)'))),
       
       const PopupMenuDivider(),
-      
+
+    
+      PopupMenuItem(
+          value: 'show_scorecard',
+          enabled: !isApiBusy,
+          child: const ListTile(
+              leading: Icon(Icons.assessment, color: Colors.greenAccent),
+              title: Text('Show Scorecard'))),
       PopupMenuItem(
           value: 'show_dossier',
           enabled: !isApiBusy,
@@ -3228,6 +3242,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic');
         break;
       case 'synth_settings':  _showSynthSettingsDialog(); break;
+      case 'show_scorecard':    _showScorecard(); break;
       case 'show_dossier':    _showDossier(); break;
       case 'downloads':       _showAdvancedDownloadsDialog(); break;
       case 'live_mode':       setState(() => isLiveModeActive = !isLiveModeActive); break;
