@@ -540,15 +540,29 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     final state = getChannelState(key);
     if (state.isMuted) return 0.0;
     
+    double baseVol = state.volume;
+    bool isDrumSub = ['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(key);
+    
+    // 1. VCA DRUM BUS MATH
+    if (isDrumSub) {
+      final drumBus = getChannelState('drums');
+      if (drumBus.isMuted) return 0.0; // If master drums are muted, mute the subs
+      baseVol *= drumBus.volume;       // Multiply sub volume by master bus volume
+    }
+    
+    // 2. GLOBAL SOLO ROUTING
     if (soloedChannels.isNotEmpty) {
-      // If ANY solo is active, this channel must be soloed OR it's a drum subchannel and the 'drums' bus is soloed
-      bool isDrumSub = ['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(key);
-      if (soloedChannels.contains(key) || (isDrumSub && soloedChannels.contains('drums'))) {
-        return state.volume;
-      }
+      // If this specific track is soloed, let it play
+      if (soloedChannels.contains(key)) return baseVol;
+      
+      // If it's a drum sub-stem AND the master drum bus is soloed, let it play
+      if (isDrumSub && soloedChannels.contains('drums')) return baseVol;
+      
+      // Otherwise, silence it
       return 0.0;
     }
-    return state.volume;
+    
+    return baseVol;
   }
 
   void refreshAllVolumes() {
