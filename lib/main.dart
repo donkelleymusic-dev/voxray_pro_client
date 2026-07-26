@@ -1868,28 +1868,28 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   const SizedBox(height: 8),
 
                   // 🎛️ PLUGIN SLOTS 
-                  pluginSlot(key,state.plugin1, highlight, (val) {
+                  buildPluginSlot(key,state.plugin1, highlight, (val) {
                     if (state.plugin1 != val) {
                       setMixerState(() => state.plugin1 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
-                  pluginSlot(key,state.plugin2, highlight, (val) {
+                  buildPluginSlot(key,state.plugin2, highlight, (val) {
                     if (state.plugin2 != val) {
                       setMixerState(() => state.plugin2 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
-                  pluginSlot(key,state.plugin3, highlight, (val) {
+                  buildPluginSlot(key,state.plugin3, highlight, (val) {
                     if (state.plugin3 != val) {
                       setMixerState(() => state.plugin3 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
                       if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
                     }
                   }),
-                  pluginSlot(key,state.plugin4, highlight, (val) {
+                  buildPluginSlot(key,state.plugin4, highlight, (val) {
                     if (state.plugin4 != val) {
                       setMixerState(() => state.plugin4 = val!);
                       this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
@@ -2081,7 +2081,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   }
 
   // 1. The Updated Plugin Slot (Now with a gear icon!)
-  Widget pluginSlot(String stemKey, String pluginName, Color highlight, ValueChanged<String?> onChanged) {
+  Widget buildPluginSlot(String stemKey, String pluginName, Color highlight, ValueChanged<String?> onChanged) {
     return Container(
       height: 20,
       margin: const EdgeInsets.only(bottom: 4),
