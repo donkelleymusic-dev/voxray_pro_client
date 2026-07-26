@@ -117,8 +117,11 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         }
         
         // 6. HORIZONTAL SCROLL
-        if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
+        // 6. HORIZONTAL SCROLL
+        if (!widget.dawState.isUserInteracting && widget.horizontalScrollController.hasClients) {
           double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
+          //if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
+          //  double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
           double targetX = (uiPlayheadTime * widget.dawState.zoomX) - anchorOffset;
           
           if (targetX < 0) targetX = 0;
@@ -131,7 +134,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         }
 
         // 7. VERTICAL PITCH-FOLLOWING SCROLL
-        if (!widget.dawState.isUserScrolling && widget.verticalScrollController.hasClients && widget.dawState.rawNotes.isNotEmpty) {
+        if (!widget.dawState.isUserInteracting && widget.verticalScrollController.hasClients && widget.dawState.rawNotes.isNotEmpty) {
+          //if (!widget.dawState.isUserScrolling && widget.verticalScrollController.hasClients && widget.dawState.rawNotes.isNotEmpty) {
           var activeNotes = widget.dawState.rawNotes.where((n) {
             if (n['isDeleted'] == true) return false;
             double start = (n['start_time'] ?? 0).toDouble();
@@ -158,7 +162,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         }
     
       } else {
-        if (!widget.dawState.isUserScrolling) {
+        if (!widget.dawState.isUserInteracting) {
           exactPlayheadTime.value = widget.dawState.currentPosition;
         }
       }
@@ -379,52 +383,76 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
               ),
               Expanded(
                 child: NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                  if (notification is UserScrollNotification) {
-                    widget.dawState.isUserScrolling = notification.direction != ScrollDirection.idle;
-                  } else if (notification is ScrollUpdateNotification) {
+                  onNotification: (ScrollNotification scrollInfo) {
                     
-                    // 3. REMOVED setState() TO STOP LATENCY LOOP
-                    
-                    if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
-                      double viewportWidth = notification.metrics.viewportDimension;
-                      double maxScroll = notification.metrics.maxScrollExtent;
-                      
-                      // Clamp pixels to prevent over-scroll bouncing from breaking the math
-                      double pixels = notification.metrics.pixels.clamp(0.0, maxScroll);
-                      
-                      // The target 25% anchor you requested
-                      double anchorOffset = viewportWidth * 0.25; 
-                      double dynamicAnchor = anchorOffset;
+                    // 🛡️ THE PROTECTOR: If we are dragging notes, ignore timeline physics entirely!
+                    if (widget.dawState.currentDragMode != DragMode.off) return false;
 
-                      // STATE 1: Smoothly collapse the anchor to 0% as we hit the left edge
-                      if (pixels < anchorOffset) {
-                        dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
-                      } 
-                      // STATE 3: Smoothly push the anchor to 100% as we hit the right edge
-                      else {
-                        double rightZone = viewportWidth * 0.75;
-                        if (pixels > maxScroll - rightZone) {
-                          double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
-                          dynamicAnchor = anchorOffset + (fraction * rightZone);
+                    // 1. User physically touched the screen to pan (or a fling starts)
+                    if (scrollInfo is ScrollStartNotification && scrollInfo.dragDetails != null) {
+                      widget.dawState.isUserInteracting = true;
+                    } 
+                    // 2. User let go AND the fling inertia has completely come to a stop
+                    else if (scrollInfo is ScrollEndNotification) {
+                      widget.dawState.isUserInteracting = false;
+                      
+                      // Snap the audio to wherever the fling landed
+                      if (widget.dawState.isPlaying) {
+                        double viewportWidth = scrollInfo.metrics.viewportDimension;
+                        double maxScroll = scrollInfo.metrics.maxScrollExtent;
+                        double pixels = scrollInfo.metrics.pixels.clamp(0.0, maxScroll);
+                        
+                        double anchorOffset = viewportWidth * 0.25; 
+                        double dynamicAnchor = anchorOffset;
+
+                        if (pixels < anchorOffset) {
+                          dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
+                        } else {
+                          double rightZone = viewportWidth * 0.75;
+                          if (pixels > maxScroll - rightZone) {
+                            double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
+                            dynamicAnchor = anchorOffset + (fraction * rightZone);
+                          }
                         }
+                        
+                        double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
+                        double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                        
+                        exactPlayheadTime.value = clampedTime;
+                        widget.dawState.seekAllPlayers(clampedTime);
+                        widget.dawState.currentPosition = clampedTime;
                       }
-                      
-                      double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
-                      double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
-                      
-                      // Instantly update the visual UI via the fast Notifier
-                      exactPlayheadTime.value = clampedTime;
-                      
-                      // Update the audio engine directly without triggering heavy DAWState rebuilds
-                      widget.dawState.seekAllPlayers(clampedTime);
-                      
-                      // Silently sync the state variable for background processes
-                      widget.dawState.currentPosition = clampedTime;
                     }
-                  }
-                  return false;
-                },
+                    // 3. Maintain your exact scrub mode math during the drag/fling
+                    else if (scrollInfo is ScrollUpdateNotification) {
+                      if (widget.dawState.isUserInteracting && widget.dawState.isScrubMode) {
+                        double viewportWidth = scrollInfo.metrics.viewportDimension;
+                        double maxScroll = scrollInfo.metrics.maxScrollExtent;
+                        double pixels = scrollInfo.metrics.pixels.clamp(0.0, maxScroll);
+                        
+                        double anchorOffset = viewportWidth * 0.25; 
+                        double dynamicAnchor = anchorOffset;
+
+                        if (pixels < anchorOffset) {
+                          dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
+                        } else {
+                          double rightZone = viewportWidth * 0.75;
+                          if (pixels > maxScroll - rightZone) {
+                            double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
+                            dynamicAnchor = anchorOffset + (fraction * rightZone);
+                          }
+                        }
+                        
+                        double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
+                        double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                        
+                        exactPlayheadTime.value = clampedTime;
+                        widget.dawState.seekAllPlayers(clampedTime);
+                        widget.dawState.currentPosition = clampedTime;
+                      }
+                    }
+                    return false;
+                  },
 
                   child: SingleChildScrollView(
                     controller: widget.horizontalScrollController,
@@ -453,7 +481,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                         }
                       },
                       onPanStart: widget.dawState.currentDragMode != DragMode.off ? (details) {
-                        const double touchSlop = 24.0; 
+                        widget.dawState.isUserInteracting = true; // 🛑 ENGAGE CLUTCH FOR NOTE DRAG
+                        const double touchSlop = 24.0;
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
                           if (pNote['isDeleted'] == true || (pNote['actual_midi'] ?? 60.0).round() == 0 || pNote['type'] == 'xray_line') continue;
@@ -497,8 +526,14 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           }
                         }
                       } : null,
-                      onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
-                      onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
+                      onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { 
+                        widget.dawState.isUserInteracting = false; // 🟢 RELEASE CLUTCH
+                        setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); 
+                      } : null,
+                      onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { 
+                        widget.dawState.isUserInteracting = false; // 🟢 RELEASE CLUTCH
+                        setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); 
+                      } : null,
                       child: Stack(
                         children: [
                           // 1. ORIGINAL PIANO ROLL
