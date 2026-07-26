@@ -3504,7 +3504,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             if (!isLandscape) // Hide subtitle in landscape to save horizontal space
               const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
             IconButton(
-              icon: const Icon(Icons.account_balance_wallet, size: 20),
+              icon: Icon(Icons.memory, size: 20, color: Colors.greenAccent[400]), // Glowing money green DSP chip
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen())),
