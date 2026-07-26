@@ -696,16 +696,13 @@ mixin DawApiService on VoxrayDAWStateBase {
 
             // --- AWAIT THE DOWNLOADS FIRST ---
             if (targetStem != 'mix') {
-              await loadStemPlayerSource(targetStem, apiBase, currentTaskId!);
-              if (targetStem == 'drums' && stemHandles.containsKey('drums')) {
-                 SoLoud.instance.setVolume(stemHandles['drums']!, 0.0);
+              if (targetStem != 'drums') { // <-- Never download master drums
+                await loadStemPlayerSource(targetStem, apiBase, currentTaskId!);
               }
             } else {
               for (var s in generatedStems) {
+                  if (s == 'drums') continue; // <-- Never download master drums
                   await loadStemPlayerSource(s, apiBase, currentTaskId!);
-                  if (s == 'drums' && stemHandles.containsKey('drums')) {
-                     SoLoud.instance.setVolume(stemHandles['drums']!, 0.0);
-                  }
               }
             }
             
