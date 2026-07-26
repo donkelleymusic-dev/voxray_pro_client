@@ -4,10 +4,12 @@ import '../main.dart';
 
 class PerformanceScorecardDialog extends StatelessWidget {
   final VoxrayDAWState dawState;
+  final String targetStem; // 1. ADDED THIS
 
   const PerformanceScorecardDialog({
     Key? key,
     required this.dawState,
+    required this.targetStem, // 1. ADDED THIS
   }) : super(key: key);
 
   String _midiToNoteName(num midi) {
@@ -18,7 +20,8 @@ class PerformanceScorecardDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final notes = dawState.rawNotes;
+    // 2. FETCH NOTES FOR THE SELECTED STEM (Not just the rawNotes getter)
+    final notes = dawState.allStemsNotes[targetStem] ?? [];
     
     // Filter active (non-deleted) playable notes
     final activeNotes = notes.where((n) {
@@ -112,27 +115,37 @@ class PerformanceScorecardDialog extends StatelessWidget {
       ),
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.analytics, color: Colors.tealAccent, size: 22),
-              const SizedBox(width: 8),
-              Text(
-                "SCORECARD: ${dawState.activeEditableStem.toUpperCase()}",
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.1),
-              ),
-            ],
+          Expanded(
+            child: Row(
+              children: [
+                const Icon(Icons.analytics, color: Colors.tealAccent, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "SCORECARD: ${targetStem.toUpperCase()}",
+                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.1),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 8),
+          // ── NEW DESCRIPTIVE BADGE ──
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            constraints: const BoxConstraints(maxWidth: 130), // Keeps it from crushing the title
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
               color: gradeColor.withOpacity(0.15),
               border: Border.all(color: gradeColor, width: 1.5),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              grade,
-              style: TextStyle(color: gradeColor, fontSize: 18, fontWeight: FontWeight.w900),
+              getForensicPitchDescription(grade), // Call the new universal function!
+              textAlign: TextAlign.center,
+              style: TextStyle(color: gradeColor, fontSize: 10, fontWeight: FontWeight.bold, height: 1.2),
             ),
           ),
         ],
