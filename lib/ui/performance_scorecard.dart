@@ -132,7 +132,7 @@ class PerformanceScorecardDialog extends StatelessWidget {
             ),
             child: Text(
               grade,
-              style: TextStyle(color: gradeColor, fontSize: 18, fontWeight: FontWeight.black),
+              style: TextStyle(color: gradeColor, fontSize: 18, fontWeight: FontWeight.w900),
             ),
           ),
         ],
