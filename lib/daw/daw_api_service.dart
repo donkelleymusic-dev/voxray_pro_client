@@ -480,7 +480,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       String targetToPoll = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'mix';
       await registerActiveJob(currentJobId!, currentTaskId!, 'INITIAL_STEM_ANALYSIS', targetToPoll);
-      (currentJobId!, targetToPoll);
+      pollForStemData(currentJobId!, targetToPoll);
 
     } catch (e) {
       logToSupabase('Initialization Failed: $e');
@@ -577,7 +577,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       currentJobId  = data['job_id'];
       
       // Pass the UNIQUE key to the poller
-      (currentJobId!, uniqueStemKey); 
+      pollForStemData(currentJobId!, uniqueStemKey); 
     } catch (e) {
       
       // =========================================================
