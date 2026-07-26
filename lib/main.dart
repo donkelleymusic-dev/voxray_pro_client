@@ -1713,28 +1713,20 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // =========================================================================
 
   void addMarkerAtCurrentPlayhead() {
-    double visualPlayheadTime = currentPosition;
+    // 1. ALWAYS drop the marker exactly at the audio playhead, ignoring screen scroll limits.
+    double targetTime = currentPosition.clamp(0.0, songDuration);
 
-    if (horizontalScrollController.hasClients) {
-      if (horizontalScrollController.position.maxScrollExtent > 0 && !isPlaying) {
-        // Long song + Paused/Scrubbing: Crosshair is fixed at 35%, scroll dictates time
-        double anchorOffset = horizontalScrollController.position.viewportDimension * 0.35;
-        visualPlayheadTime = (horizontalScrollController.position.pixels + anchorOffset) / zoomX;
-      } else {
-        // Short song (no scrolling) OR Playing: Playhead moves, use raw audio time
-        visualPlayheadTime = currentPosition;
-      }
+    // 2. Reduce the collision threshold from 0.5s to 0.1s for short loops!
+    bool tooClose = markers.any((m) => ((m['time'] as double) - targetTime).abs() < 0.1);
+    if (tooClose) {
+      logToSupabase("Marker creation aborted: Too close to an existing marker.");
+      return;
     }
-
-    visualPlayheadTime = visualPlayheadTime.clamp(0.0, songDuration);
-
-    bool tooClose = markers.any((m) => ((m['time'] as double) - visualPlayheadTime).abs() < 0.5);
-    if (tooClose) return;
 
     setState(() {
       markers.add({
         'id': 'mk_${DateTime.now().millisecondsSinceEpoch}',
-        'time': visualPlayheadTime,
+        'time': targetTime,
         'label': 'Marker ${markers.length + 1}',
       });
     });
