@@ -811,9 +811,34 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       }
     });
 
-    restoreAutoSaveOnStartup();
+    // --- NEW: DYNAMIC DRUM VU SUMMATION ---
+    // This mathematically combines the sub-stems in real-time
+    void updateDrumMeter() {
+      double sum = 0.0;
+      for (String sub in ['kick', 'snare', 'hihat', 'toms', 'cymbals']) {
+        if (channelLevels[sub] != null) sum += channelLevels[sub]!.value;
+      }
+      
+      // Ensure the master drum notifier exists
+      if (!channelLevels.containsKey('drums')) {
+        channelLevels['drums'] = ValueNotifier<double>(0.0);
+      }
+      
+      // Apply a slight scale (0.6) so 5 loud drums don't instantly peg the master to solid red
+      channelLevels['drums']!.value = (sum * 0.6).clamp(0.0, 1.0);
+    }
 
-    
+    // Attach the listener to the 5 sub-stems. 
+    // Now, whenever a sub-stem bounces, the master drum meter bounces instantly!
+    for (String sub in ['kick', 'snare', 'hihat', 'toms', 'cymbals']) {
+      if (!channelLevels.containsKey(sub)) {
+        channelLevels[sub] = ValueNotifier<double>(0.0);
+      }
+      channelLevels[sub]!.addListener(updateDrumMeter);
+    }
+    // --------------------------------------
+
+    restoreAutoSaveOnStartup();
   }
 
   @override
