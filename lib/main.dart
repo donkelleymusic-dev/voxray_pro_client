@@ -1985,41 +1985,44 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   const SizedBox(height: 4),
 
                   if (!isMaster)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // MUTE
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
-                          icon: Icon(
-                              state.isMuted ? Icons.volume_off : Icons.volume_up,
-                              color: state.isMuted ? Colors.redAccent : highlight,
-                              size: 16),
-                          onPressed: () {
-                            setMixerState(() => state.isMuted = !state.isMuted);
-                            this.setState(() { hasBeenSaved = false; });
-                            refreshAllVolumes(); // Route through central volume controller
-                          },
-                        ),
-                        // SOLO
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
-                          icon: Icon(
-                              soloedChannels.contains(key) ? Icons.headphones : Icons.headphones_outlined,
-                              color: soloedChannels.contains(key) ? Colors.yellowAccent : Colors.white38,
-                              size: 16),
-                          onPressed: () {
-                            setMixerState(() {
-                              if (soloedChannels.contains(key)) soloedChannels.remove(key);
-                              else soloedChannels.add(key);
-                            });
-                            this.setState(() { hasBeenSaved = false; });
-                            refreshAllVolumes(); // Route through central volume controller
-                          },
-                        ),
-                      ]
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          // MUTE
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 20, minHeight: 24),
+                            icon: Icon(
+                                state.isMuted ? Icons.volume_off : Icons.volume_up,
+                                color: state.isMuted ? Colors.redAccent : highlight,
+                                size: 15),
+                            onPressed: () {
+                              setMixerState(() => state.isMuted = !state.isMuted);
+                              this.setState(() { hasBeenSaved = false; });
+                              refreshAllVolumes();
+                            },
+                          ),
+                          // SOLO
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 20, minHeight: 24),
+                            icon: Icon(
+                                soloedChannels.contains(key) ? Icons.headphones : Icons.headphones_outlined,
+                                color: soloedChannels.contains(key) ? Colors.yellowAccent : Colors.white38,
+                                size: 15),
+                            onPressed: () {
+                              setMixerState(() {
+                                if (soloedChannels.contains(key)) soloedChannels.remove(key);
+                                else soloedChannels.add(key);
+                              });
+                              this.setState(() { hasBeenSaved = false; });
+                              refreshAllVolumes();
+                            },
+                          ),
+                        ],
+                      ),
                     ),
 
                   // Volume fader
