@@ -597,6 +597,8 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   void pollForStemData(String jobId, String targetStem) {
     pollingTimer?.cancel();
+    int retryCount = 0; // <-- Add this
+    
     pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
@@ -721,6 +723,16 @@ mixin DawApiService on VoxrayDAWStateBase {
       } catch (e) {
         logToSupabase('Polling network blink (app likely backgrounded): $e');
         if (mounted) setState(() => processingMessage = 'Reconnecting to server...');
+        
+        // <-- Add this failsafe block
+        retryCount++;
+        if (retryCount > 40) { // 2 minutes max without internet
+           timer.cancel();
+           if (mounted) {
+             setState(() { isLoading = false; processingMessage = ''; });
+             showSaveConfirmation('Connection lost. Please check your internet.');
+           }
+        }
       }
     });
   }
@@ -751,7 +763,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                 }
                 isXrayProcessing = false;
                 isXrayMode       = true;
-                isLoading        = false; // <--- THE MISSING UNLOCK
+                isLoading        = false; // 🔒 UNLOCK UI
                 registerUndoSnapshot();
               });
               showSaveConfirmation('X-Ray high-resolution tracking complete.');
@@ -762,12 +774,9 @@ mixin DawApiService on VoxrayDAWStateBase {
             
             if (mounted) {
               setState(() {
-                isXrayProcessing = false;
-                isLoading        = false; // <--- THE MISSING UNLOCK
+                isXrayProcessing  = false;
+                isLoading         = false; // 🔒 UNLOCK UI
                 processingMessage = '';
-                
-                // If the server deleted the audio overnight, wipe the Task ID 
-                // so the app knows it must re-upload the file next time!
                 if (statusData['message'].toString().toLowerCase().contains('not found')) {
                   currentTaskId = null; 
                 }
@@ -777,16 +786,15 @@ mixin DawApiService on VoxrayDAWStateBase {
           }
         } else {
           // ── THE MISSING 404 / 500 HANDLER ──
-          // If the server crashes or the job expires, break the loop!
           timer.cancel();
           await clearActiveJob();
           
           if (mounted) {
             setState(() {
-              isXrayProcessing = false;
-              isLoading        = false;
+              isXrayProcessing  = false;
+              isLoading         = false; // 🔒 UNLOCK UI
               processingMessage = '';
-              currentTaskId    = null; // Wipe the session to force re-upload
+              currentTaskId     = null; // Wipe session to force re-upload
             });
             showSaveConfirmation('Server Error: Status ${statusRes.statusCode}. Session reset.');
           }
@@ -801,8 +809,8 @@ mixin DawApiService on VoxrayDAWStateBase {
           await clearActiveJob();
           if (mounted) {
             setState(() {
-              isXrayProcessing = false;
-              isLoading        = false;
+              isXrayProcessing  = false;
+              isLoading         = false; // 🔒 UNLOCK UI
               processingMessage = '';
             });
             showSaveConfirmation('Network timeout while polling server.');
