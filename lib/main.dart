@@ -1760,13 +1760,56 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     });
   }
 
-  // Inside your PopupMenu / Button Handlers:
-  void _showScorecard() {
-    showDialog(
+  // --- X-RAY REPORT HELPERS ---
+  List<String> getStemsWithXray() {
+    List<String> validStems = [];
+    for (var entry in allStemsNotes.entries) {
+      if (entry.value.isNotEmpty && entry.value.any((n) => n is Map && n.containsKey('contour') && n['contour'] != null)) {
+        validStems.add(entry.key);
+      }
+    }
+    return validStems;
+  }
+
+  Future<String?> _promptForReportStem(List<String> availableStems, String reportName) async {
+    if (availableStems.isEmpty) return null;
+    if (availableStems.length == 1) return availableStems.first;
+
+    return showDialog<String>(
       context: context,
-      builder: (context) => PerformanceScorecardDialog(dawState: this),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Text('Select Track for $reportName', style: const TextStyle(color: Colors.white, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: availableStems.map((stem) => ListTile(
+            title: Text(stem.toUpperCase(), style: const TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold)),
+            trailing: const Icon(Icons.fingerprint, color: Colors.amberAccent, size: 20),
+            onTap: () => Navigator.pop(ctx, stem),
+          )).toList(),
+        ),
+      )
     );
   }
+  
+  // Inside your PopupMenu / Button Handlers:
+  void _showScorecard() async {
+    final xrayStems = getStemsWithXray();
+    if (xrayStems.isEmpty) {
+      _showSaveConfirmation('No X-Ray data to analyze. Please process a stem with X-Ray first.');
+      return;
+    }
+    
+    final targetStem = await _promptForReportStem(xrayStems, 'Scorecard');
+    if (targetStem == null) return;
+
+    showDialog(
+      context: context,
+      // You must update PerformanceScorecardDialog to accept this targetStem variable!
+      builder: (context) => PerformanceScorecardDialog(dawState: this, targetStem: targetStem), 
+    );
+  }
+  
   // =========================================================================
   // NEW PROJECT
   // =========================================================================
@@ -2781,36 +2824,38 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // DOSSIER (in-app) DIALOG
   // =========================================================================
 
-  // =========================================================================
-  // DOSSIER (in-app) DIALOG
-  // =========================================================================
-
   Future<void> _showDossier() async {
-    // 1. Remove the currentTaskId == null block!
-    if (rawNotes.isEmpty) {
-      _showSaveConfirmation('No pitch data to analyze. Please process a stem first.');
+    // 1. Replaces the rawNotes.isEmpty check with our multi-track selector
+    final xrayStems = getStemsWithXray();
+    if (xrayStems.isEmpty) {
+      _showSaveConfirmation('No X-Ray data to analyze. Please process a stem with X-Ray first.');
       return;
     }
 
+    final targetStem = await _promptForReportStem(xrayStems, 'Dossier Summary');
+    if (targetStem == null) return;
+
     setState(() {
       isLoading = true;
-      processingMessage = 'Compiling Forensic Dossier...';
+      processingMessage = 'Compiling Forensic Dossier for ${targetStem.toUpperCase()}...';
     });
 
     try {
       final request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'));
       
-      // 2. Add the fallback so the API doesn't crash on offline projects
+      // Preserved your offline fallback!
       request.fields['task_id'] = currentTaskId ?? 'offline_session';
       
       request.fields['session_meta'] = jsonEncode({
         'filename': originalFileName,
         'duration': songDuration,
-        'stem_target': activeEditableStem.isNotEmpty ? activeEditableStem : 'vocals',
-        'xray_enabled': isXrayMode,
+        'stem_target': targetStem, // Now explicitly uses the selected track
+        'xray_enabled': true,      // Guaranteed true because of getStemsWithXray()
         'version': '1.5.0'
       });
-      request.fields['notes_manifest'] = jsonEncode(rawNotes);
+      
+      // Pulls notes for the specific selected track rather than defaulting to rawNotes
+      request.fields['notes_manifest'] = jsonEncode(allStemsNotes[targetStem] ?? []);
 
       final streamedResponse = await request.send();
       final responseData = await streamedResponse.stream.bytesToString();
@@ -2819,7 +2864,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         final decoded = jsonDecode(responseData);
         if (decoded['status'] == 'success') {
           final markdownData = decoded['report_md'] ?? '# Error\nMarkdown payload missing from server.';
-          if (mounted) _showDossierModal(context, markdownData);
+          // Passes the targetStem to the modal for the header!
+          if (mounted) _showDossierModal(context, markdownData, targetStem);
         } else {
           _showSaveConfirmation('Failed to generate dossier.');
         }
@@ -2837,7 +2883,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     }
   }
 
-  void _showDossierModal(BuildContext context, String markdownData) {
+  // Updated signature to accept targetStem
+  void _showDossierModal(BuildContext context, String markdownData, String targetStem) {
     showModalBottomSheet(
       context: context, 
       isScrollControlled: true, 
@@ -2859,14 +2906,15 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                 children: [
-                  const Flexible(
+                  // NOTE: Removed 'const' from Flexible because targetStem is dynamic!
+                  Flexible(
                     child: Row(children: [
-                      Icon(Icons.shield_outlined, color: Color(0xFF00E5FF)), 
-                      SizedBox(width: 12), 
+                      const Icon(Icons.shield_outlined, color: Color(0xFF00E5FF)), 
+                      const SizedBox(width: 12), 
                       Expanded(
                         child: Text(
-                          'FORENSIC INTEGRITY DOSSIER', 
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white), 
+                          'FORENSIC INTEGRITY DOSSIER: ${targetStem.toUpperCase()}', // Dynamic Title
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white), 
                           overflow: TextOverflow.ellipsis
                         )
                       )
