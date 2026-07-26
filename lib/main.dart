@@ -960,10 +960,35 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   void _evaluatePitchDirtyState() {
     if (activeEditableStem.isNotEmpty && baselinePitchStates.containsKey(activeEditableStem)) {
       String currentJson = json.encode(allStemsNotes[activeEditableStem] ?? []);
-      if (currentJson == baselinePitchStates[activeEditableStem]) {
-        dirtyStems.remove(activeEditableStem); // It matches the original! Turn the light off.
+      String baselineJson = baselinePitchStates[activeEditableStem]!;
+      
+      // 1. Fast check: Do they match perfectly?
+      if (currentJson == baselineJson) {
+        dirtyStems.remove(activeEditableStem); // Turn the light off.
       } else {
-        dirtyStems.add(activeEditableStem); // It differs from the baseline. Light it up.
+        // 2. Deep check: Did the JSON only change because we added X-Ray visual data?
+        var currentList = allStemsNotes[activeEditableStem] ?? [];
+        var baselineList = json.decode(baselineJson) as List<dynamic>;
+        
+        String stripVisuals(List<dynamic> list) {
+          return json.encode(list.map((n) {
+            var map = Map<String, dynamic>.from(n as Map);
+            map.remove('contour');
+            map.remove('xray_cents');
+            map.remove('forensics');
+            return map;
+          }).toList());
+        }
+
+        if (stripVisuals(currentList) == stripVisuals(baselineList)) {
+          // The audio parameters are identical! Only visual data was added.
+          // Silently update the baseline to include the new X-Ray data so future fast-checks pass.
+          baselinePitchStates[activeEditableStem] = currentJson;
+          dirtyStems.remove(activeEditableStem);
+        } else {
+          // Actual audio-altering edits (like cents_shift or volume) exist. Light it up!
+          dirtyStems.add(activeEditableStem); 
+        }
       }
     }
   }
