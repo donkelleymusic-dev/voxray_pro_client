@@ -2745,7 +2745,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     );
   }
 
-  void _showPitchPrintOptions() {
+  void _showPitchPrintOptions() async {
+    // 1. Check for X-Ray data and prompt for the stem
+    final xrayStems = getStemsWithXray();
+    if (xrayStems.isEmpty) {
+      _showSaveConfirmation('No X-Ray data available for PitchPrint™. Please process a stem first.');
+      return;
+    }
+    
+    final targetStem = await _promptForReportStem(xrayStems, 'PitchPrint™');
+    if (targetStem == null) return;
+
     bool fullSong = true;
     showDialog(
       context: context,
@@ -2803,7 +2813,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                               horizontalScrollController.position.viewportDimension) /
                           zoomX
                       : songDuration;
+                      
+                  // 2. Pass the selected targetStem to the download function!
                   downloadPitchPrint(
+                      targetStem: targetStem,
                       fullSong: fullSong, format: 'svg',
                       visibleStart: visibleStart, visibleEnd: visibleEnd);
                 },
