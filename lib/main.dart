@@ -1539,8 +1539,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     }
                   });
                 } else if (statusData['status'] == 'error') {
+                  isComplete = true; // <-- BREAK THE LOOP
                   throw Exception(statusData['message']);
                 }
+              } else {
+                isComplete = true; // <-- BREAK THE LOOP ON 404/500
+                throw Exception('Server returned ${statusRes.statusCode}');
               }
             }
           } else {
