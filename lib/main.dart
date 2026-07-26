@@ -1942,7 +1942,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                         if (key == 'master') SoLoud.instance.setGlobalVolume(1.0);
                         else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, 1.0); }
                         else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, 1.0); }
-                        else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setVolume(stemHandles[key]!, 1.0); }
+                        else if (stemHandles.containsKey(key)) { updateStemVolume(key); }
                       },
                       child: RotatedBox(
                         quarterTurns: 3,
@@ -1964,7 +1964,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                               if (key == 'master') SoLoud.instance.setGlobalVolume(v);
                               else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v); }
                               else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, v); }
-                              else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setVolume(stemHandles[key]!, v); }
+                              else if (stemHandles.containsKey(key)) { updateStemVolume(key); }
                             }
                           ),
                         ),
