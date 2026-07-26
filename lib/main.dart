@@ -3369,7 +3369,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   message: 'Preview pitch/DSP edits',
                   child: IconButton(
                     icon: Icon(
-                      Icons.preview, 
+                      Icons.hearing, // or Icons.update might look better
                       size: 20,
                       // Grey when clean, glowing red when dirty
                       color: dirtyStems.contains(activeEditableStem) ? Colors.redAccent : Colors.white38,
