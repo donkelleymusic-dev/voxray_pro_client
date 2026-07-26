@@ -23,19 +23,25 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
   };
 
   void _updateDrumVolumes() {
-    // 1. Force the HTDemucs "drums" unified track to be totally silent ALWAYS
     if (widget.dawState.stemHandles.containsKey('drums')) {
       SoLoud.instance.setVolume(widget.dawState.stemHandles['drums']!, 0.0);
     }
 
-    // 2. Master Drum Bus Multiplier
     final masterState = widget.dawState.getChannelState('drums');
     double busMultiplier = masterState.isMuted ? 0.0 : masterState.volume;
 
-    // 3. Apply scaled volume to the 5 sub-stems
     for (String subKey in drumSubStems.keys) {
       final subState = widget.dawState.getChannelState(subKey);
-      double finalVol = subState.isMuted ? 0.0 : (subState.volume * busMultiplier);
+      
+      // Calculate makeup gain if Compressor is active on this sub-stem
+      double makeupLinear = 1.0;
+      final plugins = [subState.plugin1, subState.plugin2, subState.plugin3, subState.plugin4];
+      if (plugins.contains('Compressor')) {
+         double makeupDb = subState.compressorThreshold.abs() * (1.0 - (1.0 / subState.compressorRatio)) * 0.4;
+         makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
+      }
+
+      double finalVol = subState.isMuted ? 0.0 : (subState.volume * busMultiplier * makeupLinear).clamp(0.0, 4.0);
       
       if (widget.dawState.stemHandles.containsKey(subKey)) {
          final handle = widget.dawState.stemHandles[subKey]!;
