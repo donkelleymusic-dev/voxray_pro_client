@@ -727,9 +727,12 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   void pollForXrayReprocess(String jobId, String targetStem) {
     pollingTimer?.cancel();
+    int retryCount = 0; // Failsafe counter
+    
     pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
+        
         if (statusRes.statusCode == 200) {
           var statusData = json.decode(statusRes.body);
           if (mounted) setState(() => processingMessage = statusData['message'] ?? 'Processing X-Ray...');
@@ -738,6 +741,7 @@ mixin DawApiService on VoxrayDAWStateBase {
             timer.cancel();
             await clearActiveJob();
             final result = statusData['result'];
+            
             if (mounted) {
               setState(() {
                 processingMessage = '';
@@ -747,6 +751,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                 }
                 isXrayProcessing = false;
                 isXrayMode       = true;
+                isLoading        = false; // <--- THE MISSING UNLOCK
                 registerUndoSnapshot();
               });
               showSaveConfirmation('X-Ray high-resolution tracking complete.');
@@ -754,14 +759,55 @@ mixin DawApiService on VoxrayDAWStateBase {
           } else if (statusData['status'] == 'error') {
             timer.cancel();
             await clearActiveJob();
+            
             if (mounted) {
-              setState(() => isXrayProcessing = false);
-              showSaveConfirmation('X-Ray Processing Error: ${statusData['message']}');
+              setState(() {
+                isXrayProcessing = false;
+                isLoading        = false; // <--- THE MISSING UNLOCK
+                processingMessage = '';
+                
+                // If the server deleted the audio overnight, wipe the Task ID 
+                // so the app knows it must re-upload the file next time!
+                if (statusData['message'].toString().toLowerCase().contains('not found')) {
+                  currentTaskId = null; 
+                }
+              });
+              showSaveConfirmation('X-Ray Error: ${statusData['message']}');
             }
+          }
+        } else {
+          // ── THE MISSING 404 / 500 HANDLER ──
+          // If the server crashes or the job expires, break the loop!
+          timer.cancel();
+          await clearActiveJob();
+          
+          if (mounted) {
+            setState(() {
+              isXrayProcessing = false;
+              isLoading        = false;
+              processingMessage = '';
+              currentTaskId    = null; // Wipe the session to force re-upload
+            });
+            showSaveConfirmation('Server Error: Status ${statusRes.statusCode}. Session reset.');
           }
         }
       } catch (e) {
         logToSupabase('X-Ray polling network blink: $e');
+        retryCount++;
+        
+        // ── 1 MINUTE TIMEOUT FAILSAFE ──
+        if (retryCount > 20) {
+          timer.cancel();
+          await clearActiveJob();
+          if (mounted) {
+            setState(() {
+              isXrayProcessing = false;
+              isLoading        = false;
+              processingMessage = '';
+            });
+            showSaveConfirmation('Network timeout while polling server.');
+          }
+        }
       }
     });
   }
@@ -909,7 +955,7 @@ mixin DawApiService on VoxrayDAWStateBase {
     } catch (e) {
       logToSupabase('XRAY Reprocess error: $e');
       showSaveConfirmation('Reprocess failed: $e');
-      setState(() => isXrayProcessing = false);
+      setState(() { isXrayProcessing = false; isLoading = false; }); // <--- Add isLoading = false here
     } finally {
       if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
@@ -976,9 +1022,9 @@ mixin DawApiService on VoxrayDAWStateBase {
     } catch (e) {
       logToSupabase('XRAY error: $e');
       showSaveConfirmation('Connection error: $e');
-      setState(() { isXrayMode = false; isXrayProcessing = false; });
+      setState(() { isXrayMode = false; isXrayProcessing = false; isLoading = false; }); // <--- Add isLoading = false here
     } finally {
-      //playAllPlayers(); // why was it playing after xray completed?
+      //if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
   }
 
