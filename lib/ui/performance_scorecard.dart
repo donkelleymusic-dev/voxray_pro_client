@@ -143,7 +143,7 @@ class PerformanceScorecardDialog extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              getForensicPitchDescription(grade), // Call the new universal function!
+              dawState.getForensicPitchDescription(grade), // Call the new universal function!
               textAlign: TextAlign.center,
               style: TextStyle(color: gradeColor, fontSize: 10, fontWeight: FontWeight.bold, height: 1.2),
             ),
