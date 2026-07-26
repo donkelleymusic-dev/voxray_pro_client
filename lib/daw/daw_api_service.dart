@@ -1466,7 +1466,7 @@ mixin DawApiService on VoxrayDAWStateBase {
   Future<void> downloadDossier() async {
     final xrayStems = getStemsWithXray();
     if (xrayStems.isEmpty) {
-      _showSaveConfirmation('No X-Ray data to analyze. Please process a stem first.');
+      showSaveConfirmation('No X-Ray data to analyze. Please process a stem first.');
       return;
     }
 
