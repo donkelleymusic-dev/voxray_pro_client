@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
+import 'dart:math' as math;
 
 class TimelineRulerWidget extends StatelessWidget {
   final VoxrayDAWState dawState;
