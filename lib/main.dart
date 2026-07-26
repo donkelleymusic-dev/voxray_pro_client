@@ -3347,7 +3347,16 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               children: [
                 PopupMenuButton<DragMode>(
                   padding: EdgeInsets.zero,
-                  icon: Icon(Icons.pan_tool, size: 18, color: currentDragMode != DragMode.off ? Colors.amberAccent : Colors.white38),
+                  icon: Icon(
+                    Icons.pan_tool, 
+                    size: 18, 
+                    // Dynamic Drag Pitch Colors: Off=Green, Semi=Orange, Micro=Yellow
+                    color: currentDragMode == DragMode.semitone 
+                        ? Colors.orangeAccent 
+                        : (currentDragMode == DragMode.microTuning 
+                            ? Colors.yellowAccent 
+                            : Colors.greenAccent),
+                  ),
                   tooltip: 'Drag Pitch Mode',
                   onSelected: (val) => setState(() => currentDragMode = val),
                   itemBuilder: (context) => const [
@@ -3359,7 +3368,15 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 Tooltip(
                   message: 'Preview pitch/DSP edits',
                   child: IconButton(
-                    icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 20),
+                    icon: Icon(
+                      Icons.preview, 
+                      size: 20,
+                      // Grey when clean, glowing red when dirty
+                      color: dirtyStems.contains(activeEditableStem) ? Colors.redAccent : Colors.white38,
+                      shadows: dirtyStems.contains(activeEditableStem)
+                          ? [const Shadow(color: Colors.red, blurRadius: 10.0)]
+                          : null,
+                    ),
                     onPressed: (!isApiBusy && rawNotes.isNotEmpty && originalAudioBytes != null && dirtyStems.contains(activeEditableStem))
                         ? () => renderStemEdits(activeEditableStem)
                         : null,
@@ -3717,7 +3734,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                       child: IconButton(
                                         padding: EdgeInsets.zero,
                                         constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                        icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.white70),
+                                        icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), // Match jump-to-marker yellow!
                                         onPressed: addMarkerAtCurrentPlayhead,
                                       ),
                                     ),
