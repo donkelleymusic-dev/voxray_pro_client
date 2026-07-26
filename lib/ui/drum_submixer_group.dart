@@ -23,32 +23,14 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
   };
 
   void _updateDrumVolumes() {
+    // Force the HTDemucs unified track to be totally silent ALWAYS
     if (widget.dawState.stemHandles.containsKey('drums')) {
       SoLoud.instance.setVolume(widget.dawState.stemHandles['drums']!, 0.0);
     }
 
-    final masterState = widget.dawState.getChannelState('drums');
-    double busMultiplier = masterState.isMuted ? 0.0 : masterState.volume;
-
+    // Update all children (this now perfectly handles the Bus multiplier + Compressor!)
     for (String subKey in drumSubStems.keys) {
-      final subState = widget.dawState.getChannelState(subKey);
-      
-      // Calculate makeup gain if Compressor is active on this sub-stem
-      double makeupLinear = 1.0;
-      final plugins = [subState.plugin1, subState.plugin2, subState.plugin3, subState.plugin4];
-      if (plugins.contains('Compressor')) {
-         double makeupDb = subState.compressorThreshold.abs() * (1.0 - (1.0 / subState.compressorRatio)) * 0.4;
-         makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-      }
-
-      double finalVol = subState.isMuted ? 0.0 : (subState.volume * busMultiplier * makeupLinear).clamp(0.0, 4.0);
-      
-      if (widget.dawState.stemHandles.containsKey(subKey)) {
-         final handle = widget.dawState.stemHandles[subKey]!;
-         if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
-           SoLoud.instance.setVolume(handle, finalVol);
-         }
-      }
+      widget.dawState.updateStemVolume(subKey);
     }
   }
 
@@ -137,7 +119,13 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
                 widget.dawState.dirtyStems.add(key);
                 widget.dawState.hasBeenSaved = false;
               });
-              _updateDrumVolumes();
+              
+              // THE FIX: Route the update based on whether this is the master bus or a child stem
+              if (isMaster) {
+                _updateDrumVolumes();
+              } else {
+                widget.dawState.updateStemVolume(key);
+              }
             },
           ),
 
@@ -149,7 +137,13 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
                   state.volume = 1.0;
                   widget.dawState.dirtyStems.add(key);
                 });
-                _updateDrumVolumes();
+                
+                // THE FIX: Route the update
+                if (isMaster) {
+                  _updateDrumVolumes();
+                } else {
+                  widget.dawState.updateStemVolume(key);
+                }
               },
               child: RotatedBox(
                 quarterTurns: 3,
@@ -169,7 +163,13 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
                         state.volume = v;
                         widget.dawState.dirtyStems.add(key);
                       });
-                      _updateDrumVolumes();
+                      
+                      // THE FIX: Route the update
+                      if (isMaster) {
+                        _updateDrumVolumes();
+                      } else {
+                        widget.dawState.updateStemVolume(key);
+                      }
                     }
                   ),
                 ),
