@@ -3144,8 +3144,16 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           value: 'save_as',
           enabled: canSaveAs && !isApiBusy,
           child: ListTile(
-              leading: Icon(Icons.save_as, color: canSaveAs ? Colors.white : Colors.white38),
-              title: Text('Save Project As...', style: TextStyle(color: canSaveAs ? Colors.white : Colors.white38)))),
+              leading: Icon(
+                Icons.save_as, 
+                color: (canSaveAs && !isApiBusy) ? Colors.white : Colors.white38
+              ),
+              title: Text(
+                'Save Project As...', 
+                style: TextStyle(color: (canSaveAs && !isApiBusy) ? Colors.white : Colors.white38)
+              )
+          )
+      ),
       
       const PopupMenuDivider(),
       
