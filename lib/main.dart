@@ -1713,11 +1713,22 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // =========================================================================
 
   void addMarkerAtCurrentPlayhead() {
-    // 1. THE FIX: Rely strictly on the exact audio playhead time, ignoring scroll state.
-    double visualPlayheadTime = currentPosition.clamp(0.0, songDuration);
+    double visualPlayheadTime = currentPosition;
 
-    bool tooClose =
-        markers.any((m) => ((m['time'] as double) - visualPlayheadTime).abs() < 0.5);
+    if (horizontalScrollController.hasClients) {
+      if (horizontalScrollController.position.maxScrollExtent > 0 && !isPlaying) {
+        // Long song + Paused/Scrubbing: Crosshair is fixed at 35%, scroll dictates time
+        double anchorOffset = horizontalScrollController.position.viewportDimension * 0.35;
+        visualPlayheadTime = (horizontalScrollController.position.pixels + anchorOffset) / zoomX;
+      } else {
+        // Short song (no scrolling) OR Playing: Playhead moves, use raw audio time
+        visualPlayheadTime = currentPosition;
+      }
+    }
+
+    visualPlayheadTime = visualPlayheadTime.clamp(0.0, songDuration);
+
+    bool tooClose = markers.any((m) => ((m['time'] as double) - visualPlayheadTime).abs() < 0.5);
     if (tooClose) return;
 
     setState(() {
