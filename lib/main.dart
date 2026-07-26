@@ -2184,7 +2184,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 min: 0.0, max: 1.0, activeColor: highlight,
                 onChanged: (val) {
                   setDialogState(() => state.reverbMix = val); // (Make sure this matches the specific variable for each slider)
-                  this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                  this.setState(() { hasBeenSaved = false; });
                   
                   // THE FIX: Route to the correct audio engine method!
                   if (stemKey == 'master') {
@@ -2201,7 +2201,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 min: 0.0, max: 1.0, activeColor: highlight,
                 onChanged: (val) {
                   setDialogState(() => state.reverbRoomSize = val);
-                  this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                  this.setState(() { hasBeenSaved = false; });
                   if (stemKey == 'master') {
                     applyMasterPlugins();
                   } else {
@@ -2219,7 +2219,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 min: 0.0, max: 1.0, activeColor: highlight, // Changed from 200 - 20000
                 onChanged: (val) {
                   setDialogState(() => state.eqCutoff = val);
-                  this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                  this.setState(() { hasBeenSaved = false; });
                   if (stemKey == 'master') {
                     applyMasterPlugins();
                   } else {
@@ -2238,7 +2238,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 min: -60.0, max: 0.0, activeColor: highlight,
                 onChanged: (val) {
                   setDialogState(() => state.compressorThreshold = val);
-                  this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                  this.setState(() { hasBeenSaved = false; });
                   if (stemKey == 'master') {
                     applyMasterPlugins();
                   } else {
@@ -2253,7 +2253,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 min: 1.0, max: 20.0, activeColor: highlight,
                 onChanged: (val) {
                   setDialogState(() => state.compressorRatio = val);
-                  this.setState(() { dirtyStems.add(stemKey); hasBeenSaved = false; });
+                  this.setState(() { hasBeenSaved = false; });
                   if (stemKey == 'master') {
                     applyMasterPlugins();
                   } else {
