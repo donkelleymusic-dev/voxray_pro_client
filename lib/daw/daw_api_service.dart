@@ -1616,7 +1616,9 @@ mixin DawApiService on VoxrayDAWStateBase {
     String defaultSaveName = originalFileName.contains('.')
         ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
         : (originalFileName.isNotEmpty ? originalFileName : projectName);
-  
+
+    await Future.delayed(const Duration(milliseconds: 50));
+    
     try {
       // 1. WEB: Handle web-specific download
       if (kIsWeb) {
