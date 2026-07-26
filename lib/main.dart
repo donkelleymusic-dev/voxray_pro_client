@@ -2786,7 +2786,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // =========================================================================
 
   Future<void> _showDossier() async {
-    if (rawNotes.isEmpty || currentTaskId == null) {
+    // 1. Remove the currentTaskId == null block!
+    if (rawNotes.isEmpty) {
       _showSaveConfirmation('No pitch data to analyze. Please process a stem first.');
       return;
     }
@@ -2798,7 +2799,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
     try {
       final request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'));
-      request.fields['task_id'] = currentTaskId!;
+      
+      // 2. Add the fallback so the API doesn't crash on offline projects
+      request.fields['task_id'] = currentTaskId ?? 'offline_session';
+      
       request.fields['session_meta'] = jsonEncode({
         'filename': originalFileName,
         'duration': songDuration,
