@@ -115,16 +115,12 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // ✅ Assign the logo correctly to the title property
-        title: Padding(
-          padding: const EdgeInsets.only(right: 8.0),
-          child: Image.asset(
-            'assets/images/voXRay_logo_transparent_crop.png',
-            height: 30,
-            fit: BoxFit.contain,
-          ),
+        centerTitle: true, // <-- Changed to true!
+        title: Image.asset(
+          'assets/images/voXRay_logo_transparent_crop.png',
+          height: 30,
+          fit: BoxFit.contain,
         ),
-        centerTitle: false, // Set to true if you want it centered
       ),
         /*title: const Text('voXRay Beta Login')),*/
       body: Center(
@@ -134,7 +130,14 @@ class _AuthScreenState extends State<AuthScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.graphic_eq, size: 80, color: Colors.blue),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12), // Adds nice rounded corners to the banner
+                child: Image.asset(
+                  'assets/images/don-music-google_play_developer_banner_4096-2304.jpg',
+                  height: 120, // Bigger than the old icon! Adjust this number if you want it even larger.
+                  fit: BoxFit.cover,
+                ),
+              ),
               const SizedBox(height: 32),
               TextField(
                 controller: _emailController,
