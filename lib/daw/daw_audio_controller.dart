@@ -158,6 +158,10 @@ mixin DawAudioController on VoxrayDAWStateBase {
         );
   
         try {
+          newSource.filters.freeverbFilter.activate();
+          newSource.filters.compressorFilter.activate();
+          newSource.filters.biquadFilter.activate();
+          
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
           newSource.filters.biquadFilter.wet().value = 0.0;
@@ -484,33 +488,38 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       // ── COMPRESSOR (Option 1: Always On, Real-time update) ─────────────────
       if (plugins.contains('Compressor')) {
-        // Set the base source
         source.filters.compressorFilter.wet().value = 1.0;
-        
         if (handle != null) {
-          // 1. Instantly turn the compressor on for the active voice
           source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
-          
-          // 2. Stream the parameters directly to the engine
           source.filters.compressorFilter.threshold(soundHandle: handle).value = state.compressorThreshold;
           source.filters.compressorFilter.ratio(soundHandle: handle).value = state.compressorRatio;
           
-          // 3. Custom Auto-Makeup Gain mapping
           double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
           double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-          double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear).clamp(0.0, 4.0);
           
+          // NEW: Factor in the Drum Bus Multiplier if applicable!
+          double busMultiplier = 1.0;
+          if (['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(stemName)) {
+            final masterState = getChannelState('drums');
+            busMultiplier = masterState.isMuted ? 0.0 : masterState.volume;
+          }
+
+          double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear * busMultiplier).clamp(0.0, 4.0);
           SoLoud.instance.setVolume(handle, finalVolume);
         }
       } else {
-        // Ensure compressor is completely bypassed
         source.filters.compressorFilter.wet().value = 0.0;
-        
         if (handle != null) {
           source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
           
-          // IMPORTANT: Restore the normal track volume since makeup gain is turned off
-          SoLoud.instance.setVolume(handle, state.isMuted ? 0.0 : state.volume);
+          // NEW: Restore normal volume WITH Drum Bus Multiplier if applicable!
+          double busMultiplier = 1.0;
+          if (['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(stemName)) {
+            final masterState = getChannelState('drums');
+            busMultiplier = masterState.isMuted ? 0.0 : masterState.volume;
+          }
+          
+          SoLoud.instance.setVolume(handle, state.isMuted ? 0.0 : (state.volume * busMultiplier));
         }
       }
 
