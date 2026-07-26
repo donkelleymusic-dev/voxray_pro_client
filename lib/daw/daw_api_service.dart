@@ -1461,42 +1461,59 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> downloadDossier() async {
-    if (rawNotes.isEmpty) return;
-    setState(() { isExporting = true; exportMessage = 'Generating dossier PDF...'; });
+    final xrayStems = getStemsWithXray();
+    if (xrayStems.isEmpty) {
+      _showSaveConfirmation('No X-Ray data to analyze. Please process a stem first.');
+      return;
+    }
+
+    setState(() { isExporting = true; });
+
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'))
-        ..fields['task_id']       = currentTaskId ?? ''
-        ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(rawNotes))
-        ..fields['session_meta']  = jsonEncode({
-          'filename': originalFileName, 'duration': songDuration,
-          'stem_target': activeEditableStem,
-          'xray_enabled': rawNotes.any((n) => n.containsKey('contour')),
-          'version': '1.5.0',
-        });
+      // Loop through every valid track and request a unique PDF
+      for (String stem in xrayStems) {
+        setState(() { exportMessage = 'Generating dossier PDF for ${stem.toUpperCase()}...'; });
+        
+        var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'))
+          ..fields['task_id']        = currentTaskId ?? 'offline_session'
+          ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(allStemsNotes[stem] ?? []))
+          ..fields['session_meta']  = jsonEncode({
+            'filename': originalFileName, 'duration': songDuration,
+            'stem_target': stem,
+            'xray_enabled': true,
+            'version': '1.5.0',
+          });
 
-      var response     = await request.send();
-      var responseData = await http.Response.fromStream(response);
-      if (responseData.statusCode != 200) throw Exception('Server error ${responseData.statusCode}');
+        var response     = await request.send();
+        var responseData = await http.Response.fromStream(response);
+        if (responseData.statusCode != 200) throw Exception('Server error ${responseData.statusCode} on $stem');
 
-      var result = jsonDecode(responseData.body);
-      if (result['status'] == 'success') {
-        final Uint8List bytes = base64Decode(result['pdf_b64']);
-        String saveName = originalFileName.contains('.')
-            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-            : originalFileName;
+        var result = jsonDecode(responseData.body);
+        if (result['status'] == 'success') {
+          final Uint8List bytes = base64Decode(result['pdf_b64']);
+          String saveName = originalFileName.contains('.')
+              ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+              : originalFileName;
 
-        if (kIsWeb) {
-          await FileSaver.instance.saveFile(
-            name: '${saveName}_dossier', bytes: bytes,
-            fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
-        } else {
-          String? path = await FileSaver.instance.saveAs(
-            name: '${saveName}_dossier', bytes: bytes,
-            fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
-          showSaveConfirmation(path != null && path.isNotEmpty
-              ? 'Dossier saved successfully.' : 'Save cancelled.');
+          // Inject the stem name into the saved file! (e.g. SongName_vocals_dossier.pdf)
+          String finalName = '${saveName}_${stem}_dossier';
+
+          if (kIsWeb) {
+            await FileSaver.instance.saveFile(
+              name: finalName, bytes: bytes,
+              fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
+          } else {
+            await FileSaver.instance.saveAs(
+              name: finalName, bytes: bytes,
+              fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
+          }
         }
       }
+      
+      showSaveConfirmation(xrayStems.length > 1 
+          ? 'All Dossiers saved successfully.' 
+          : 'Dossier saved successfully.');
+          
     } catch (e) {
       showSaveConfirmation('Dossier generation failed: $e');
     } finally {
@@ -1505,17 +1522,22 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> downloadPitchPrint({
+    required String targetStem,
     required bool fullSong,
     required String format,
     required double visibleStart,
     required double visibleEnd,
   }) async {
-    if (rawNotes.isEmpty) return;
+    // 2 use the specific stem's notes
+    final stemNotes = allStemsNotes[targetStem] ?? [];
+    if (stemNotes.isEmpty) return;
+    
     setState(() { isExporting = true; exportMessage = 'Generating PitchPrint™...'; });
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-pitchprint'))
-        ..fields['task_id']        = currentTaskId ?? ''
-        ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(rawNotes))
+        ..fields['task_id']        = currentTaskId ?? 'offline_session'
+        // use correct stem's stemNotes
+        ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(stemNotes))
         ..fields['full_song']      = fullSong.toString()
         ..fields['visible_start']  = visibleStart.toString()
         ..fields['visible_end']    = visibleEnd.toString()
