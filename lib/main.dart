@@ -66,7 +66,7 @@ import 'screens/about_info_screen.dart';
 import 'screens/feedback_screen.dart';
 import 'ui/drum_submixer_group.dart';
 import 'ui/bouncing_eq_indicator.dart';
-import 'ui/performance_scorecard_dialog.dart';
+import 'ui/performance_scorecard.dart';
 
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
