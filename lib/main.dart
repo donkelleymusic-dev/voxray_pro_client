@@ -432,6 +432,9 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // get control over 60fps updates while doing file uploading:
   bool isUploading = false;
 
+  // GLOBAL BUSY STATE GETTER
+  bool get isApiBusy => isLoading || isPreviewing || isExporting || isSynthRendering || isXrayProcessing || isUploading;
+
   void _showMatchSummaryModal({
     required double offsetSec,
     required double confidence,
