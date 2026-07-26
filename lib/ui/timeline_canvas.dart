@@ -333,7 +333,10 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     double zoomY = (widget.dawState.zoomY > 0) ? widget.dawState.zoomY : 8.0;
 
     double totalHeight = (maxMidi - minMidi + 1) * zoomY;
-    double timelineWidth = duration * zoomX;
+    
+    // Stretch the canvas to fill the screen if the song is tiny
+    double screenWidth = MediaQuery.of(context).size.width;
+    double timelineWidth = math.max(screenWidth, duration * zoomX);
     
     bool isDrums = widget.dawState.activeEditableStem == 'drums';
 
