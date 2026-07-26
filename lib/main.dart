@@ -1926,7 +1926,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                         } else if (key == 'synth') {
                           if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, targetVol);
                         } else if (stemHandles.containsKey(key)) {
-                          SoLoud.instance.setVolume(stemHandles[key]!, targetVol);
+                          updateStemVolume(key);
+                          /*SoLoud.instance.setVolume(stemHandles[key]!, targetVol);*/
                         }
                       },
                     ),
