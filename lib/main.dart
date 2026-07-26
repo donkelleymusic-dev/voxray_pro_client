@@ -1761,6 +1761,19 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     });
   }
 
+  // --- FORENSIC REPORTING HELPERS ---
+  String getForensicPitchDescription(String internalGrade) {
+    switch (internalGrade) {
+      case 'A+': return "Mechanically Precise (Possible Pitch Correction)";
+      case 'A':  return "Extremely Accurate (Studio Standard)";
+      case 'B':  return "Highly Accurate (Natural Human Variance)";
+      case 'C':  return "Average Expressive Pitch (Standard Variance)";
+      case 'D':  return "Loose Pitch (Stylistic or Pitchy)";
+      case 'F':  return "Highly Variable (Raw / Unrestrained Phrasing)";
+      default:   return "Unknown Pitch Variance";
+    }
+  }
+  
   // --- X-RAY REPORT HELPERS ---
   List<String> getStemsWithXray() {
     List<String> validStems = [];
