@@ -407,6 +407,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     'vocals': ChannelState(), 'instrumental': ChannelState(),
   };
 
+  Set<String> soloedChannels = {};
+
   final Map<String, ValueNotifier<double>> channelLevels = {};
 
   // ── Scroll controllers ────────────────────────────────────────────────────
@@ -532,6 +534,40 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   String getPlatformString() {
     if (kIsWeb) return 'flutter_web';
     return 'flutter_${Platform.operatingSystem}';
+  }
+
+  double getEffectiveVolume(String key) {
+    final state = getChannelState(key);
+    if (state.isMuted) return 0.0;
+    
+    if (soloedChannels.isNotEmpty) {
+      // If ANY solo is active, this channel must be soloed OR it's a drum subchannel and the 'drums' bus is soloed
+      bool isDrumSub = ['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(key);
+      if (soloedChannels.contains(key) || (isDrumSub && soloedChannels.contains('drums'))) {
+        return state.volume;
+      }
+      return 0.0;
+    }
+    return state.volume;
+  }
+
+  void refreshAllVolumes() {
+    if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
+      SoLoud.instance.setVolume(masterHandle!, getEffectiveVolume('original'));
+    }
+    if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) {
+      SoLoud.instance.setVolume(synthHandle!, getEffectiveVolume('synth'));
+    }
+    for (var entry in stemHandles.entries) {
+      if (!SoLoud.instance.getIsValidVoiceHandle(entry.value)) continue;
+      
+      if (entry.key == 'drums') {
+        // PERMANENT KILLSWITCH: Keep master drum audio silent if sub-stems exist to prevent phasing
+        SoLoud.instance.setVolume(entry.value, 0.0);
+      } else {
+        SoLoud.instance.setVolume(entry.value, getEffectiveVolume(entry.key));
+      }
+    }
   }
   
   void logToSupabase(String message, {String severity = 'INFO'}) {
@@ -1935,39 +1971,52 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   const SizedBox(height: 4),
 
                   if (!isMaster)
-                    IconButton(
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      icon: Icon(
-                          state.isMuted ? Icons.volume_off : Icons.volume_up,
-                          color: !state.isMuted ? highlight : Colors.white38,
-                          size: 18),
-                      onPressed: () {
-                        setMixerState(() => state.isMuted = !state.isMuted);
-                        this.setState(() { hasBeenSaved = false; });
-                        double targetVol = state.isMuted ? 0.0 : state.volume;
-                        if (key == 'original') {
-                          if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, targetVol);
-                        } else if (key == 'synth') {
-                          if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, targetVol);
-                        } else if (stemHandles.containsKey(key)) {
-                          updateStemVolume(key);
-                          /*SoLoud.instance.setVolume(stemHandles[key]!, targetVol);*/
-                        }
-                      },
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // MUTE
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
+                          icon: Icon(
+                              state.isMuted ? Icons.volume_off : Icons.volume_up,
+                              color: state.isMuted ? Colors.redAccent : highlight,
+                              size: 16),
+                          onPressed: () {
+                            setMixerState(() => state.isMuted = !state.isMuted);
+                            this.setState(() { hasBeenSaved = false; });
+                            refreshAllVolumes(); // Route through central volume controller
+                          },
+                        ),
+                        // SOLO
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
+                          icon: Icon(
+                              soloedChannels.contains(key) ? Icons.headphones : Icons.headphones_outlined,
+                              color: soloedChannels.contains(key) ? Colors.yellowAccent : Colors.white38,
+                              size: 16),
+                          onPressed: () {
+                            setMixerState(() {
+                              if (soloedChannels.contains(key)) soloedChannels.remove(key);
+                              else soloedChannels.add(key);
+                            });
+                            this.setState(() { hasBeenSaved = false; });
+                            refreshAllVolumes(); // Route through central volume controller
+                          },
+                        ),
+                      ]
                     ),
 
                   // Volume fader
                   Expanded(
                     child: GestureDetector(
                       onDoubleTap: () {
-                        setMixerState(() => state.volume = 1.0);
-                        this.setState(() { hasBeenSaved = false; });
-                        if (state.isMuted) return;
-                        if (key == 'master') SoLoud.instance.setGlobalVolume(1.0);
-                        else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, 1.0); }
-                        else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, 1.0); }
-                        else if (stemHandles.containsKey(key)) { updateStemVolume(key); }
+                        if (key == 'master') {
+                          SoLoud.instance.setGlobalVolume(1.0);
+                        } else {
+                          refreshAllVolumes();
+                        }
                       },
                       child: RotatedBox(
                         quarterTurns: 3,
@@ -1983,13 +2032,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                             value: state.volume,
                             min: 0.0, max: 1.5,
                             onChanged: (v) { 
-                              setMixerState(() => state.volume = v);
-                              this.setState(() { hasBeenSaved = false; });
-                              if (state.isMuted) return;
-                              if (key == 'master') SoLoud.instance.setGlobalVolume(v);
-                              else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setVolume(masterHandle!, v); }
-                              else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setVolume(synthHandle!, v); }
-                              else if (stemHandles.containsKey(key)) { updateStemVolume(key); }
+                              if (key == 'master') {
+                                SoLoud.instance.setGlobalVolume(v);
+                              } else {
+                                refreshAllVolumes();
+                              }
                             }
                           ),
                         ),
@@ -3461,42 +3508,84 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: isSelected ? Colors.blueAccent : Colors.transparent, width: 1.5),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Stack(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isMuted) const Icon(Icons.volume_off, size: 10, color: Colors.white38),
-                      if (!isGenerated) const Icon(Icons.hourglass_empty, size: 10, color: Colors.white38),
-                      if (isSuggested && !isMuted) const Icon(Icons.star, size: 10, color: Colors.yellowAccent),
-                      const SizedBox(width: 2),
-                      Text(
-                        stemName.toUpperCase(),
-                        style: TextStyle(
-                          color: isMuted ? Colors.white38 : (isSelected ? Colors.white : Colors.grey[400]),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
+                  Positioned.fill(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (!isGenerated) const Icon(Icons.hourglass_empty, size: 10, color: Colors.white38),
+                            if (isSuggested && !isMuted) const Icon(Icons.star, size: 10, color: Colors.yellowAccent),
+                            const SizedBox(width: 2),
+                            Text(
+                              stemName.toUpperCase(),
+                              style: TextStyle(
+                                color: isMuted ? Colors.white38 : (isSelected ? Colors.white : Colors.grey[400]),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                    child: SizedBox(
-                      height: 6,
-                      child: ValueListenableBuilder<double>(
-                        valueListenable: channelLevels[stemName] ?? ValueNotifier(0.0),
-                        builder: (context, level, child) {
-                          return CustomPaint(
-                            size: const Size(double.infinity, 6),
-                            painter: _HorizontalVuMeterPainter(level: level),
-                          );
-                        },
-                      ),
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                          child: SizedBox(
+                            height: 6,
+                            child: ValueListenableBuilder<double>(
+                              valueListenable: channelLevels[stemName] ?? ValueNotifier(0.0),
+                              builder: (context, level, child) {
+                                return CustomPaint(
+                                  size: const Size(double.infinity, 6),
+                                  painter: _HorizontalVuMeterPainter(level: level),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                  // MUTE BUTTON OVERLAY (Top Left)
+                  Positioned(
+                    top: 2, left: 4,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          getChannelState(stemName).isMuted = !getChannelState(stemName).isMuted;
+                          hasBeenSaved = false;
+                        });
+                        refreshAllVolumes();
+                      },
+                      child: Icon(
+                        getChannelState(stemName).isMuted ? Icons.volume_off : Icons.volume_up,
+                        size: 13,
+                        color: getChannelState(stemName).isMuted ? Colors.redAccent : Colors.white38,
+                      )
+                    )
+                  ),
+                  // SOLO BUTTON OVERLAY (Top Right)
+                  Positioned(
+                    top: 2, right: 4,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          if (soloedChannels.contains(stemName)) soloedChannels.remove(stemName);
+                          else soloedChannels.add(stemName);
+                          hasBeenSaved = false;
+                        });
+                        refreshAllVolumes();
+                      },
+                      child: Icon(
+                        soloedChannels.contains(stemName) ? Icons.headphones : Icons.headphones_outlined,
+                        size: 13,
+                        color: soloedChannels.contains(stemName) ? Colors.yellowAccent : Colors.white38,
+                      )
+                    )
                   ),
                 ],
               ),
