@@ -87,7 +87,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
     // 2. KILL THE ZOMBIE REVERB! 🧟‍♂️🔫
     // Now that the handles are officially saved in the map, force the DSP to sync.
     for (String key in stemSources.keys) {
-      applyStemPlugins(key); 
+      (key); 
     }
     
     // Sync the Master Bus DSP globally!
@@ -177,7 +177,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
-        applyStemPlugins(stemName);
+        (stemName);
         return; // Exit early since we successfully loaded the aligned RAM bytes!
       }
   
@@ -222,7 +222,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
-        applyStemPlugins(stemName);
+        (stemName);
   
       } else {
         // ── 2. NATIVE PATH (Mobile / Desktop) ──
@@ -284,7 +284,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
         
-        applyStemPlugins(stemName);
+        (stemName);
       }
   
     } catch (e) {
@@ -440,6 +440,31 @@ mixin DawAudioController on VoxrayDAWStateBase {
   // =========================================================================
   // STUDIO MIXER DSP (Stem-Specific Real-Time Updates)
   // =========================================================================
+
+  void updateStemVolume(String stemKey) {
+    final state = getChannelState(stemKey);
+    final handle = stemHandles[stemKey];
+    if (handle == null || !SoLoud.instance.getIsValidVoiceHandle(handle)) return;
+
+    // 1. Calculate Compressor Makeup Gain (if active)
+    double makeupLinear = 1.0;
+    final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
+    if (plugins.contains('Compressor')) {
+      double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
+      makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
+    }
+
+    // 2. Calculate Master Drum Bus Multiplier (if it's a drum sub-stem)
+    double busMultiplier = 1.0;
+    if (['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(stemKey)) {
+      final masterState = getChannelState('drums');
+      busMultiplier = masterState.isMuted ? 0.0 : masterState.volume;
+    }
+
+    // 3. Apply the final synchronized volume!
+    double finalVol = state.isMuted ? 0.0 : (state.volume * busMultiplier * makeupLinear).clamp(0.0, 4.0);
+    SoLoud.instance.setVolume(handle, finalVol);
+  }
   
   // ── Public DSP method (No underscore) ───────────────────────────────────
   void applyStemPlugins(String stemName) {
@@ -487,40 +512,24 @@ mixin DawAudioController on VoxrayDAWStateBase {
       }
 
       // ── COMPRESSOR (Option 1: Always On, Real-time update) ─────────────────
+      // ── COMPRESSOR ─────────────────────────────────────────────────────────
       if (plugins.contains('Compressor')) {
         source.filters.compressorFilter.wet().value = 1.0;
         if (handle != null) {
           source.filters.compressorFilter.wet(soundHandle: handle).value = 1.0;
           source.filters.compressorFilter.threshold(soundHandle: handle).value = state.compressorThreshold;
           source.filters.compressorFilter.ratio(soundHandle: handle).value = state.compressorRatio;
-          
-          double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
-          double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
-          
-          // NEW: Factor in the Drum Bus Multiplier if applicable!
-          double busMultiplier = 1.0;
-          if (['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(stemName)) {
-            final masterState = getChannelState('drums');
-            busMultiplier = masterState.isMuted ? 0.0 : masterState.volume;
-          }
-
-          double finalVolume = state.isMuted ? 0.0 : (state.volume * makeupLinear * busMultiplier).clamp(0.0, 4.0);
-          SoLoud.instance.setVolume(handle, finalVolume);
         }
       } else {
         source.filters.compressorFilter.wet().value = 0.0;
         if (handle != null) {
           source.filters.compressorFilter.wet(soundHandle: handle).value = 0.0;
-          
-          // NEW: Restore normal volume WITH Drum Bus Multiplier if applicable!
-          double busMultiplier = 1.0;
-          if (['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(stemName)) {
-            final masterState = getChannelState('drums');
-            busMultiplier = masterState.isMuted ? 0.0 : masterState.volume;
-          }
-          
-          SoLoud.instance.setVolume(handle, state.isMuted ? 0.0 : (state.volume * busMultiplier));
         }
+      }
+
+      // ALWAYS update the volume at the end of DSP processing to guarantee makeup gain sync
+      if (handle != null) {
+        updateStemVolume(stemName);
       }
 
     } catch (e) {
