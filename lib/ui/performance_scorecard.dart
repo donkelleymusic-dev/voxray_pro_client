@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
-import '../main5.dart';
+import '../main.dart';
 
 class PerformanceScorecardDialog extends StatelessWidget {
   final VoxrayDAWState dawState;
