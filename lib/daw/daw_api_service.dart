@@ -45,6 +45,9 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   void resetAiDetectorState();
 
+  List<String> getStemsWithXray();
+  Future<String?> _promptForReportStem(List<String> availableStems, String reportName);
+  void showSaveConfirmation(String message, {bool isPreview = false});
   //String getPlatformString() {
   //  if (kIsWeb) return 'flutter_web';
   //  return 'flutter_${Platform.operatingSystem}';
