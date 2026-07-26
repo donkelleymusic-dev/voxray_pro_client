@@ -65,6 +65,7 @@ import 'screens/account_settings_screen.dart';
 import 'screens/about_info_screen.dart';
 import 'screens/feedback_screen.dart';
 import 'ui/drum_submixer_group.dart';
+import 'ui/bouncing_eq_indicator.dart';
 
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
@@ -450,6 +451,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
     Color verdictColor = isTightMatch ? Colors.tealAccent : (isSamePerformance ? Colors.amberAccent : Colors.redAccent);
 
+    bool get isApiBusy => isLoading || isPreviewing || isExporting || isSynthRendering || isXrayProcessing || isUploading;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -3103,31 +3106,28 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   List<PopupMenuEntry<String>> _buildMainMenu() {
     bool canSaveAs = isProjectLoaded;
     
-    // Evaluate this cleanly outside the list
-    bool hasVocalStem = generatedStems.contains('vocals') ||
-        cachedStemBytes.containsKey('vocals') ||
-        cachedStemPaths.containsKey('vocals') ||
-        activeEditableStem == 'vocals';
-
     return [
-      const PopupMenuItem(
+      PopupMenuItem(
           value: 'new_project',
-          child: ListTile(
+          enabled: !isApiBusy,
+          child: const ListTile(
               leading: Icon(Icons.add_box, color: Colors.amberAccent),
               title: Text('New Project (Clear Workspace)'))),
       const PopupMenuDivider(),
-      const PopupMenuItem(
+      PopupMenuItem(
           value: 'upload',
-          child: ListTile(
+          enabled: !isApiBusy,
+          child: const ListTile(
               leading: Icon(Icons.cloud_upload, color: Colors.tealAccent),
               title: Text('Load New Audio'))),
-      const PopupMenuItem(
+      PopupMenuItem(
           value: 'load',
-          child: ListTile(
+          enabled: !isApiBusy,
+          child: const ListTile(
               leading: Icon(Icons.folder_open), title: Text('Load Project'))),
       PopupMenuItem(
           value: 'save_as',
-          enabled: canSaveAs,
+          enabled: canSaveAs && !isApiBusy,
           child: ListTile(
               leading: Icon(Icons.save_as, color: canSaveAs ? Colors.white : Colors.white38),
               title: Text('Save Project As...', style: TextStyle(color: canSaveAs ? Colors.white : Colors.white38)))),
@@ -3147,56 +3147,36 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       
       const PopupMenuDivider(),
       
-      const PopupMenuItem(
+      PopupMenuItem(
           value: 'show_dossier',
-          child: ListTile(
+          enabled: !isApiBusy,
+          child: const ListTile(
               leading: Icon(Icons.assessment, color: Colors.greenAccent),
               title: Text('Dossier Summary'))),
-      const PopupMenuItem(
+      PopupMenuItem(
           value: 'downloads',
-          child: ListTile(
+          enabled: !isApiBusy,
+          child: const ListTile(
               leading: Icon(Icons.download, color: Colors.blueAccent),
               title: Text('Advanced Downloads'))),
-      const PopupMenuItem(
-          value: 'dual_xray_compare',
-          child: ListTile(
-              leading: Icon(Icons.compare_arrows, color: Colors.pinkAccent),
-              title: Text('Dual Stem X-Ray Compare'))),
       
-      // AI Vocal Detection Menu Item
-      /*PopupMenuItem(
-        value: 'detect_ai_vocal',
-        enabled: hasVocalStem && !isAnalyzingAiVocal,
-        child: ListTile(
-          leading: Icon(
-            Icons.psychology_outlined,
-            color: hasVocalStem ? Colors.cyanAccent : Colors.white24,
-          ),
-          title: Text(
-            'Detect AI Vocals',
-            style: TextStyle(color: hasVocalStem ? Colors.white : Colors.white38),
-          ),
-        ),
-      ),*/
+      // Removed the Dual X-Ray menu item as requested!
 
-      const PopupMenuItem(
+      PopupMenuItem(
           value: 'import_stem',
-          child: ListTile(
+          enabled: !isApiBusy,
+          child: const ListTile(
               leading: Icon(Icons.file_open, color: Colors.tealAccent),
               title: Text('Import Individual Track'))),
-      const PopupMenuItem(
+      PopupMenuItem(
           value: 'export_stems',
-          child: ListTile(
+          enabled: !isApiBusy,
+          child: const ListTile(
               leading: Icon(Icons.unarchive, color: Colors.amberAccent),
               title: Text('Export Stems Archive'))),
       
       const PopupMenuDivider(),
       
-      /*const PopupMenuItem(
-          value: 'account_settings',
-          child: ListTile(
-              leading: Icon(Icons.person, color: Colors.blueAccent),
-              title: Text('Account & Billing'))),*/
       const PopupMenuItem(
           value: 'about_info',
           child: ListTile(
@@ -3212,6 +3192,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       
       PopupMenuItem(
           value: 'live_mode',
+          enabled: !isApiBusy,
           child: ListTile(
               leading: Icon(Icons.mic_external_on, color: isLiveModeActive ? Colors.redAccent : Colors.white),
               title: Text(isLiveModeActive ? 'Disable Live Pedagogy' : 'Enable Live Pedagogy',
@@ -3220,17 +3201,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       const PopupMenuDivider(),
       
       const PopupMenuItem(enabled: false, child: Text('    DEBUG USE', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold))),
-      const PopupMenuItem(
+      PopupMenuItem(
           value: 'reprocess',
-          child: ListTile(
+          enabled: !isApiBusy,
+          child: const ListTile(
               leading: Icon(Icons.sync_problem, color: Colors.orangeAccent),
               title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)))),
-      /*PopupMenuItem(
-          value: 'test_mode',
-          child: ListTile(
-              leading: Icon(Icons.bug_report, color: isTestModeActive ? Colors.redAccent : Colors.white38),
-              title: Text(isTestModeActive ? 'Disable MOCK API Mode' : 'Enable MOCK API Mode',
-                  style: TextStyle(color: isTestModeActive ? Colors.redAccent : Colors.white)))),*/
     ];
   }
 
@@ -3268,17 +3244,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'dual_take':       _loadSecondaryVocalTake(); break; // obsolete... fun for earli prototesting but not useful.
       //case 'sync_vocals':     _syncVocalTakes(); break;
         // Inside _handleMenuSelection(String value), add the case handler:
-      case 'dual_xray_compare':
-        showDialog(
-          context: context,
-          builder: (context) => DualXRayComparatorDialog(
-            availableChannels: activeChannels,
-            onRunComparison: (source, target) {
-              _runAnyToAnyForensicAlign(source, target);
-            },
-          ),
-        );
-        break;
+      
     }
   }
 
@@ -3316,21 +3282,25 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               Text(' [$projectName]', style: TextStyle(fontSize: compact ? 10 : 12, color: Colors.white38)),
           ]),
           if (isLoading) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Row(children: [
               Expanded(
                   child: LinearProgressIndicator(
                       value: processingProgress, color: Colors.tealAccent, backgroundColor: Colors.grey[800], minHeight: compact ? 2 : 4)),
-              const SizedBox(width: 4),
+              const SizedBox(width: 8),
+              const BouncingEqIndicator(color: Colors.tealAccent, height: 12.0),
+              const SizedBox(width: 6),
               Text(processingMessage, style: TextStyle(fontSize: compact ? 9 : 10, color: Colors.tealAccent)),
             ]),
           ] else if (isPreviewing || isExporting || isSynthRendering) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Row(children: [
               Expanded(
                   child: LinearProgressIndicator(
                       value: processingProgress, color: Colors.amberAccent, backgroundColor: Colors.grey[800], minHeight: compact ? 2 : 4)),
-              const SizedBox(width: 4),
+              const SizedBox(width: 8),
+              const BouncingEqIndicator(color: Colors.amberAccent, height: 12.0),
+              const SizedBox(width: 6),
               Text(exportMessage.isNotEmpty ? exportMessage : synthMessage,
                   style: TextStyle(fontSize: compact ? 9 : 10, color: Colors.amberAccent)),
             ]),
@@ -3371,7 +3341,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   message: 'Preview pitch/DSP edits',
                   child: IconButton(
                     icon: const Icon(Icons.preview, color: Colors.deepPurpleAccent, size: 20),
-                    onPressed: (rawNotes.isNotEmpty && originalAudioBytes != null && !isPreviewing && !isExporting && dirtyStems.contains(activeEditableStem))
+                    onPressed: (!isApiBusy && rawNotes.isNotEmpty && originalAudioBytes != null && dirtyStems.contains(activeEditableStem))
                         ? () => renderStemEdits(activeEditableStem)
                         : null,
                   ),
