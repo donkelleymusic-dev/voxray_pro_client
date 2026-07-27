@@ -387,75 +387,6 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
   }
 }
 
-void _showDeleteAccountConfirmation() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Row(
-          children: [
-            Icon(Icons.warning, color: Colors.redAccent),
-            SizedBox(width: 8),
-            Text('Delete Account', style: TextStyle(color: Colors.redAccent)),
-          ],
-        ),
-        content: const Text(
-          // 🛡️ Notice: Completely scrubbed of any mention of "subscriptions" or "billing"
-          'Are you sure you want to delete your Voxray Pro account? This will permanently erase your data and immediately revoke your access to the DAW.',
-          style: TextStyle(color: Colors.white70, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              Navigator.pop(ctx); // Close the dialog immediately
-              
-              setState(() {
-                isLoading = true;
-                processingMessage = "Deleting account and wiping data...";
-              });
-
-              try {
-                // 1. Grab the secure access token from the active session
-                final session = BackendService.supabase.auth.currentSession;
-                if (session == null) throw Exception("No active session found.");
-
-                // 2. Fire the token at your Modal backend to kill Stripe & Supabase
-                final response = await http.post(
-                  Uri.parse('$apiBase/api/account/delete'),
-                  body: {'access_token': session.accessToken},
-                );
-
-                if (response.statusCode == 200) {
-                  // 3. Success! Log them out locally. 
-                  // AppGatekeeper will automatically detect the null session and route them to the Login screen.
-                  await BackendService.supabase.auth.signOut();
-                } else {
-                  final errData = json.decode(response.body);
-                  _showSaveConfirmation('Deletion failed: ${errData['detail']}');
-                }
-              } catch (e) {
-                _showSaveConfirmation('Network Error: Could not delete account.');
-              } finally {
-                if (mounted) {
-                  setState(() {
-                    isLoading = false;
-                    processingMessage = "";
-                  });
-                }
-              }
-            },
-            child: const Text('Delete My Account', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // APP GATEKEEPER (Checks for saved login session on startup)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -720,6 +651,77 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     );
   }
   
+
+  
+void _showDeleteAccountConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Delete Account', style: TextStyle(color: Colors.redAccent)),
+          ],
+        ),
+        content: const Text(
+          // 🛡️ Notice: Completely scrubbed of any mention of "subscriptions" or "billing"
+          'Are you sure you want to delete your Voxray Pro account? This will permanently erase your data and immediately revoke your access to the DAW.',
+          style: TextStyle(color: Colors.white70, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx); // Close the dialog immediately
+              
+              setState(() {
+                isLoading = true;
+                processingMessage = "Deleting account and wiping data...";
+              });
+
+              try {
+                // 1. Grab the secure access token from the active session
+                final session = BackendService.supabase.auth.currentSession;
+                if (session == null) throw Exception("No active session found.");
+
+                // 2. Fire the token at your Modal backend to kill Stripe & Supabase
+                final response = await http.post(
+                  Uri.parse('$apiBase/api/account/delete'),
+                  body: {'access_token': session.accessToken},
+                );
+
+                if (response.statusCode == 200) {
+                  // 3. Success! Log them out locally. 
+                  // AppGatekeeper will automatically detect the null session and route them to the Login screen.
+                  await BackendService.supabase.auth.signOut();
+                } else {
+                  final errData = json.decode(response.body);
+                  _showSaveConfirmation('Deletion failed: ${errData['detail']}');
+                }
+              } catch (e) {
+                _showSaveConfirmation('Network Error: Could not delete account.');
+              } finally {
+                if (mounted) {
+                  setState(() {
+                    isLoading = false;
+                    processingMessage = "";
+                  });
+                }
+              }
+            },
+            child: const Text('Delete My Account', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   
   // ── Global Log Multiplexer ──────────────────────────────────────────────
   String getPlatformString() {
