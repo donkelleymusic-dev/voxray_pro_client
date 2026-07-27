@@ -3829,7 +3829,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'reprocess':       forceReprocessXray(context); break;
       case 'detect_ai_vocal': _runAiVocalInspection(); break;
       case 'test_mode':       setState(() => isTestModeActive = !isTestModeActive); break;
-      case 'build_info':      _showAboutApp(); break;
+      case 'build_info':      _showAboutApp(context); break;
       //case 'account_settings':
       //  Navigator.push(context, MaterialPageRoute(builder: (_) => AccountSettingsScreen()));
       //  break;
