@@ -105,29 +105,70 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
             const SizedBox(height: 100), 
           ],
 
-          // Mute Button
-          IconButton(
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            icon: Icon(
-                state.isMuted ? Icons.volume_off : Icons.volume_up,
-                color: !state.isMuted ? color : Colors.white38,
-                size: 18),
-            onPressed: () {
-              setState(() {
-                state.isMuted = !state.isMuted;
-                widget.dawState.dirtyStems.add(key);
-                widget.dawState.hasBeenSaved = false;
-              });
-              
-              // THE FIX: Route the update based on whether this is the master bus or a child stem
-              if (isMaster) {
-                _updateDrumVolumes();
-              } else {
-                widget.dawState.updateStemVolume(key);
-              }
-            },
+          // MUTE AND SOLO BUTTONS
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // MUTE
+                InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () {
+                    setState(() {
+                      state.isMuted = !state.isMuted;
+                      widget.dawState.dirtyStems.add(key);
+                      widget.dawState.hasBeenSaved = false;
+                    });
+                    
+                    // Route the volume update
+                    if (isMaster) {
+                      _updateDrumVolumes();
+                    } else {
+                      widget.dawState.updateStemVolume(key);
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: Icon(
+                      state.isMuted ? Icons.volume_off : Icons.volume_up,
+                      color: state.isMuted ? Colors.redAccent : color,
+                      size: 15,
+                    ),
+                  ),
+                ),
+                // SOLO
+                InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () {
+                    setState(() {
+                      if (widget.dawState.soloedChannels.contains(key)) {
+                        widget.dawState.soloedChannels.remove(key);
+                      } else {
+                        widget.dawState.soloedChannels.add(key);
+                      }
+                      widget.dawState.hasBeenSaved = false;
+                    });
+                    // Tell the main DAW controller to recalculate who should be silenced
+                    widget.dawState.refreshAllVolumes();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: Icon(
+                      widget.dawState.soloedChannels.contains(key)
+                          ? Icons.headphones
+                          : Icons.headphones_outlined,
+                      color: widget.dawState.soloedChannels.contains(key)
+                          ? Colors.yellowAccent
+                          : Colors.white38,
+                      size: 15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(height: 4),
 
           // Volume Fader
           Expanded(
