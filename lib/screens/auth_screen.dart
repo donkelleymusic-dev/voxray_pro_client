@@ -111,6 +111,73 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  void _showForgotPasswordDialog() {
+    final TextEditingController _resetEmailController = TextEditingController(text: _emailController.text);
+    bool _isSending = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Text('Reset Password', style: TextStyle(color: Colors.white)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter your email address and we will send you a secure link to reset your password.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _resetEmailController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    labelStyle: TextStyle(color: Colors.pinkAccent),
+                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.pinkAccent)),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent),
+                onPressed: _isSending ? null : () async {
+                  setState(() => _isSending = true);
+                  try {
+                    await BackendService.supabase.auth.resetPasswordForEmail(
+                      _resetEmailController.text.trim(),
+                      redirectTo: 'voxray://reset-password', // Uses your existing deep link scheme!
+                    );
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Reset link sent! Check your email.'), backgroundColor: Colors.green),
+                    );
+                  } catch (e) {
+                    setState(() => _isSending = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red),
+                    );
+                  }
+                },
+                child: _isSending 
+                    ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Send Link', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+  }
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -171,6 +238,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   child: const Text('Sign In', style: TextStyle(fontSize: 16)),
                 ),
+                TextButton(onPressed: _showForgotPasswordDialog, child: const Text("Forgot Password?"))
                 /*const Text(
                   "Beta Registration: visit voxray.info",
                   style: TextStyle(color: Colors.white70, fontSize: 14),
