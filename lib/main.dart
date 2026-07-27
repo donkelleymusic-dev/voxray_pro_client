@@ -739,13 +739,13 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     if (context.mounted) {
       showAboutDialog(
         context: context,
-        applicationName: 'voXRAY PRO',
+        applicationName: 'voXRay Forensic DAW',
         applicationVersion: 'Version $version (Build $buildNumber)',
-        applicationLegalese: '© 2026 Donald Bayard Kelley',
+        applicationLegalese: '©2026 Don Kelley @don-music',
         applicationIcon: const Icon(Icons.graphic_eq, color: Colors.pinkAccent, size: 48),
         children: [
           const SizedBox(height: 16),
-          const Text('Enterprise DSP, Roformer Engine, and polyphonic mixed pitch editor.', style: TextStyle(color: Colors.white70)),
+          const Text('Enterprise DSP, forensic pitch analysis, and polyphonic mixed pitch editor.', style: TextStyle(color: Colors.white70)),
         ],
       );
     }
