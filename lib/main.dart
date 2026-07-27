@@ -666,7 +666,6 @@ void _showDeleteAccountConfirmation() {
           ],
         ),
         content: const Text(
-          // 🛡️ Notice: Completely scrubbed of any mention of "subscriptions" or "billing"
           'Are you sure you want to delete your Voxray Pro account? This will permanently erase your data and immediately revoke your access to the DAW.',
           style: TextStyle(color: Colors.white70, height: 1.4),
         ),
@@ -678,7 +677,7 @@ void _showDeleteAccountConfirmation() {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              Navigator.pop(ctx); // Close the dialog immediately
+              Navigator.pop(ctx); 
               
               setState(() {
                 isLoading = true;
@@ -686,26 +685,24 @@ void _showDeleteAccountConfirmation() {
               });
 
               try {
-                // 1. Grab the secure access token from the active session
                 final session = BackendService.supabase.auth.currentSession;
                 if (session == null) throw Exception("No active session found.");
 
-                // 2. Fire the token at your Modal backend to kill Stripe & Supabase
                 final response = await http.post(
                   Uri.parse('$apiBase/api/account/delete'),
                   body: {'access_token': session.accessToken},
                 );
 
                 if (response.statusCode == 200) {
-                  // 3. Success! Log them out locally. 
-                  // AppGatekeeper will automatically detect the null session and route them to the Login screen.
                   await BackendService.supabase.auth.signOut();
                 } else {
                   final errData = json.decode(response.body);
-                  _showSaveConfirmation('Deletion failed: ${errData['detail']}');
+                  // Fixed: Removed the underscore
+                  showSaveConfirmation('Deletion failed: ${errData['detail']}');
                 }
               } catch (e) {
-                _showSaveConfirmation('Network Error: Could not delete account.');
+                // Fixed: Removed the underscore
+                showSaveConfirmation('Network Error: Could not delete account.');
               } finally {
                 if (mounted) {
                   setState(() {
@@ -721,7 +718,6 @@ void _showDeleteAccountConfirmation() {
       ),
     );
   }
-
   
   // ── Global Log Multiplexer ──────────────────────────────────────────────
   String getPlatformString() {
