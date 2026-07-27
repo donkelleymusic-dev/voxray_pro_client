@@ -2181,6 +2181,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                             value: state.volume,
                             min: 0.0, max: 1.5,
                             onChanged: (v) { 
+                              // 1. UPDATE THE UI STATE FIRST
+                              setMixerState(() => state.volume = v);
+                              this.setState(() { hasBeenSaved = false; });
+                              
+                              // 2. THEN TELL THE AUDIO ENGINE
                               if (key == 'master') {
                                 SoLoud.instance.setGlobalVolume(v);
                               } else {
