@@ -49,6 +49,7 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'models/channel_state.dart';
 import 'daw/daw_audio_controller.dart';
@@ -729,9 +730,28 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     );
   }
   
-
+  Future<void> _showAboutApp(BuildContext context) async {
+    PackageInfo packageInfo = await PackageInfo.fromPlatform();
+    
+    String version = packageInfo.version;
+    String buildNumber = packageInfo.buildNumber;
   
-void _showDeleteAccountConfirmation() {
+    if (context.mounted) {
+      showAboutDialog(
+        context: context,
+        applicationName: 'voXRAY PRO',
+        applicationVersion: 'Version $version (Build $buildNumber)',
+        applicationLegalese: '© 2026 Donald Bayard Kelley',
+        applicationIcon: const Icon(Icons.graphic_eq, color: Colors.pinkAccent, size: 48),
+        children: [
+          const SizedBox(height: 16),
+          const Text('Enterprise DSP, Roformer Engine, and polyphonic mixed pitch editor.', style: TextStyle(color: Colors.white70)),
+        ],
+      );
+    }
+  }
+    
+  void _showDeleteAccountConfirmation() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -3763,7 +3783,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               leading: Icon(Icons.sync_problem, color: Colors.orangeAccent),
               title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)))),
       const PopupMenuDivider(),
-      
+
+      PopupMenuItem(
+          value: 'build_info',
+          child: const ListTile(
+              leading: Icon(Icons.manage_accounts, color: Colors.white54),
+              title: Text('Build Info'))),
       PopupMenuItem(
           value: 'account_settings',
           child: const ListTile(
@@ -3804,6 +3829,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'reprocess':       forceReprocessXray(context); break;
       case 'detect_ai_vocal': _runAiVocalInspection(); break;
       case 'test_mode':       setState(() => isTestModeActive = !isTestModeActive); break;
+      case 'build_info':      _showAboutApp(); break;
       //case 'account_settings':
       //  Navigator.push(context, MaterialPageRoute(builder: (_) => AccountSettingsScreen()));
       //  break;
