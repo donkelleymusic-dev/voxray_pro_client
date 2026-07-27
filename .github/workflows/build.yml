@@ -1,7 +1,5 @@
 name: Build and Deploy Voxray
 
-
-
 on:
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
@@ -30,6 +28,10 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      # 1. GENERATE APP ICONS AUTOMATICALLY ON THE BUILD SERVER
+      - name: Generate Launcher Icons
+        run: dart run flutter_launcher_icons
 
       # 1. Build App Bundle (.aab) for Google Play
       - name: Build Android App Bundle (.aab)
