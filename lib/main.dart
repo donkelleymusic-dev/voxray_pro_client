@@ -53,7 +53,6 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'models/channel_state.dart';
 import 'daw/daw_audio_controller.dart';
 import 'daw/daw_api_service.dart';
-import 'daw/auth_gate.dart';
 
 import 'ui/timeline_canvas.dart';
 import 'ui/timeline_ruler.dart';
@@ -267,9 +266,132 @@ class _HorizontalVuMeterPainter extends CustomPainter {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
-// APP GATEKEEPER (Checks for saved login session on startup)
+// APP GATEKEEPER (Checks for saved login session & PRO status on startup)
 // ─────────────────────────────────────────────────────────────────────────────
 class AppGatekeeper extends StatefulWidget {
+  const AppGatekeeper({Key? key}) : super(key: key);
+
+  @override
+  State<AppGatekeeper> createState() => _AppGatekeeperState();
+}
+
+class _AppGatekeeperState extends State<AppGatekeeper> {
+  bool? _isLoggedIn;
+  bool? _isPro; 
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToAuthChanges();
+  }
+
+  void _listenToAuthChanges() {
+    // Listen directly to Supabase session state changes
+    BackendService.supabase.auth.onAuthStateChange.listen((data) async {
+      final session = data.session;
+      if (session == null) {
+        if (mounted) {
+          setState(() {
+            _isLoggedIn = false;
+            _isPro = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoggedIn = true);
+        
+        try {
+          // Query the new profiles table we created in SQL
+          final response = await BackendService.supabase
+              .from('profiles')
+              .select('is_pro')
+              .eq('id', session.user.id)
+              .single();
+
+          if (mounted) {
+            setState(() => _isPro = response['is_pro'] as bool? ?? false);
+          }
+        } catch (e) {
+          if (mounted) setState(() => _isPro = false);
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 1. App is loading session or verifying subscription status
+    if (_isLoggedIn == null || (_isLoggedIn! && _isPro == null)) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: Colors.pinkAccent)),
+      );
+    }
+
+    // 2. Not Logged In
+    if (!_isLoggedIn!) {
+      return const AuthScreen(); // Uses your existing Auth Screen!
+    }
+
+    // 3. Logged In, but paywall active (is_pro is false)
+    if (!_isPro!) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF121212),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.lock_clock, size: 64, color: Colors.white54),
+                const SizedBox(height: 24),
+                const Text(
+                  "Account Pending Activation",
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "Your Voxray Pro account has been created, but requires an active subscription to unlock the DSP engine.\n\nPlease check your email for your beta approval link, or visit voxray.info to manage your account.",
+                  style: TextStyle(fontSize: 14, color: Colors.white70, height: 1.5),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                
+                // Refresh button in case they paid while staring at this screen
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh, color: Colors.pinkAccent),
+                  label: const Text("Check Status", style: TextStyle(color: Colors.white)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.pinkAccent),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  onPressed: () {
+                    setState(() => _isPro = null);
+                    _listenToAuthChanges(); // Re-trigger the database check
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                TextButton(
+                  onPressed: () => BackendService.supabase.auth.signOut(),
+                  child: const Text("Log Out", style: TextStyle(color: Colors.white54)),
+                )
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 4. Fully Logged In & Paid -> Boot up the DAW!
+    return const VoxrayDAW();
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP GATEKEEPER (Checks for saved login session on startup)
+// ─────────────────────────────────────────────────────────────────────────────
+/*class AppGatekeeper extends StatefulWidget {
   const AppGatekeeper({Key? key}) : super(key: key);
 
   @override
@@ -348,7 +470,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
     // 4. Fully Logged In & Paid -> Boot up the DAW!
     return const VoxrayDAW();
   }
-}
+}*/
 
 class VoxrayDAW extends StatefulWidget {
   const VoxrayDAW({Key? key}) : super(key: key);
