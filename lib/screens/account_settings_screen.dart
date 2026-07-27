@@ -64,7 +64,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           if (widget.isForcedPaywall)
             IconButton(
               icon: const Icon(Icons.refresh),
-              tooltip: 'Check Payment Status',
+              tooltip: 'Check Account Status',
               onPressed: () async {
                 setState(() => _isLoading = true);
                 await _checkSubscriptionStatus();
@@ -93,8 +93,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 if (widget.isForcedPaywall) ...[
                   const Icon(Icons.lock_outline, size: 64, color: Colors.amberAccent),
                   const SizedBox(height: 16),
-                  const Text('Active Subscription Required', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const Text('You must subscribe to access the voXRAY Pro DAW.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                  const Text('Active Approved Account Required', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Text('You must wait for approval to access the voXRay Forensic DAW.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
                   const SizedBox(height: 24),
                 ],
                 ListTile(
@@ -105,7 +105,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 const Divider(),
                 ListTile(
                   title: const Text('App Access Level', style: TextStyle(color: Colors.grey)),
-                  subtitle: Text(_isSubscribed ? 'PRO Subscriber' : 'No Active Subscription', 
+                  subtitle: Text(_isSubscribed ? 'PRO Account' : 'No Approved Active Account', 
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isSubscribed ? Colors.green : Colors.red)),
                   leading: Icon(_isSubscribed ? Icons.verified : Icons.gpp_bad),
                 ),
