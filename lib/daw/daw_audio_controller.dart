@@ -160,12 +160,12 @@ mixin DawAudioController on VoxrayDAWStateBase {
         try {
           newSource.filters.freeverbFilter.activate();
           newSource.filters.compressorFilter.activate();
-          newSource.filters.biquadResonantFilter.activate();
+          newSource.filters.biquadFilter.activate();
           newSource.filters.waveShaperFilter.activate();
           
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
-          newSource.filters.biquadResonantFilter.wet().value = 0.0;
+          newSource.filters.biquadFilter.wet().value = 0.0;
           newSource.filters.waveShaperFilter.amount().value = 0.0;
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters: $fxError");
@@ -211,12 +211,12 @@ mixin DawAudioController on VoxrayDAWStateBase {
         try {
           newSource.filters.freeverbFilter.activate();
           newSource.filters.compressorFilter.activate();
-          newSource.filters.biquadResonantFilter.activate();
+          newSource.filters.biquadFilter.activate();
           newSource.filters.waveShaperFilter.activate();
 
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
-          newSource.filters.biquadResonantFilter.wet().value = 0.0;
+          newSource.filters.biquadFilter.wet().value = 0.0;
           newSource.filters.waveShaperFilter.amount().value = 0.0;
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters on web: $fxError");
@@ -275,12 +275,12 @@ mixin DawAudioController on VoxrayDAWStateBase {
         try {
           newSource.filters.freeverbFilter.activate();
           newSource.filters.compressorFilter.activate();
-          newSource.filters.biquadResonantFilter.activate();
+          newSource.filters.biquadFilter.activate();
           newSource.filters.waveShaperFilter.activate();
           
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
-          newSource.filters.biquadResonantFilter.wet().value = 0.0;
+          newSource.filters.biquadFilter.wet().value = 0.0;
           newSource.filters.waveShaperFilter.amount().value = 0.0;
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters: $fxError");
@@ -297,80 +297,6 @@ mixin DawAudioController on VoxrayDAWStateBase {
         applyStemPlugins(stemName);
       }
   
-    } catch (e) {
-      logToSupabase('Audio Layer Processing Failure [Track: $stemName]: $e', severity: 'ERROR');
-      setState(() => activePlaybackSources.remove(stemName));
-    } finally {
-      setState(() {
-        stemsCurrentlyFetching.remove(stemName);
-        isFetchingStems = false;
-      });
-      seekAllPlayers(currentPosition);
-      if (wasPlaying) playAllPlayers(); else pauseAllPlayers();
-    }
-  }
-  
-  Future<void> loadStemPlayerSource_old(String stemName, String apiBase, String taskId) async {
-    if (stemsCurrentlyFetching.contains(stemName)) return;
-
-    setState(() {
-      stemsCurrentlyFetching.add(stemName);
-      isFetchingStems = true;
-    });
-
-    bool wasPlaying = isPlaying;
-    if (wasPlaying) pauseAllPlayers();
-
-    try {
-      bool localFileExists = false;
-      String? targetPath = cachedStemPaths[stemName];
-
-      // 1. If the project loader or autosave registered a path, check if it's physically on disk
-      if (targetPath != null && targetPath.isNotEmpty) {
-        if (await File(targetPath).exists()) {
-          localFileExists = true;
-        }
-      }
-
-      // 2. Only download from the server if we lack a valid offline file path
-      if (!localFileExists) {
-        if (taskId.isEmpty) {
-          throw Exception('Cannot fetch stem: no valid server Task ID or offline cache path available.');
-        }
-        final dir = await getTemporaryDirectory();
-        final String networkFilePath = '${dir.path}/${taskId}_$stemName.ogg';
-        
-        logToSupabase("Local cache missing for track [$stemName]. Streaming from remote node deployment...");
-        final bytes = await fetchStemBytes(stemName, apiBase, taskId);
-        await File(networkFilePath).writeAsBytes(bytes);
-        cachedStemPaths[stemName] = networkFilePath;
-      } else {
-        logToSupabase("Cache verified. Streaming [$stemName] directly from storage path: ${cachedStemPaths[stemName]}");
-      }
-
-      // Force clear the old voice handle before creating a new one to avoid dead engine pointers
-      if (stemHandles.containsKey(stemName)) {
-        if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
-          SoLoud.instance.stop(stemHandles[stemName]!);
-        }
-        stemHandles.remove(stemName);
-      }
-
-      // Read audio dynamically from disk (Streaming, not loading into RAM):
-      stemSources[stemName] = await SoLoud.instance.loadFile(
-        cachedStemPaths[stemName]!,
-        mode: LoadMode.disk, // <--- THIS PREVENTS RAM CRASHES!
-      );
-
-      // Setup playback parameters
-      stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
-      SoLoud.instance.setPause(stemHandles[stemName]!, true);
-
-      final state = getChannelState(stemName);
-      logToSupabase("DSP Configuration: Channel track [$stemName] initialized with volume level: ${state.volume}");
-      SoLoud.instance.setVolume(stemHandles[stemName]!, state.isMuted ? 0.0 : state.volume);
-      SoLoud.instance.setPan(stemHandles[stemName]!, state.pan);
-
     } catch (e) {
       logToSupabase('Audio Layer Processing Failure [Track: $stemName]: $e', severity: 'ERROR');
       setState(() => activePlaybackSources.remove(stemName));
@@ -505,25 +431,25 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       // ── EQ (Low Pass Filter) ────────────────────────────────────────────────
       if (plugins.contains('EQ')) {
-        if (!source.filters.biquadResonantFilter.isActive) {
-          source.filters.biquadResonantFilter.activate();
+        if (!source.filters.biquadFilter.isActive) {
+          source.filters.biquadFilter.activate();
         }
-        source.filters.biquadResonantFilter.wet().value = 1.0; 
-        source.filters.biquadResonantFilter.type().value = 0; // 0 = Low Pass
-        source.filters.biquadResonantFilter.resonance().value = 3.0; // ✨ THE SPARKLE
+        source.filters.biquadFilter.wet().value = 1.0; 
+        source.filters.biquadFilter.type().value = 0; // 0 = Low Pass
+        source.filters.biquadFilter.resonance().value = 3.0; // ✨ THE SPARKLE
         
         double targetFrequency = sliderToFrequency(state.eqCutoff);
-        source.filters.biquadResonantFilter.frequency().value = targetFrequency;
+        source.filters.biquadFilter.frequency().value = targetFrequency;
         
         if (handle != null) {
-          source.filters.biquadResonantFilter.wet(soundHandle: handle).value = 1.0;
-          source.filters.biquadResonantFilter.type(soundHandle: handle).value = 0;
-          source.filters.biquadResonantFilter.resonance(soundHandle: handle).value = 3.0; // ✨ THE SPARKLE
-          source.filters.biquadResonantFilter.frequency(soundHandle: handle).value = targetFrequency;
+          source.filters.biquadFilter.wet(soundHandle: handle).value = 1.0;
+          source.filters.biquadFilter.type(soundHandle: handle).value = 0;
+          source.filters.biquadFilter.resonance(soundHandle: handle).value = 3.0; // ✨ THE SPARKLE
+          source.filters.biquadFilter.frequency(soundHandle: handle).value = targetFrequency;
         }
       } else {
-        source.filters.biquadResonantFilter.wet().value = 0.0;
-        if (handle != null) source.filters.biquadResonantFilter.wet(soundHandle: handle).value = 0.0;
+        source.filters.biquadFilter.wet().value = 0.0;
+        if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
       
       // 🎸 THE NEW OVERDRIVE BLOCK
@@ -579,8 +505,6 @@ mixin DawAudioController on VoxrayDAWStateBase {
           SoLoud.instance.filters.freeverbFilter.activate();
         }
         double safeMix = state.reverbMix;
-        //double safeMix = state.reverbMix > 0.0 ? state.reverbMix : 0.5;
-        // Global parameters are properties, not methods! (No parentheses)
         SoLoud.instance.filters.freeverbFilter.wet.value = safeMix;
         SoLoud.instance.filters.freeverbFilter.roomSize.value = state.reverbRoomSize;
       } else {
@@ -589,20 +513,17 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       // ── MASTER EQ (Biquad Resonant Filter) ──────────────────────────────
       if (plugins.contains('EQ')) {
-        if (!SoLoud.instance.filters.biquadResonantFilter.isActive) {
-          SoLoud.instance.filters.biquadResonantFilter.activate();
+        if (!SoLoud.instance.filters.biquadFilter.isActive) {
+          SoLoud.instance.filters.biquadFilter.activate();
         }
-        //SoLoud.instance.filters.biquadResonantFilter.resonance.value = 1.5;
-        SoLoud.instance.filters.biquadResonantFilter.wet.value = 1.0;
-        SoLoud.instance.filters.biquadResonantFilter.type.value = 0; // Low Pass
-        
-        // ADD THIS LINE: Give the filter enough resonance to be audible!
-        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 3.0; 
+        SoLoud.instance.filters.biquadFilter.wet.value = 1.0;
+        SoLoud.instance.filters.biquadFilter.type.value = 0; // Low Pass
+        SoLoud.instance.filters.biquadFilter.resonance.value = 3.0; // ✨ THE SPARKLE
         
         double targetFrequency = sliderToFrequency(state.eqCutoff);
-        SoLoud.instance.filters.biquadResonantFilter.frequency.value = targetFrequency;
+        SoLoud.instance.filters.biquadFilter.frequency.value = targetFrequency;
       } else {
-        SoLoud.instance.filters.biquadResonantFilter.wet.value = 0.0;
+        SoLoud.instance.filters.biquadFilter.wet.value = 0.0;
       }
 
       // ── MASTER COMPRESSOR ────────────────────────────────────────────────
