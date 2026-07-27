@@ -744,7 +744,7 @@ void _showDeleteAccountConfirmation() {
           ],
         ),
         content: const Text(
-          'Are you sure you want to delete your voXRay account? This will permanently erase your data and immediately revoke your access to the DAW.',
+          'Are you sure you want to delete your voXRay account? This action is permanent and cannot be undone.\n\nYour profile, all saved forensic data, and your remaining DSP tokens will be instantly deleted.\n\nYou will immediately lose access to voXRay.',
           style: TextStyle(color: Colors.white70, height: 1.4),
         ),
         actions: [
