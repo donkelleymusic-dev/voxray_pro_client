@@ -164,7 +164,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
           
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
-          newSource.filters.biquadFilter.wet().value = 0.0;
+          //newSource.filters.biquadFilter.wet().value = 0.0;
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters: $fxError");
         }
@@ -575,12 +575,12 @@ mixin DawAudioController on VoxrayDAWStateBase {
         if (!SoLoud.instance.filters.biquadResonantFilter.isActive) {
           SoLoud.instance.filters.biquadResonantFilter.activate();
         }
-        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 1.5;
+        //SoLoud.instance.filters.biquadResonantFilter.resonance.value = 1.5;
         SoLoud.instance.filters.biquadResonantFilter.wet.value = 1.0;
         SoLoud.instance.filters.biquadResonantFilter.type.value = 0; // Low Pass
         
         // ADD THIS LINE: Give the filter enough resonance to be audible!
-        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 2.0; 
+        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 3.0; 
         
         double targetFrequency = sliderToFrequency(state.eqCutoff);
         SoLoud.instance.filters.biquadResonantFilter.frequency.value = targetFrequency;
