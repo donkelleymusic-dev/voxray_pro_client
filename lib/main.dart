@@ -279,7 +279,8 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
   bool? _isLoggedIn;
   bool _isPro = false; // 👈 Default to false, but let's handle the checking state cleanly
   bool _isCheckingProfile = true; // 👈 Add a dedicated checking flag
-
+  bool _isRecoveringPassword = false;
+  
   @override
   void initState() {
     super.initState();
@@ -289,16 +290,35 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
   void _listenToAuthChanges() {
     BackendService.supabase.auth.onAuthStateChange.listen((data) async {
       final session = data.session;
+      final event = data.event;
+
+      // 🚨 CATCH THE RECOVERY LINK
+      if (event == AuthChangeEvent.passwordRecovery) {
+        if (mounted) {
+          setState(() {
+            _isRecoveringPassword = true;
+            _isCheckingProfile = false;
+          });
+        }
+        return; // Stop processing normal login flow
+      }
+      
       if (session == null) {
         if (mounted) {
           setState(() {
             _isLoggedIn = false;
             _isPro = false;
-            _isCheckingProfile = false;
+            _isCheckingProfile = false; // Safe to stop checking when logged out
           });
         }
       } else {
-        if (mounted) setState(() => _isLoggedIn = true);
+        // 🚨 THE FIX: Force the loader on immediately when a session appears
+        if (mounted) {
+          setState(() {
+            _isLoggedIn = true;
+            _isCheckingProfile = true; 
+          });
+        }
         
         try {
           final response = await BackendService.supabase
@@ -310,7 +330,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
           if (mounted) {
             setState(() {
               _isPro = response['is_pro'] as bool? ?? false;
-              _isCheckingProfile = false; // 👈 Done checking, safe to render
+              _isCheckingProfile = false; // Now it's safe to reveal the UI
             });
           }
         } catch (e) {
@@ -327,6 +347,58 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
 
   @override
   Widget build(BuildContext context) {
+    // 0. PASSWORD RECOVERY MODE
+    if (_isRecoveringPassword) {
+      final TextEditingController _newPasswordController = TextEditingController();
+      return Scaffold(
+        backgroundColor: const Color(0xFF121212),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.lock_reset, size: 64, color: Colors.pinkAccent),
+                const SizedBox(height: 24),
+                const Text("Set New Password", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _newPasswordController,
+                  obscureText: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'New Password',
+                    labelStyle: TextStyle(color: Colors.pinkAccent),
+                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.pinkAccent)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent, padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16)),
+                  onPressed: () async {
+                    try {
+                      // Tell Supabase to securely update the password for the active session
+                      await BackendService.supabase.auth.updateUser(
+                        UserAttributes(password: _newPasswordController.text),
+                      );
+                      
+                      // Turn off recovery mode and let the Gatekeeper route them into the DAW!
+                      setState(() => _isRecoveringPassword = false);
+                      
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                    }
+                  },
+                  child: const Text('Update Password', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    
     // 1. If we are still figuring out auth OR querying the profile table, show a sleek loader
     if (_isLoggedIn == null || (_isLoggedIn! && _isCheckingProfile)) {
       return const Scaffold(
@@ -334,7 +406,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
         body: Center(child: CircularProgressIndicator(color: Colors.pinkAccent)),
       );
     }
-
+    
     // 2. Not Logged In
     if (!_isLoggedIn!) {
       return const AuthScreen();
