@@ -53,6 +53,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'models/channel_state.dart';
 import 'daw/daw_audio_controller.dart';
 import 'daw/daw_api_service.dart';
+import 'daw/auth_gate.dart';
 
 import 'ui/timeline_canvas.dart';
 import 'ui/timeline_ruler.dart';
