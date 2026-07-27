@@ -513,17 +513,17 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       // ── MASTER EQ (Biquad Resonant Filter) ──────────────────────────────
       if (plugins.contains('EQ')) {
-        if (!SoLoud.instance.filters.biquadFilter.isActive) {
-          SoLoud.instance.filters.biquadFilter.activate();
+        if (!SoLoud.instance.filters.biquadResonantFilter.isActive) {
+          SoLoud.instance.filters.biquadResonantFilter.activate();
         }
-        SoLoud.instance.filters.biquadFilter.wet.value = 1.0;
-        SoLoud.instance.filters.biquadFilter.type.value = 0; // Low Pass
-        SoLoud.instance.filters.biquadFilter.resonance.value = 3.0; // ✨ THE SPARKLE
+        SoLoud.instance.filters.biquadResonantFilter.wet.value = 1.0;
+        SoLoud.instance.filters.biquadResonantFilter.type.value = 0; // Low Pass
+        SoLoud.instance.filters.biquadResonantFilter.resonance.value = 3.0; // ✨ THE SPARKLE
         
         double targetFrequency = sliderToFrequency(state.eqCutoff);
-        SoLoud.instance.filters.biquadFilter.frequency.value = targetFrequency;
+        SoLoud.instance.filters.biquadResonantFilter.frequency.value = targetFrequency;
       } else {
-        SoLoud.instance.filters.biquadFilter.wet.value = 0.0;
+        SoLoud.instance.filters.biquadResonantFilter.wet.value = 0.0;
       }
 
       // ── MASTER COMPRESSOR ────────────────────────────────────────────────
