@@ -5,7 +5,7 @@ import '../main.dart';
 import 'auth_screen.dart';
 
 class AccountSettingsScreen extends StatefulWidget {
-  final bool isForcedPaywall; // If true, the user MUST subscribe to continue
+  final bool isForcedPaywall; // If true, the user MUST have an approved account to continue
   const AccountSettingsScreen({Key? key, this.isForcedPaywall = false}) : super(key: key);
 
   @override
@@ -33,27 +33,6 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     }
   }
 
-  Future<void> _launchStripe(String tier) async {
-    setState(() => _isLoading = true);
-    try {
-      String targetUrl;
-      if (_isSubscribed) {
-        targetUrl = await BackendService.getStripePortalUrl();
-      } else {
-        targetUrl = await BackendService.getSubscriptionUrl(tier: tier);
-      }
-      await launchUrl(Uri.parse(targetUrl), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Billing Error: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -70,7 +49,6 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 await _checkSubscriptionStatus();
                 
                 if (_isSubscribed && mounted) {
-                  // ✅ FIX: Defer navigation safely out of the current build frame
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) {
                       Navigator.of(context).pushReplacement(
@@ -83,80 +61,58 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
             )
         ],
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (widget.isForcedPaywall) ...[
-                  const Icon(Icons.lock_outline, size: 64, color: Colors.amberAccent),
-                  const SizedBox(height: 16),
-                  const Text('Active Approved Account Required', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const Text('You must wait for approval to access the voXRay Forensic DAW.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 24),
-                ],
-                ListTile(
-                  title: const Text('Logged In As', style: TextStyle(color: Colors.grey)),
-                  subtitle: Text(_userEmail, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  leading: const Icon(Icons.person),
-                ),
-                const Divider(),
-                ListTile(
-                  title: const Text('App Access Level', style: TextStyle(color: Colors.grey)),
-                  subtitle: Text(_isSubscribed ? 'PRO Account' : 'No Approved Active Account', 
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isSubscribed ? Colors.green : Colors.red)),
-                  leading: Icon(_isSubscribed ? Icons.verified : Icons.gpp_bad),
-                ),
-                const SizedBox(height: 32),
-                
-                /*if (_isSubscribed)
-                  ElevatedButton.icon(
-                    onPressed: () => _launchStripe('portal'),
-                    icon: const Icon(Icons.credit_card),
-                    label: const Text('Manage Billing / Cancel'),
-                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+      // ✅ FIX: SafeArea ensures bottom UI elements avoid the Android system nav bar
+      body: SafeArea(
+        child: _isLoading 
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (widget.isForcedPaywall) ...[
+                    const Icon(Icons.lock_outline, size: 64, color: Colors.amberAccent),
+                    const SizedBox(height: 16),
+                    const Text('Active Approved Account Required', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    const Text('You must wait for approval to access the voXRay Forensic DAW.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 24),
+                  ],
+                  ListTile(
+                    title: const Text('Logged In As', style: TextStyle(color: Colors.grey)),
+                    subtitle: Text(_userEmail, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    leading: const Icon(Icons.person),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    title: const Text('App Access Level', style: TextStyle(color: Colors.grey)),
+                    subtitle: Text(_isSubscribed ? 'PRO Account' : 'No Approved Active Account', 
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _isSubscribed ? Colors.green : Colors.red)),
+                    leading: Icon(_isSubscribed ? Icons.verified : Icons.gpp_bad),
+                  ),
+                  const Spacer(),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await BackendService.signOut();
+                      if (mounted) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (_) => const AuthScreen()), 
+                              (route) => false,
+                            );
+                          }
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Sign Out'),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                   )
-                else ...[
-                  ElevatedButton.icon(
-                    onPressed: () => _launchStripe('monthly'),
-                    icon: const Icon(Icons.calendar_month),
-                    label: const Text('Subscribe Monthly (Includes 100 Tokens)'),
-                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: () => _launchStripe('yearly'),
-                    icon: const Icon(Icons.star),
-                    label: const Text('Subscribe Yearly (Includes 2000 Tokens)'),
-                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), backgroundColor: Colors.amberAccent, foregroundColor: Colors.black),
-                  ),
-                ],*/
-
-                const Spacer(),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    await BackendService.signOut();
-                    if (mounted) {
-                      // ✅ FIX: Defer navigation safely out of the current build frame
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) {
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (_) => AuthScreen()), 
-                            (route) => false,
-                          );
-                        }
-                      });
-                    }
-                  },
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Sign Out'),
-                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                )
-              ],
+                ],
+              ),
             ),
-          ),
+      ),
     );
   }
 }
