@@ -1956,6 +1956,18 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           SoLoud.instance.filters.compressorFilter.deactivate();
         }
       }
+      // 🎸 THE NEW OVERDRIVE BLOCK
+      if (plugins.contains('Overdrive')) {
+        if (!SoLoud.instance.filters.waveShaperFilter.isActive) {
+          SoLoud.instance.filters.waveShaperFilter.activate();
+        }
+        // Set the intensity of the soft clipping based on your slider
+        SoLoud.instance.filters.waveShaperFilter.amount.value = state.overdriveAmount;
+      } else {
+        if (SoLoud.instance.filters.waveShaperFilter.isActive) {
+          SoLoud.instance.filters.waveShaperFilter.deactivate();
+        }
+      }
     } catch (e) {
       logToSupabase('Master DSP activation failed: $e');
     }
@@ -2324,7 +2336,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                       fontSize: 8,
                       color: pluginName == 'None' ? Colors.white38 : highlight),
                   value: pluginName,
-                  items: ['None', 'Compressor', 'EQ', 'Reverb', 'De-esser']
+                  items: ['None', 'Compressor', 'EQ', 'Reverb', 'Overdrive']
                       .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                       .toList(),
                   onChanged: onChanged,
@@ -2403,6 +2415,26 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 min: 0.0, max: 1.0, activeColor: highlight, // Changed from 200 - 20000
                 onChanged: (val) {
                   setDialogState(() => state.eqCutoff = val);
+                  this.setState(() { hasBeenSaved = false; });
+                  if (stemKey == 'master') {
+                    applyMasterPlugins();
+                  } else {
+                    applyStemPlugins(stemKey); 
+                  } 
+                },
+              ),
+            ]);
+          }
+          else if (pluginName == 'Overdrive') {
+            sliders.addAll([
+              const Text('Harmonic Drive (Saturation)', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              Slider(
+                value: state.overdriveAmount,
+                min: 0.0, 
+                max: 1.0, // 0.0 is clean, 1.0 is heavy distortion
+                activeColor: highlight,
+                onChanged: (val) {
+                  setDialogState(() => state.overdriveAmount = val);
                   this.setState(() { hasBeenSaved = false; });
                   if (stemKey == 'master') {
                     applyMasterPlugins();
