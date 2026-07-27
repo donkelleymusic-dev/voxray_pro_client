@@ -387,6 +387,50 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
   }
 }
 
+void _showDeleteAccountConfirmation() {
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: Colors.grey[900],
+      title: const Row(
+        children: [
+          Icon(Icons.warning, color: Colors.redAccent),
+          SizedBox(width: 8),
+          Text('Delete Account', style: TextStyle(color: Colors.redAccent)),
+        ],
+      ),
+      content: const Text(
+        'Are you sure you want to delete your Voxray Pro account? This will permanently erase your data and immediately revoke your access to the DAW.\n\nTo cancel your active billing subscription, please visit voxray.info in your browser.',
+        style: TextStyle(color: Colors.white70, height: 1.4),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () async {
+            Navigator.pop(ctx);
+            
+            final userId = BackendService.supabase.auth.currentUser?.id;
+            if (userId != null) {
+              // 1. Flag their profile for deletion & revoke Pro status
+              await BackendService.supabase
+                  .from('profiles')
+                  .update({'status': 'pending_deletion', 'is_pro': false})
+                  .eq('id', userId);
+            }
+            
+            // 2. Immediately log them out and boot them to the auth gate
+            await BackendService.supabase.auth.signOut();
+          },
+          child: const Text('Delete My Account', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+      ],
+    ),
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // APP GATEKEEPER (Checks for saved login session on startup)
@@ -3618,6 +3662,23 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           child: const ListTile(
               leading: Icon(Icons.sync_problem, color: Colors.orangeAccent),
               title: Text('Reprocess X-Ray', style: TextStyle(color: Colors.orangeAccent)))),
+      const PopupMenuDivider(),
+      
+      PopupMenuItem(
+          value: 'account_settings',
+          child: const ListTile(
+              leading: Icon(Icons.manage_accounts, color: Colors.white54),
+              title: Text('Manage Account'))),
+      PopupMenuItem(
+          value: 'logout',
+          child: const ListTile(
+              leading: Icon(Icons.logout, color: Colors.redAccent),
+              title: Text('Log Out', style: TextStyle(color: Colors.redAccent)))),
+      PopupMenuItem(
+          value: 'delete_account',
+          child: const ListTile(
+              leading: Icon(Icons.delete_forever, color: Colors.red),
+              title: Text('Delete Account', style: TextStyle(color: Colors.red)))),
     ];
   }
 
@@ -3643,9 +3704,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'reprocess':       forceReprocessXray(context); break;
       case 'detect_ai_vocal': _runAiVocalInspection(); break;
       case 'test_mode':       setState(() => isTestModeActive = !isTestModeActive); break;
-      case 'account_settings':
-        Navigator.push(context, MaterialPageRoute(builder: (_) => AccountSettingsScreen()));
-        break;
+      //case 'account_settings':
+      //  Navigator.push(context, MaterialPageRoute(builder: (_) => AccountSettingsScreen()));
+      //  break;
       case 'about_info':
         Navigator.push(context, MaterialPageRoute(builder: (_) => AboutInfoScreen(contentKey: 'about_me', pageTitle: 'About voXRay')));
         break;
@@ -3656,6 +3717,15 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'dual_take':       _loadSecondaryVocalTake(); break; // obsolete... fun for earli prototesting but not useful.
       //case 'sync_vocals':     _syncVocalTakes(); break;
         // Inside _handleMenuSelection(String value), add the case handler:
+      case 'account_settings':
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountSettingsScreen()));
+        break;
+      case 'logout':
+        BackendService.supabase.auth.signOut();
+        break;
+      case 'delete_account':
+        _showDeleteAccountConfirmation();
+        break;
       
     }
   }
