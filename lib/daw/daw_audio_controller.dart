@@ -160,11 +160,13 @@ mixin DawAudioController on VoxrayDAWStateBase {
         try {
           newSource.filters.freeverbFilter.activate();
           newSource.filters.compressorFilter.activate();
-          newSource.filters.biquadFilter.activate();
+          newSource.filters.biquadResonantFilter.activate();
+          newSource.filters.waveShaperFilter.activate();
           
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
-          //newSource.filters.biquadFilter.wet().value = 0.0;
+          newSource.filters.biquadResonantFilter.wet().value = 0.0;
+          newSource.filters.waveShaperFilter.amount().value = 0.0;
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters: $fxError");
         }
@@ -207,9 +209,15 @@ mixin DawAudioController on VoxrayDAWStateBase {
         );
   
         try {
+          newSource.filters.freeverbFilter.activate();
+          newSource.filters.compressorFilter.activate();
+          newSource.filters.biquadResonantFilter.activate();
+          newSource.filters.waveShaperFilter.activate();
+
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
-          newSource.filters.biquadFilter.wet().value = 0.0;
+          newSource.filters.biquadResonantFilter.wet().value = 0.0;
+          newSource.filters.waveShaperFilter.amount().value = 0.0;
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters on web: $fxError");
         }
@@ -267,11 +275,13 @@ mixin DawAudioController on VoxrayDAWStateBase {
         try {
           newSource.filters.freeverbFilter.activate();
           newSource.filters.compressorFilter.activate();
-          newSource.filters.biquadFilter.activate();
+          newSource.filters.biquadResonantFilter.activate();
+          newSource.filters.waveShaperFilter.activate();
           
           newSource.filters.freeverbFilter.wet().value = 0.0;
           newSource.filters.compressorFilter.wet().value = 0.0;
-          newSource.filters.biquadFilter.wet().value = 0.0;
+          newSource.filters.biquadResonantFilter.wet().value = 0.0;
+          newSource.filters.waveShaperFilter.amount().value = 0.0;
         } catch (fxError) {
           logToSupabase("Warning: Could not pre-load filters: $fxError");
         }
@@ -495,32 +505,39 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       // ── EQ (Low Pass Filter) ────────────────────────────────────────────────
       if (plugins.contains('EQ')) {
-        source.filters.biquadFilter.wet().value = 1.0; 
-        source.filters.biquadFilter.type().value = 0; // 0 = Low Pass
+        if (!source.filters.biquadResonantFilter.isActive) {
+          source.filters.biquadResonantFilter.activate();
+        }
+        source.filters.biquadResonantFilter.wet().value = 1.0; 
+        source.filters.biquadResonantFilter.type().value = 0; // 0 = Low Pass
+        source.filters.biquadResonantFilter.resonance().value = 3.0; // ✨ THE SPARKLE
         
         double targetFrequency = sliderToFrequency(state.eqCutoff);
-        source.filters.biquadFilter.frequency().value = targetFrequency;
+        source.filters.biquadResonantFilter.frequency().value = targetFrequency;
         
         if (handle != null) {
-          source.filters.biquadFilter.wet(soundHandle: handle).value = 1.0;
-          source.filters.biquadFilter.type(soundHandle: handle).value = 0;
-          source.filters.biquadFilter.frequency(soundHandle: handle).value = targetFrequency;
+          source.filters.biquadResonantFilter.wet(soundHandle: handle).value = 1.0;
+          source.filters.biquadResonantFilter.type(soundHandle: handle).value = 0;
+          source.filters.biquadResonantFilter.resonance(soundHandle: handle).value = 3.0; // ✨ THE SPARKLE
+          source.filters.biquadResonantFilter.frequency(soundHandle: handle).value = targetFrequency;
         }
       } else {
-        source.filters.biquadFilter.wet().value = 0.0;
-        if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
+        source.filters.biquadResonantFilter.wet().value = 0.0;
+        if (handle != null) source.filters.biquadResonantFilter.wet(soundHandle: handle).value = 0.0;
       }
       
       // 🎸 THE NEW OVERDRIVE BLOCK
       if (plugins.contains('Overdrive')) {
-        if (!SoLoud.instance.filters.waveShaperFilter.isActive) {
-          SoLoud.instance.filters.waveShaperFilter.activate();
+        if (!source.filters.waveShaperFilter.isActive) {
+          source.filters.waveShaperFilter.activate();
         }
-        // Set the intensity of the soft clipping based on your slider
-        SoLoud.instance.filters.waveShaperFilter.amount.value = state.overdriveAmount;
+        source.filters.waveShaperFilter.amount().value = state.overdriveAmount;
+        if (handle != null) {
+          source.filters.waveShaperFilter.amount(soundHandle: handle).value = state.overdriveAmount;
+        }
       } else {
-        if (SoLoud.instance.filters.waveShaperFilter.isActive) {
-          SoLoud.instance.filters.waveShaperFilter.deactivate();
+        if (source.filters.waveShaperFilter.isActive) {
+          source.filters.waveShaperFilter.deactivate();
         }
       }
       
