@@ -359,7 +359,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  "Your Voxray Pro account has been created, but requires an active subscription to unlock the DSP engine.\n\nPlease check your email for your beta approval link, or visit voxray.info to manage your account.",
+                  "Your voXRay account has been created, but requires an active approved account to unlock the DSP engine.\n\nPlease check your email for your beta approval link, or visit voxray.info for more info.",
                   style: TextStyle(fontSize: 14, color: Colors.white70, height: 1.5),
                   textAlign: TextAlign.center,
                 ),
@@ -427,7 +427,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
       } else {
         if (mounted) setState(() => _isLoggedIn = true);
         
-        // Fetch subscription status directly via the BackendService
+        // Fetch  status directly via the BackendService
         final active = await BackendService.isSubscriptionActive();
         if (mounted) {
           setState(() => _isSubscribed = active);
@@ -455,7 +455,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. App is loading session or verifying subscription status
+    // 1. App is loading session or verifying  status
     if (_isLoggedIn == null || (_isLoggedIn! && _isSubscribed == null)) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -467,7 +467,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
       return const AuthScreen();
     }
 
-    // 3. Logged In, but paywall active (No subscription found)
+    // 3. Logged In, but paywall active (No  found)
     if (!_isSubscribed!) {
       return const AccountSettingsScreen(isForcedPaywall: true);
     }
