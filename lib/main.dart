@@ -277,7 +277,8 @@ class AppGatekeeper extends StatefulWidget {
 
 class _AppGatekeeperState extends State<AppGatekeeper> {
   bool? _isLoggedIn;
-  bool? _isPro; 
+  bool _isPro = false; // 👈 Default to false, but let's handle the checking state cleanly
+  bool _isCheckingProfile = true; // 👈 Add a dedicated checking flag
 
   @override
   void initState() {
@@ -286,7 +287,6 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
   }
 
   void _listenToAuthChanges() {
-    // Listen directly to Supabase session state changes
     BackendService.supabase.auth.onAuthStateChange.listen((data) async {
       final session = data.session;
       if (session == null) {
@@ -294,13 +294,13 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
           setState(() {
             _isLoggedIn = false;
             _isPro = false;
+            _isCheckingProfile = false;
           });
         }
       } else {
         if (mounted) setState(() => _isLoggedIn = true);
         
         try {
-          // Query the new profiles table we created in SQL
           final response = await BackendService.supabase
               .from('profiles')
               .select('is_pro')
@@ -308,10 +308,18 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
               .single();
 
           if (mounted) {
-            setState(() => _isPro = response['is_pro'] as bool? ?? false);
+            setState(() {
+              _isPro = response['is_pro'] as bool? ?? false;
+              _isCheckingProfile = false; // 👈 Done checking, safe to render
+            });
           }
         } catch (e) {
-          if (mounted) setState(() => _isPro = false);
+          if (mounted) {
+            setState(() {
+              _isPro = false;
+              _isCheckingProfile = false;
+            });
+          }
         }
       }
     });
@@ -319,20 +327,21 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. App is loading session or verifying subscription status
-    if (_isLoggedIn == null || (_isLoggedIn! && _isPro == null)) {
+    // 1. If we are still figuring out auth OR querying the profile table, show a sleek loader
+    if (_isLoggedIn == null || (_isLoggedIn! && _isCheckingProfile)) {
       return const Scaffold(
+        backgroundColor: Color(0xFF121212),
         body: Center(child: CircularProgressIndicator(color: Colors.pinkAccent)),
       );
     }
 
     // 2. Not Logged In
     if (!_isLoggedIn!) {
-      return const AuthScreen(); // Uses your existing Auth Screen!
+      return const AuthScreen();
     }
 
     // 3. Logged In, but paywall active (is_pro is false)
-    if (!_isPro!) {
+    if (!_isPro) {
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
         body: Center(
@@ -355,8 +364,6 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
-                
-                // Refresh button in case they paid while staring at this screen
                 OutlinedButton.icon(
                   icon: const Icon(Icons.refresh, color: Colors.pinkAccent),
                   label: const Text("Check Status", style: TextStyle(color: Colors.white)),
@@ -365,12 +372,11 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   ),
                   onPressed: () {
-                    setState(() => _isPro = null);
-                    _listenToAuthChanges(); // Re-trigger the database check
+                    setState(() => _isCheckingProfile = true);
+                    _listenToAuthChanges();
                   },
                 ),
                 const SizedBox(height: 16),
-                
                 TextButton(
                   onPressed: () => BackendService.supabase.auth.signOut(),
                   child: const Text("Log Out", style: TextStyle(color: Colors.white54)),
