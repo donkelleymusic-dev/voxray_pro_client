@@ -672,7 +672,7 @@ void _showDeleteAccountConfirmation() {
           ],
         ),
         content: const Text(
-          'Are you sure you want to delete your Voxray Pro account? This will permanently erase your data and immediately revoke your access to the DAW.',
+          'Are you sure you want to delete your voXRay account? This will permanently erase your data and immediately revoke your access to the DAW.',
           style: TextStyle(color: Colors.white70, height: 1.4),
         ),
         actions: [
