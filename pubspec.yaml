@@ -77,6 +77,8 @@ flutter_launcher_icons:
   android: true
   ios: true # Set to false if you are only targeting Android right now
   min_sdk_android: 21 # Specifies the minimum Android SDK version
+  adaptive_icon_background: "#1c083d" # Matches your dark theme, or use an image path
+  adaptive_icon_foreground: "assets/icons/app_icon.png"
   
 # The following section is specific to Flutter packages.
 flutter:
