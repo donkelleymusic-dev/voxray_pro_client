@@ -510,7 +510,20 @@ mixin DawAudioController on VoxrayDAWStateBase {
         source.filters.biquadFilter.wet().value = 0.0;
         if (handle != null) source.filters.biquadFilter.wet(soundHandle: handle).value = 0.0;
       }
-
+      
+      // 🎸 THE NEW OVERDRIVE BLOCK
+      if (plugins.contains('Overdrive')) {
+        if (!SoLoud.instance.filters.waveShaperFilter.isActive) {
+          SoLoud.instance.filters.waveShaperFilter.activate();
+        }
+        // Set the intensity of the soft clipping based on your slider
+        SoLoud.instance.filters.waveShaperFilter.amount.value = state.overdriveAmount;
+      } else {
+        if (SoLoud.instance.filters.waveShaperFilter.isActive) {
+          SoLoud.instance.filters.waveShaperFilter.deactivate();
+        }
+      }
+      
       // ── COMPRESSOR (Option 1: Always On, Real-time update) ─────────────────
       // ── COMPRESSOR ─────────────────────────────────────────────────────────
       if (plugins.contains('Compressor')) {
