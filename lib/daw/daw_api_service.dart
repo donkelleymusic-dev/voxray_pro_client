@@ -28,6 +28,8 @@ import '../models/channel_state.dart';
 import '../audio/vox_synth.dart';
 import '../services/supabase_service.dart';
 import '../main.dart'; // Gives access to VoxrayDAWStateBase
+import '../models/audio_channel.dart';
+import '../ui/optimize_mix_dialog.dart';
 
 /// Drop this mixin onto VoxrayDAWState.
 mixin DawApiService on VoxrayDAWStateBase {
@@ -41,6 +43,11 @@ mixin DawApiService on VoxrayDAWStateBase {
   Future<void> loadStemPlayerSource(String stemName, String apiBase, String taskId);
   Future<void> loadSynthSource();
 
+  void resetAiDetectorState();
+
+  List<String> getStemsWithXray();
+  Future<String?> _promptForReportStem(List<String> availableStems, String reportName);
+  void showSaveConfirmation(String message, {bool isPreview = false});
   //String getPlatformString() {
   //  if (kIsWeb) return 'flutter_web';
   //  return 'flutter_${Platform.operatingSystem}';
@@ -231,6 +238,110 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
     );
   }
+
+  Future<Map<String, bool>?> showOptimizeMixDialog(BuildContext context) {
+    return showDialog<Map<String, bool>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        bool hasVocals = true;
+        bool hasGuitar = true;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1A1A24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.0),
+                side: const BorderSide(color: Colors.white12),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.bolt, color: Colors.amberAccent),
+                  SizedBox(width: 8),
+                  Text(
+                    "OPTIMIZE EXTRACTION",
+                    style: TextStyle(
+                      color: Colors.white, 
+                      fontSize: 15, 
+                      fontWeight: FontWeight.w900, 
+                      letterSpacing: 1.2
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Save GPU time by unchecking instruments you know are missing from this track.",
+                    style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Vocals Toggle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: hasVocals ? Colors.tealAccent.withOpacity(0.05) : Colors.black26,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: hasVocals ? Colors.tealAccent.withOpacity(0.5) : Colors.white10),
+                    ),
+                    child: CheckboxListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      title: const Text("Contains Vocals", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                      subtitle: const Text("Singing, speech, or choir.", style: TextStyle(color: Colors.white54, fontSize: 11)),
+                      value: hasVocals,
+                      activeColor: Colors.tealAccent,
+                      checkColor: Colors.black,
+                      onChanged: (val) => setDialogState(() => hasVocals = val ?? true),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Guitar Toggle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: hasGuitar ? Colors.amberAccent.withOpacity(0.05) : Colors.black26,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: hasGuitar ? Colors.amberAccent.withOpacity(0.5) : Colors.white10),
+                    ),
+                    child: CheckboxListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      title: const Text("Contains Guitar", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                      subtitle: const Text("Acoustic or electric guitars.", style: TextStyle(color: Colors.white54, fontSize: 11)),
+                      value: hasGuitar,
+                      activeColor: Colors.amberAccent,
+                      checkColor: Colors.black,
+                      onChanged: (val) => setDialogState(() => hasGuitar = val ?? true),
+                    ),
+                  ),
+                ],
+              ),
+              actionsPadding: const EdgeInsets.only(right: 16, bottom: 16, top: 8),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text("CANCEL", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.tealAccent,
+                    foregroundColor: Colors.black,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                  onPressed: () => Navigator.pop(context, {'vocals': hasVocals, 'guitar': hasGuitar}),
+                  child: const Text("START PROCESSING", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
   
 
   Future<void> loadFileAndAnalyze(BuildContext context) async {
@@ -242,10 +353,34 @@ mixin DawApiService on VoxrayDAWStateBase {
 
     // --- NEW: Ask for the acoustic profile if it's a full mix ---
     String acousticProfile = 'standard';
+    List<String> requestTargets = []; // We will dynamically build the target list
+
     if (uploadOptions['type'] == 'mix') {
       String? profile = await _showAcousticProfileDialog();
       if (profile == null) return; // User cancelled
       acousticProfile = profile;
+
+      // --- 3RD POPUP: OPTIMIZATION (Only for Pop/Standard) ---
+      if (acousticProfile == 'standard') {
+        var optimizeOptions = await showOptimizeMixDialog(context);
+        if (optimizeOptions == null) return; // User cancelled
+
+        requestTargets = ["bass", "drums", "piano", "other"];
+        
+        if (optimizeOptions['vocals'] == true) {
+          requestTargets.add("vocals");
+          requestTargets.add("instrumental"); // Needed for the residual routing
+        }
+        if (optimizeOptions['guitar'] == true) {
+          requestTargets.add("guitar");
+        }
+      } else {
+        // Fallback target list for Classical
+        requestTargets = ["piano", "orchestral", "other"]; 
+      }
+    } else {
+      // It's a single stem
+      requestTargets = [uploadOptions['stem']!];
     }
 
     Uint8List? audioBytes;
@@ -313,7 +448,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
-        ..fields['instruments_json']  = jsonEncode(targetStemsSelection.toList())
+        ..fields['instruments_json']  = jsonEncode(requestTargets)
         ..fields['upload_type']       = uploadOptions['type']!
         ..fields['stem_target']       = uploadOptions['type'] == 'stem' ? uploadOptions['stem']! : 'none'
         ..fields['acoustic_profile']  = acousticProfile 
@@ -399,20 +534,33 @@ mixin DawApiService on VoxrayDAWStateBase {
     );
     if (chosenIdentity == null) return;
 
+    // --- THE FIX: DYNAMIC KEY CALCULATION ---
+    final String normalizedType = chosenIdentity.toLowerCase().trim();
+    final int existingCount = activeChannels.where((c) => c.baseType == normalizedType).length;
+    final String uniqueStemKey = existingCount == 0 ? normalizedType : '$normalizedType${existingCount + 1}';
+
     setState(() {
       originalAudioBytes = bytes;
       originalFileName   = result.files.single.name;
       isLoading          = true;
-      processingMessage  = 'Ingesting stem and generating tracking matrices...';
-      targetStemsSelection.add(chosenIdentity);
-      activeEditableStem = chosenIdentity;
+      processingMessage  = 'Importing $uniqueStemKey and generating tracking matrices...';
+
+      isProjectLoaded = true;
+      hasBeenSaved = false;
+      
+      // Cache the file locally under the new unique key
+      cachedStemBytes[uniqueStemKey] = bytes;
+      
+      // Spawn the dynamic channel (this cleanly handles targetStemsSelection and activeEditableStem for us)
+      addImportedStem(normalizedType, result.files.single.name, isGenerated: false);
     });
 
     try {
       var req = http.MultipartRequest('POST', Uri.parse('$apiBase/analyze-advanced'))
         ..fields['upload_type']      = 'stem'
-        ..fields['stem_target']      = chosenIdentity
-        ..fields['instruments_json'] = jsonEncode([chosenIdentity])
+        // Pass the dynamically numbered key to the server so it doesn't overwrite!
+        ..fields['stem_target']      = uniqueStemKey 
+        ..fields['instruments_json'] = jsonEncode([uniqueStemKey])
         ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: result.files.single.name));
 
       // =========================================================
@@ -430,7 +578,9 @@ mixin DawApiService on VoxrayDAWStateBase {
       var data = jsonDecode(await res.stream.bytesToString());
       currentTaskId = data['task_id'];
       currentJobId  = data['job_id'];
-      pollForStemData(currentJobId!, chosenIdentity);
+      
+      // Pass the UNIQUE key to the poller
+      pollForStemData(currentJobId!, uniqueStemKey); 
     } catch (e) {
       
       // =========================================================
@@ -450,6 +600,8 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   void pollForStemData(String jobId, String targetStem) {
     pollingTimer?.cancel();
+    int retryCount = 0; // <-- Add this
+    
     pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
@@ -470,8 +622,8 @@ mixin DawApiService on VoxrayDAWStateBase {
             setState(() {
               if (result['valid_stems'] != null) {
                 List<String> returnedStems = List<String>.from(result['valid_stems']);
-                targetStemsSelection = returnedStems.toSet();
-                generatedStems = returnedStems.toSet();
+                targetStemsSelection.addAll(returnedStems);
+                generatedStems.addAll(returnedStems);
                 
                 // Ensure activeEditableStem does not default to 'instrumental'
                 if (targetStem == 'mix' && returnedStems.isNotEmpty) {
@@ -491,20 +643,24 @@ mixin DawApiService on VoxrayDAWStateBase {
                    stemNotes = json.decode(json.encode(result['notes'] ?? []));
                  }
                  allStemsNotes[targetStem] = stemNotes;
+                 baselinePitchStates[targetStem] = json.encode(stemNotes);
                  generatedStems.add(targetStem);
                  
                  // Exclude instrumental from active playback sources
-                 if (targetStem != 'instrumental') {
+                 if (targetStem != 'instrumental' && targetStem != 'drums') {
                    activePlaybackSources.add(targetStem);
                  }
                  processingMessage = 'Downloading audio for ${targetStem.toUpperCase()}...';
               } else {
                  if (result['all_stems_notes'] != null) {
                      allStemsNotes = Map<String, List<dynamic>>.from(result['all_stems_notes']);
+                     for (var k in allStemsNotes.keys) {
+                        baselinePitchStates[k] = json.encode(allStemsNotes[k]);
+                     }
                  }
                  for (var s in generatedStems) {
                      // Exclude instrumental so audio isn't doubled
-                     if (s != 'instrumental') {
+                     if (s != 'instrumental' && s != 'drums') {
                        activePlaybackSources.add(s);
                      }
                  }
@@ -534,17 +690,21 @@ mixin DawApiService on VoxrayDAWStateBase {
               double newDuration = (result['duration'] ?? songDuration).toDouble();
               if (newDuration > 0) {
                 songDuration    = newDuration;
-                loopEndBoundary = songDuration;
+                // --- FIX: Pull loop boundary back 50ms so SoLoud doesn't destroy the handle ---
+                loopEndBoundary = math.max(0.1, songDuration - 0.05); 
                 int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
-                if (endIdx != -1) markers[endIdx]['time'] = songDuration;
+                if (endIdx != -1) markers[endIdx]['time'] = loopEndBoundary;
               }
             });
 
             // --- AWAIT THE DOWNLOADS FIRST ---
             if (targetStem != 'mix') {
-              await loadStemPlayerSource(targetStem, apiBase, currentTaskId!);
+              if (targetStem != 'drums') { // <-- Never download master drums
+                await loadStemPlayerSource(targetStem, apiBase, currentTaskId!);
+              }
             } else {
               for (var s in generatedStems) {
+                  if (s == 'drums') continue; // <-- Never download master drums
                   await loadStemPlayerSource(s, apiBase, currentTaskId!);
               }
             }
@@ -567,15 +727,28 @@ mixin DawApiService on VoxrayDAWStateBase {
       } catch (e) {
         logToSupabase('Polling network blink (app likely backgrounded): $e');
         if (mounted) setState(() => processingMessage = 'Reconnecting to server...');
+        
+        // <-- Add this failsafe block
+        retryCount++;
+        if (retryCount > 40) { // 2 minutes max without internet
+           timer.cancel();
+           if (mounted) {
+             setState(() { isLoading = false; processingMessage = ''; });
+             showSaveConfirmation('Connection lost. Please check your internet.');
+           }
+        }
       }
     });
   }
 
   void pollForXrayReprocess(String jobId, String targetStem) {
     pollingTimer?.cancel();
+    int retryCount = 0; // Failsafe counter
+    
     pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
         var statusRes = await http.get(Uri.parse('$apiBase/get-task-status?task_id=$jobId'));
+        
         if (statusRes.statusCode == 200) {
           var statusData = json.decode(statusRes.body);
           if (mounted) setState(() => processingMessage = statusData['message'] ?? 'Processing X-Ray...');
@@ -584,6 +757,7 @@ mixin DawApiService on VoxrayDAWStateBase {
             timer.cancel();
             await clearActiveJob();
             final result = statusData['result'];
+            
             if (mounted) {
               setState(() {
                 processingMessage = '';
@@ -593,6 +767,7 @@ mixin DawApiService on VoxrayDAWStateBase {
                 }
                 isXrayProcessing = false;
                 isXrayMode       = true;
+                isLoading        = false; // 🔒 UNLOCK UI
                 registerUndoSnapshot();
               });
               showSaveConfirmation('X-Ray high-resolution tracking complete.');
@@ -600,14 +775,51 @@ mixin DawApiService on VoxrayDAWStateBase {
           } else if (statusData['status'] == 'error') {
             timer.cancel();
             await clearActiveJob();
+            
             if (mounted) {
-              setState(() => isXrayProcessing = false);
-              showSaveConfirmation('X-Ray Processing Error: ${statusData['message']}');
+              setState(() {
+                isXrayProcessing  = false;
+                isLoading         = false; // 🔒 UNLOCK UI
+                processingMessage = '';
+                if (statusData['message'].toString().toLowerCase().contains('not found')) {
+                  currentTaskId = null; 
+                }
+              });
+              showSaveConfirmation('X-Ray Error: ${statusData['message']}');
             }
+          }
+        } else {
+          // ── THE MISSING 404 / 500 HANDLER ──
+          timer.cancel();
+          await clearActiveJob();
+          
+          if (mounted) {
+            setState(() {
+              isXrayProcessing  = false;
+              isLoading         = false; // 🔒 UNLOCK UI
+              processingMessage = '';
+              currentTaskId     = null; // Wipe session to force re-upload
+            });
+            showSaveConfirmation('Server Error: Status ${statusRes.statusCode}. Session reset.');
           }
         }
       } catch (e) {
         logToSupabase('X-Ray polling network blink: $e');
+        retryCount++;
+        
+        // ── 1 MINUTE TIMEOUT FAILSAFE ──
+        if (retryCount > 20) {
+          timer.cancel();
+          await clearActiveJob();
+          if (mounted) {
+            setState(() {
+              isXrayProcessing  = false;
+              isLoading         = false; // 🔒 UNLOCK UI
+              processingMessage = '';
+            });
+            showSaveConfirmation('Network timeout while polling server.');
+          }
+        }
       }
     });
   }
@@ -755,7 +967,7 @@ mixin DawApiService on VoxrayDAWStateBase {
     } catch (e) {
       logToSupabase('XRAY Reprocess error: $e');
       showSaveConfirmation('Reprocess failed: $e');
-      setState(() => isXrayProcessing = false);
+      setState(() { isXrayProcessing = false; isLoading = false; }); // <--- Add isLoading = false here
     } finally {
       if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
@@ -822,9 +1034,9 @@ mixin DawApiService on VoxrayDAWStateBase {
     } catch (e) {
       logToSupabase('XRAY error: $e');
       showSaveConfirmation('Connection error: $e');
-      setState(() { isXrayMode = false; isXrayProcessing = false; });
+      setState(() { isXrayMode = false; isXrayProcessing = false; isLoading = false; }); // <--- Add isLoading = false here
     } finally {
-      //playAllPlayers(); // why was it playing after xray completed?
+      //if (cachedTransportState) playAllPlayers(); else pauseAllPlayers();
     }
   }
 
@@ -977,7 +1189,10 @@ mixin DawApiService on VoxrayDAWStateBase {
         if (!activePlaybackSources.contains(activeStem)) {
           setState(() { activePlaybackSources.add(activeStem); });
         }
-        setState(() => dirtyStems.remove(activeStem));
+        setState(() { 
+          dirtyStems.remove(activeStem); 
+          baselinePitchStates[activeStem] = json.encode(allStemsNotes[activeStem] ?? []);
+        });
         
         logToSupabase('renderStemEdits UI "Stem updated — tap Play to hear edits."');
         showSaveConfirmation('Stem updated — tap Play to hear edits.', isPreview: true);
@@ -1249,42 +1464,59 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> downloadDossier() async {
-    if (rawNotes.isEmpty) return;
-    setState(() { isExporting = true; exportMessage = 'Generating dossier PDF...'; });
+    final xrayStems = getStemsWithXray();
+    if (xrayStems.isEmpty) {
+      showSaveConfirmation('No X-Ray data to analyze. Please process a stem first.');
+      return;
+    }
+
+    setState(() { isExporting = true; });
+
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'))
-        ..fields['task_id']       = currentTaskId ?? ''
-        ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(rawNotes))
-        ..fields['session_meta']  = jsonEncode({
-          'filename': originalFileName, 'duration': songDuration,
-          'stem_target': activeEditableStem,
-          'xray_enabled': rawNotes.any((n) => n.containsKey('contour')),
-          'version': '1.5.0',
-        });
+      // Loop through every valid track and request a unique PDF
+      for (String stem in xrayStems) {
+        setState(() { exportMessage = 'Generating dossier PDF for ${stem.toUpperCase()}...'; });
+        
+        var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-dossier'))
+          ..fields['task_id']        = currentTaskId ?? 'offline_session'
+          ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(allStemsNotes[stem] ?? []))
+          ..fields['session_meta']  = jsonEncode({
+            'filename': originalFileName, 'duration': songDuration,
+            'stem_target': stem,
+            'xray_enabled': true,
+            'version': '1.5.0',
+          });
 
-      var response     = await request.send();
-      var responseData = await http.Response.fromStream(response);
-      if (responseData.statusCode != 200) throw Exception('Server error ${responseData.statusCode}');
+        var response     = await request.send();
+        var responseData = await http.Response.fromStream(response);
+        if (responseData.statusCode != 200) throw Exception('Server error ${responseData.statusCode} on $stem');
 
-      var result = jsonDecode(responseData.body);
-      if (result['status'] == 'success') {
-        final Uint8List bytes = base64Decode(result['pdf_b64']);
-        String saveName = originalFileName.contains('.')
-            ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-            : originalFileName;
+        var result = jsonDecode(responseData.body);
+        if (result['status'] == 'success') {
+          final Uint8List bytes = base64Decode(result['pdf_b64']);
+          String saveName = originalFileName.contains('.')
+              ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+              : originalFileName;
 
-        if (kIsWeb) {
-          await FileSaver.instance.saveFile(
-            name: '${saveName}_dossier', bytes: bytes,
-            fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
-        } else {
-          String? path = await FileSaver.instance.saveAs(
-            name: '${saveName}_dossier', bytes: bytes,
-            fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
-          showSaveConfirmation(path != null && path.isNotEmpty
-              ? 'Dossier saved successfully.' : 'Save cancelled.');
+          // Inject the stem name into the saved file! (e.g. SongName_vocals_dossier.pdf)
+          String finalName = '${saveName}_${stem}_dossier';
+
+          if (kIsWeb) {
+            await FileSaver.instance.saveFile(
+              name: finalName, bytes: bytes,
+              fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
+          } else {
+            await FileSaver.instance.saveAs(
+              name: finalName, bytes: bytes,
+              fileExtension: 'pdf', mimeType: MimeType.custom, customMimeType: 'application/pdf');
+          }
         }
       }
+      
+      showSaveConfirmation(xrayStems.length > 1 
+          ? 'All Dossiers saved successfully.' 
+          : 'Dossier saved successfully.');
+          
     } catch (e) {
       showSaveConfirmation('Dossier generation failed: $e');
     } finally {
@@ -1293,17 +1525,22 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> downloadPitchPrint({
+    required String targetStem,
     required bool fullSong,
     required String format,
     required double visibleStart,
     required double visibleEnd,
   }) async {
-    if (rawNotes.isEmpty) return;
+    // 2 use the specific stem's notes
+    final stemNotes = allStemsNotes[targetStem] ?? [];
+    if (stemNotes.isEmpty) return;
+    
     setState(() { isExporting = true; exportMessage = 'Generating PitchPrint™...'; });
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/generate-pitchprint'))
-        ..fields['task_id']        = currentTaskId ?? ''
-        ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(rawNotes))
+        ..fields['task_id']        = currentTaskId ?? 'offline_session'
+        // use correct stem's stemNotes
+        ..fields['notes_manifest'] = jsonEncode(enrichManifestWithPolyphonicContext(stemNotes))
         ..fields['full_song']      = fullSong.toString()
         ..fields['visible_start']  = visibleStart.toString()
         ..fields['visible_end']    = visibleEnd.toString()
@@ -1359,6 +1596,13 @@ mixin DawApiService on VoxrayDAWStateBase {
       'active_editable_stem': activeEditableStem,
       'history': {'undo_stack': undoStack, 'redo_stack': redoStack},
       'markers': markers,
+      // dual ray state:
+      'is_dual_contour_active': isDualContourOverlayActive,
+      'dual_contour_1': dualContour1,
+      'dual_contour_2': dualContour2,
+      'identical_match_regions': identicalMatchRegions,
+      'dual_label_1': dualLabel1,
+      'dual_label_2': dualLabel2,
     };
 
     List<int> jsonBytes = utf8.encode(json.encode(projectData));
@@ -1370,15 +1614,13 @@ mixin DawApiService on VoxrayDAWStateBase {
           'original_audio.dat', originalAudioBytes!.length, originalAudioBytes));
     }
 
-    // 1. Pack from RAM (Always works on Web, and works for fresh downloads on Android)
+    // This automatically packs the shifted/aligned audio bytes from RAM!
     for (var entry in cachedStemBytes.entries) {
       archive.addFile(ArchiveFile('${entry.key}.ogg', entry.value.length, entry.value));
     }
 
-    // 2. Pack from Disk (Fallback for Android if it streamed from an offline save)
     if (!kIsWeb) {
       for (var entry in cachedStemPaths.entries) {
-        // Only pack from disk if we didn't already pack it from RAM!
         if (!cachedStemBytes.containsKey(entry.key)) {
           try {
             final bytes = await File(entry.value).readAsBytes();
@@ -1395,32 +1637,71 @@ mixin DawApiService on VoxrayDAWStateBase {
 
   Future<void> saveVoxrayProjectAs() async {
     final bytes = await packageProjectBytes();
+    
     String defaultSaveName = originalFileName.contains('.')
         ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
         : (originalFileName.isNotEmpty ? originalFileName : projectName);
-  
+
+    await Future.delayed(const Duration(milliseconds: 50));
+    
     try {
-      // 1. Correct v11 API: Direct call on FilePicker, no '.platform', no 'bytes' passed
-      String? path = await FilePicker.saveFile(
-        dialogTitle: 'Save VoxRay Project',
-        fileName: '$defaultSaveName.vxp', 
-        type: FileType.custom,
-        allowedExtensions: ['vxp'],
-      );
+      // 1. WEB: Handle web-specific download
+      if (kIsWeb) {
+        // (Keep your existing web logic here, e.g., AnchorElement or FileSaver.web)
+        await FileSaver.instance.saveAs(
+          name: defaultSaveName, 
+          bytes: bytes, 
+          fileExtension: 'vxp', 
+          mimeType: MimeType.custom, 
+          customMimeType: 'application/octet-stream'
+        );
+        showSaveConfirmation('Project saved via browser download.');
+      } 
+      
+      // 2. DESKTOP (Windows/Mac/Linux): Use FilePicker + Manual Write
+      else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+        String? path = await FilePicker.saveFile(
+          dialogTitle: 'Save VoxRay Project',
+          fileName: '$defaultSaveName.vxp',
+        );
   
-      if (path != null && path.isNotEmpty) {
-        // 2. Write natively via Dart I/O to avoid the C++ plugin stack overflow
-        final file = File(path);
-        await file.writeAsBytes(bytes);
+        if (path != null) {
+          // Ensure extension is correct
+          if (path.endsWith('.zip')) path = path.substring(0, path.length - 4);
+          if (!path.endsWith('.vxp')) path = '$path.vxp';
   
-        setState(() { 
-          currentProjectPath = path; 
-          hasBeenSaved = true; 
-          dirtyStems.clear(); 
-        });
-        showSaveConfirmation('Project saved successfully as offline .vxp archive.');
-      } else {
-        showSaveConfirmation('Save cancelled.');
+          final file = File(path);
+          await file.writeAsBytes(bytes);
+          
+          setState(() {
+            currentProjectPath = path;
+            hasBeenSaved = true;
+            dirtyStems.clear();
+          });
+          showSaveConfirmation('Project saved successfully.');
+        }
+      } 
+      
+      // 3. MOBILE (Android/iOS): Use the OLD Working FileSaver Method
+      else if (Platform.isAndroid || Platform.isIOS) {
+        String? path = await FileSaver.instance.saveAs(
+          name: defaultSaveName, 
+          bytes: bytes, 
+          fileExtension: 'vxp',
+          mimeType: MimeType.custom, 
+          customMimeType: 'application/octet-stream'
+        );
+  
+        if (path != null && path.isNotEmpty) {
+          setState(() {
+            currentProjectPath = path;
+            hasBeenSaved = true;
+            dirtyStems.clear();
+          });
+          showSaveConfirmation('Project saved successfully as offline .vxp archive.');
+        } else {
+          showSaveConfirmation('Save cancelled.');
+        }
       }
     } catch (e) {
       showSaveConfirmation('Save failed: $e');
@@ -1569,6 +1850,29 @@ mixin DawApiService on VoxrayDAWStateBase {
       if (synthHandle  != null) SoLoud.instance.stop(synthHandle!);
       isLoading         = true;
       processingMessage = 'Unpacking .vxp archive and loading offline files...';
+
+      // Force-mute hidden/utility tracks so they don't blast on load
+      if (mixerState.containsKey('original')) {
+        mixerState['original']!.isMuted = true;
+      }
+      if (mixerState.containsKey('instrumental')) {
+        mixerState['instrumental']!.isMuted = true;
+      }
+      if (mixerState.containsKey('synth')) {
+        mixerState['synth']!.isMuted = true;
+      }
+      
+      // Also ensure their audio engine handles are muted immediately if they exist
+      if (masterHandle != null) {
+        SoLoud.instance.setVolume(masterHandle!, 0.0);
+      }
+      if (synthHandle != null) {
+        SoLoud.instance.setVolume(synthHandle!, 0.0);
+      }
+      if (stemHandles.containsKey('instrumental')) {
+        SoLoud.instance.setVolume(stemHandles['instrumental']!, 0.0);
+      }
+      resetAiDetectorState();
     });
 
     Archive archive;
@@ -1622,6 +1926,15 @@ mixin DawApiService on VoxrayDAWStateBase {
       originalFilePath      = projectData['original_file_path'] ?? '';
       isOriginalMixAvailable = projectData['is_original_mix_available'] ?? true;
 
+      // ── ADD THESE LINES TO RESTORE DUAL X-RAY STATE ─────────────────────
+      isDualContourOverlayActive = projectData['is_dual_contour_active'] ?? false;
+      dualContour1 = projectData['dual_contour_1'] ?? [];
+      dualContour2 = projectData['dual_contour_2'] ?? [];
+      identicalMatchRegions = projectData['identical_match_regions'] ?? [];
+      dualLabel1 = projectData['dual_label_1'] ?? '';
+      dualLabel2 = projectData['dual_label_2'] ?? '';
+      // ───────────────────────────────────────────────────────────────────
+
       if (projectData.containsKey('song_duration')) {
         songDuration = (projectData['song_duration'] as num).toDouble();
       } else {
@@ -1647,9 +1960,10 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
 
       // 2. Now adjust the loop boundary based on the loaded markers/duration
-      loopEndBoundary = songDuration;
+      // --- FIX: Pull loop boundary back 50ms so SoLoud doesn't destroy the handle ---
+      loopEndBoundary = math.max(0.1, songDuration - 0.05);
       int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
-      if (endIdx != -1) markers[endIdx]['time'] = songDuration;
+      if (endIdx != -1) markers[endIdx]['time'] = loopEndBoundary;
       
       if (projectData['mixer_state'] != null) {
         Map<String, dynamic> ms = projectData['mixer_state'];
@@ -1670,6 +1984,9 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
       if (projectData['all_stems_notes'] != null) {
         allStemsNotes = Map<String, List<dynamic>>.from(projectData['all_stems_notes']);
+        for (var k in allStemsNotes.keys) {
+          baselinePitchStates[k] = json.encode(allStemsNotes[k]);
+        }
       }
       if (projectData['all_stems_continuous_xray'] != null) {
         allStemsContinuousXray = Map<String, List<dynamic>>.from(projectData['all_stems_continuous_xray']);
@@ -1702,10 +2019,16 @@ mixin DawApiService on VoxrayDAWStateBase {
     for (String stem in generatedStems) {
       // FIX: Check if the audio exists on Disk OR in RAM!
       if (cachedStemPaths.containsKey(stem) || cachedStemBytes.containsKey(stem)) {
-        activePlaybackSources.add(stem);
+        if (stem != 'drums') {
+          activePlaybackSources.add(stem); 
+        }
         await loadStemPlayerSource(stem, apiBase, currentTaskId ?? '');
         
         applyStemPlugins(stem); 
+        // --- NEW: CLAMP DRUMS TO ZERO AFTER RESTORING PROJECT ---
+        if (stem == 'drums' && stemHandles.containsKey('drums')) {
+          SoLoud.instance.setVolume(stemHandles['drums']!, 0.0);
+        }
       }
     }
 
@@ -1719,6 +2042,24 @@ mixin DawApiService on VoxrayDAWStateBase {
       // and apply the correct EQ, Reverb, and Compressor settings instantly!
       applyStemPlugins(stem); 
     }
+
+    // --- REBUILD DYNAMIC CHANNELS FROM GENERATED STEMS ---
+    activeChannels.clear();
+    for (String stem in generatedStems) {
+      final String baseType = stem.replaceAll(RegExp(r'\d+$'), ''); // e.g. 'vocals2' -> 'vocals'
+      final String displayName = stem == 'vocals' ? 'Vocals' : stem.toUpperCase();
+      
+      activeChannels.add(
+        AudioChannel(
+          id: DateTime.now().millisecondsSinceEpoch.toString() + stem,
+          name: displayName,
+          stemKey: stem,
+          baseType: baseType,
+          filePath: cachedStemPaths[stem] ?? '',
+        ),
+      );
+    }
+    // -----------------------------------------------------
 
     seekAllPlayers(0.0);
     setState(() { currentPosition = 0.0; isLoading = false; processingMessage = ''; });

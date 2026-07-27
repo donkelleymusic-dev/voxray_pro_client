@@ -41,7 +41,7 @@ class _WalletScreenState extends State<WalletScreen> {
       
       if (!launched) {
         // If it still fails, print the exact URL so we can see if it's malformed
-        throw Exception('Could not launch payment page. URL was: $checkoutUrl');
+        throw Exception('Could not launch account page. URL was: $checkoutUrl');
       }
     } catch (e) {
       if (mounted) {
@@ -59,7 +59,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('voXRAY Wallet'),
+        title: const Text('voXRay tokens'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -76,14 +76,14 @@ class _WalletScreenState extends State<WalletScreen> {
               const Icon(Icons.account_balance_wallet, size: 80, color: Colors.blue),
               const SizedBox(height: 24),
               const Text(
-                'Current Balance',
+                'Current Tokens',
                 style: TextStyle(fontSize: 18, color: Colors.grey),
               ),
               Text(
                 '$_currentBalance DSP',
                 style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 48),
+              /*const SizedBox(height: 48),
               if (_isLoading)
                 const CircularProgressIndicator()
               else
@@ -96,7 +96,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
                   ),
-                ),
+                ),*/
             ],
           ),
         ),

@@ -31,6 +31,9 @@ class ChannelState {
   double eqLowGain;
   double eqMidGain;
   double eqHighGain;
+  
+  // 🎸 NEW: Overdrive tracking variable
+  double overdriveAmount;
 
   // Clean, unified compressor parameters (Defaulting to professional standards)
   double compressorThreshold; // e.g. -24.0 dBFS
@@ -54,6 +57,7 @@ class ChannelState {
     this.eqLowGain = 0.0,
     this.eqMidGain = 0.0,
     this.eqHighGain = 0.0,
+    this.overdriveAmount = 0.0, // Default to clean (0.0)
     this.compressorThreshold = -24.0,
     this.compressorRatio = 3.5,
     this.rmsEnvelope = const [],
@@ -74,7 +78,7 @@ class ChannelState {
     'eqLowGain': eqLowGain,
     'eqMidGain': eqMidGain,
     'eqHighGain': eqHighGain,
-    // Consistent camelCase for UI <-> Python JSON payload maps
+    'overdriveAmount': overdriveAmount, // Added to JSON export
     'compressorThreshold': compressorThreshold,
     'compressorRatio': compressorRatio,
     'rmsEnvelope': rmsEnvelope,
@@ -98,10 +102,9 @@ class ChannelState {
       eqLowGain: (json['eqLowGain'] ?? 0.0).toDouble(),
       eqMidGain: (json['eqMidGain'] ?? 0.0).toDouble(),
       eqHighGain: (json['eqHighGain'] ?? 0.0).toDouble(),
-      // Handle fallback keys gracefully in case older offline projects are loaded
+      overdriveAmount: (json['overdriveAmount'] ?? 0.0).toDouble(), // Added to JSON import
       compressorThreshold: (json['compressorThreshold'] ?? json['compressor_threshold'] ?? -24.0).toDouble(),
       compressorRatio: (json['compressorRatio'] ?? json['compressor_ratio'] ?? 3.5).toDouble(),
-      //rmsEnvelope: (json['rmsEnvelope'] as List<dynamic>?)?.map((e) => e.toDouble()).toList() ?? [],
       rmsEnvelope: (json['rmsEnvelope'] as List<dynamic>?)?.map<double>((e) => (e as num).toDouble()).toList() ?? <double>[],
     );
   }
@@ -121,6 +124,7 @@ class ChannelState {
     double? eqLowGain,
     double? eqMidGain,
     double? eqHighGain,
+    double? overdriveAmount, // Added to copyWith
     double? compressorThreshold,
     double? compressorRatio,
     List<double>? rmsEnvelope,
@@ -140,6 +144,7 @@ class ChannelState {
       eqLowGain: eqLowGain ?? this.eqLowGain,
       eqMidGain: eqMidGain ?? this.eqMidGain,
       eqHighGain: eqHighGain ?? this.eqHighGain,
+      overdriveAmount: overdriveAmount ?? this.overdriveAmount, // Added to copyWith
       compressorThreshold: compressorThreshold ?? this.compressorThreshold,
       compressorRatio: compressorRatio ?? this.compressorRatio,
       rmsEnvelope: rmsEnvelope ?? this.rmsEnvelope,

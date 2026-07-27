@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
+import 'dart:math' as math;
 
 class TimelineRulerWidget extends StatelessWidget {
   final VoxrayDAWState dawState;
@@ -7,19 +8,26 @@ class TimelineRulerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double totalRulerWidth = dawState.songDuration * dawState.zoomX;
+    // Force the ruler to be AT LEAST the width of the screen so short songs don't clip
+    double screenWidth = MediaQuery.of(context).size.width;
+    double songWidth = dawState.songDuration * dawState.zoomX;
+    double totalRulerWidth = math.max(screenWidth, songWidth);
 
     return SizedBox(
-      width: totalRulerWidth,  // explicit width — no infinite constraint
+      width: totalRulerWidth,
       height: 45,
       child: GestureDetector(
         onTapDown: (details) {
           double clickedSeconds = details.localPosition.dx / dawState.zoomX;
-          dawState.jumpToTimelinePosition(clickedSeconds);
+          dawState.jumpToTimelinePosition(clickedSeconds.clamp(0.0, dawState.songDuration));
+        },
+        // NEW: Allows smooth dragging/scrubbing across the ruler!
+        onPanUpdate: (details) {
+          double draggedSeconds = details.localPosition.dx / dawState.zoomX;
+          dawState.jumpToTimelinePosition(draggedSeconds.clamp(0.0, dawState.songDuration));
         },
         child: Stack(
           children: [
-            // Loop region highlight
             if (dawState.isLoopModeActive)
               Positioned(
                 left: dawState.loopStartBoundary * dawState.zoomX,
@@ -29,7 +37,6 @@ class TimelineRulerWidget extends StatelessWidget {
                 child: Container(color: Colors.blueAccent.withOpacity(0.15)),
               ),
 
-            // Ruler tick marks and time labels
             CustomPaint(
               size: Size(totalRulerWidth, 45),
               painter: RulerGridPainter(
@@ -38,21 +45,16 @@ class TimelineRulerWidget extends StatelessWidget {
               ),
             ),
 
-            // Marker pins (scroll with content)
-            // long press to delete:
             ...dawState.markers.map((marker) {
               return Positioned(
                 left: (marker['time'] as double) * dawState.zoomX - 8,
                 top: 4,
                 child: GestureDetector(
                   onTap: () => dawState.jumpToTimelinePosition(marker['time']),
-                  onLongPress: () {
-                    // Long press to delete
-                    dawState.deleteMarker(marker['id']);
-                  },
+                  onLongPress: () => dawState.deleteMarker(marker['id']),
                   child: Tooltip(
-                    message: marker['label'],  // just the label, no "long press to delete"
-                    triggerMode: TooltipTriggerMode.tap,  // only show on tap, not long press
+                    message: marker['label'],
+                    triggerMode: TooltipTriggerMode.tap,
                     child: const Icon(Icons.location_on, color: Colors.amberAccent, size: 18),
                   ),
                 ),

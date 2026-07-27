@@ -82,7 +82,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
           return;
         }
 
-        // 3. HANDLE LOOP BOUNDARIES
+        // 3. HANDLE LOOP BOUNDARIES (ONLY IF LOOP MODE IS ACTIVELY TURNED ON)
         if (widget.dawState.isLoopModeActive &&
             widget.dawState.loopEndBoundary > widget.dawState.loopStartBoundary &&
             widget.dawState.loopEndBoundary > 0.0 &&
@@ -117,8 +117,11 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         }
         
         // 6. HORIZONTAL SCROLL
-        if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
+        // 6. HORIZONTAL SCROLL
+        if (!widget.dawState.isUserInteracting && widget.horizontalScrollController.hasClients) {
           double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
+          //if (!widget.dawState.isUserScrolling && widget.horizontalScrollController.hasClients) {
+          //  double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
           double targetX = (uiPlayheadTime * widget.dawState.zoomX) - anchorOffset;
           
           if (targetX < 0) targetX = 0;
@@ -131,7 +134,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         }
 
         // 7. VERTICAL PITCH-FOLLOWING SCROLL
-        if (!widget.dawState.isUserScrolling && widget.verticalScrollController.hasClients && widget.dawState.rawNotes.isNotEmpty) {
+        if (!widget.dawState.isUserInteracting && widget.verticalScrollController.hasClients && widget.dawState.rawNotes.isNotEmpty) {
+          //if (!widget.dawState.isUserScrolling && widget.verticalScrollController.hasClients && widget.dawState.rawNotes.isNotEmpty) {
           var activeNotes = widget.dawState.rawNotes.where((n) {
             if (n['isDeleted'] == true) return false;
             double start = (n['start_time'] ?? 0).toDouble();
@@ -158,7 +162,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
         }
     
       } else {
-        if (!widget.dawState.isUserScrolling) {
+        if (!widget.dawState.isUserInteracting) {
           exactPlayheadTime.value = widget.dawState.currentPosition;
         }
       }
@@ -175,6 +179,89 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     //super.dispose();
   }
 
+  Widget _buildAiInspectorBadge() {
+    if (widget.dawState.aiResult == null) return const SizedBox.shrink();
+
+    final aiResult = widget.dawState.aiResult!;
+    final double percentage = aiResult.overallConfidence * 100;
+    final Color statusColor = aiResult.isAiDetected ? Colors.redAccent : Colors.tealAccent;
+
+    return Positioned(
+      top: 10,
+      left: 42, // Offset past key column
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: statusColor, width: 1.5),
+            boxShadow: [
+              BoxShadow(color: statusColor.withOpacity(0.3), blurRadius: 8, spreadRadius: 1)
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    aiResult.isAiDetected ? Icons.memory : Icons.record_voice_over,
+                    color: statusColor,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    aiResult.isAiDetected ? "AI SYNTHETIC VOICE DETECTED" : "HUMAN VOCAL CONFIRMED",
+                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 10),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    "${percentage.toStringAsFixed(1)}%",
+                    style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 13), // Fixed from FontWeight.black
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      widget.dawState.setState(() {
+                        widget.dawState.aiResult = null;
+                      });
+                    },
+                    child: const Icon(Icons.close, size: 14, color: Colors.white54),
+                  ),
+                ],
+              ),
+              if (aiResult.detectedArtifacts.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: aiResult.detectedArtifacts.map((artifact) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 0.5),
+                      ),
+                      child: Text(
+                        artifact,
+                        style: const TextStyle(color: Colors.white70, fontSize: 9),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ]
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
   double calculateSynthLevel(double currentPlayheadSeconds, List<dynamic> rawNotes) {
     for (var note in rawNotes) {
       if (note['isDeleted'] == true || note['isMuted'] == true) continue;
@@ -250,7 +337,10 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     double zoomY = (widget.dawState.zoomY > 0) ? widget.dawState.zoomY : 8.0;
 
     double totalHeight = (maxMidi - minMidi + 1) * zoomY;
-    double timelineWidth = duration * zoomX;
+    
+    // Stretch the canvas to fill the screen if the song is tiny
+    double screenWidth = MediaQuery.of(context).size.width;
+    double timelineWidth = math.max(screenWidth, duration * zoomX);
     
     bool isDrums = widget.dawState.activeEditableStem == 'drums';
 
@@ -270,7 +360,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     final ScrollPhysics? scrollPhysics = (widget.dawState.currentDragMode != DragMode.off || draggingNoteIndex != null)
         ? const NeverScrollableScrollPhysics() : null;
 
-    return Stack(
+    return Stack (
       children: [
         SingleChildScrollView(
           controller: widget.verticalScrollController,
@@ -293,52 +383,83 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
               ),
               Expanded(
                 child: NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                  if (notification is UserScrollNotification) {
-                    widget.dawState.isUserScrolling = notification.direction != ScrollDirection.idle;
-                  } else if (notification is ScrollUpdateNotification) {
+                  onNotification: (ScrollNotification scrollInfo) {
                     
-                    // 3. REMOVED setState() TO STOP LATENCY LOOP
-                    
-                    if (widget.dawState.isUserScrolling && widget.dawState.isScrubMode) {
-                      double viewportWidth = notification.metrics.viewportDimension;
-                      double maxScroll = notification.metrics.maxScrollExtent;
-                      
-                      // Clamp pixels to prevent over-scroll bouncing from breaking the math
-                      double pixels = notification.metrics.pixels.clamp(0.0, maxScroll);
-                      
-                      // The target 25% anchor you requested
-                      double anchorOffset = viewportWidth * 0.25; 
-                      double dynamicAnchor = anchorOffset;
+                    // 🛡️ THE PROTECTOR: If we are dragging notes, ignore timeline physics entirely!
+                    if (widget.dawState.currentDragMode != DragMode.off) return false;
 
-                      // STATE 1: Smoothly collapse the anchor to 0% as we hit the left edge
-                      if (pixels < anchorOffset) {
-                        dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
-                      } 
-                      // STATE 3: Smoothly push the anchor to 100% as we hit the right edge
-                      else {
-                        double rightZone = viewportWidth * 0.75;
-                        if (pixels > maxScroll - rightZone) {
-                          double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
-                          dynamicAnchor = anchorOffset + (fraction * rightZone);
+                    // 1. User physically touched the screen to pan (or a fling starts)
+                    if (scrollInfo is ScrollStartNotification && scrollInfo.dragDetails != null) {
+                      widget.dawState.isUserInteracting = true;
+                    } 
+                    // 2. User let go AND the fling inertia has completely come to a stop
+                    else if (scrollInfo is ScrollEndNotification) {
+                      
+                      // 🛡️ THE FIX: Only execute the snap logic if this is the end of an ACTUAL user interaction!
+                      if (widget.dawState.isUserInteracting) {
+                        widget.dawState.isUserInteracting = false;
+                        
+                        // Snap the audio to wherever the fling landed
+                        if (widget.dawState.isPlaying) {
+                          double viewportWidth = scrollInfo.metrics.viewportDimension;
+                          double maxScroll = scrollInfo.metrics.maxScrollExtent;
+                          double pixels = scrollInfo.metrics.pixels.clamp(0.0, maxScroll);
+                          
+                          double anchorOffset = viewportWidth * 0.25; 
+                          double dynamicAnchor = anchorOffset;
+                    
+                          // STATE 1: Smoothly collapse the anchor to 0% as we hit the left edge
+                          if (pixels < anchorOffset) {
+                            dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
+                          } 
+                          // STATE 3: Smoothly push the anchor to 100% as we hit the right edge
+                          else {
+                            double rightZone = viewportWidth * 0.75;
+                            if (pixels > maxScroll - rightZone) {
+                              double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
+                              dynamicAnchor = anchorOffset + (fraction * rightZone);
+                            }
+                          }
+                          
+                          double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
+                          double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                          
+                          exactPlayheadTime.value = clampedTime;
+                          widget.dawState.seekAllPlayers(clampedTime);
+                          widget.dawState.currentPosition = clampedTime;
                         }
                       }
-                      
-                      double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
-                      double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
-                      
-                      // Instantly update the visual UI via the fast Notifier
-                      exactPlayheadTime.value = clampedTime;
-                      
-                      // Update the audio engine directly without triggering heavy DAWState rebuilds
-                      widget.dawState.seekAllPlayers(clampedTime);
-                      
-                      // Silently sync the state variable for background processes
-                      widget.dawState.currentPosition = clampedTime;
                     }
-                  }
-                  return false;
-                },
+                    // 3. Maintain your exact scrub mode math during the drag/fling
+                    else if (scrollInfo is ScrollUpdateNotification) {
+                      if (widget.dawState.isUserInteracting && widget.dawState.isScrubMode) {
+                        double viewportWidth = scrollInfo.metrics.viewportDimension;
+                        double maxScroll = scrollInfo.metrics.maxScrollExtent;
+                        double pixels = scrollInfo.metrics.pixels.clamp(0.0, maxScroll);
+                        
+                        double anchorOffset = viewportWidth * 0.25; 
+                        double dynamicAnchor = anchorOffset;
+
+                        if (pixels < anchorOffset) {
+                          dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
+                        } else {
+                          double rightZone = viewportWidth * 0.75;
+                          if (pixels > maxScroll - rightZone) {
+                            double fraction = (pixels - (maxScroll - rightZone)) / rightZone;
+                            dynamicAnchor = anchorOffset + (fraction * rightZone);
+                          }
+                        }
+                        
+                        double seekTime = (pixels + dynamicAnchor) / widget.dawState.zoomX;
+                        double clampedTime = seekTime.clamp(0.0, widget.dawState.songDuration);
+                        
+                        exactPlayheadTime.value = clampedTime;
+                        widget.dawState.seekAllPlayers(clampedTime);
+                        widget.dawState.currentPosition = clampedTime;
+                      }
+                    }
+                    return false;
+                  },
 
                   child: SingleChildScrollView(
                     controller: widget.horizontalScrollController,
@@ -367,7 +488,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                         }
                       },
                       onPanStart: widget.dawState.currentDragMode != DragMode.off ? (details) {
-                        const double touchSlop = 24.0; 
+                        widget.dawState.isUserInteracting = true; // 🛑 ENGAGE CLUTCH FOR NOTE DRAG
+                        const double touchSlop = 24.0;
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
                           if (pNote['isDeleted'] == true || (pNote['actual_midi'] ?? 60.0).round() == 0 || pNote['type'] == 'xray_line') continue;
@@ -411,11 +533,17 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           }
                         }
                       } : null,
-                      onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
-                      onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); } : null,
+                      onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { 
+                        widget.dawState.isUserInteracting = false; // 🟢 RELEASE CLUTCH
+                        setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); 
+                      } : null,
+                      onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { 
+                        widget.dawState.isUserInteracting = false; // 🟢 RELEASE CLUTCH
+                        setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); 
+                      } : null,
                       child: Stack(
                         children: [
-                          // 4. Wrap CustomPaint in RepaintBoundary to cache the heavy vector graphics
+                          // 1. ORIGINAL PIANO ROLL
                           RepaintBoundary(
                             child: CustomPaint(
                               size: Size(timelineWidth, totalHeight),
@@ -430,18 +558,67 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                                 isDrumsMode: isDrums,
                                 draggingNoteIndex: draggingNoteIndex, 
                                 initialSemitoneShift: initialSemitoneShift,
+                                // ── NEW: Pass the overlay state down! ──
+                                isDualModeActive: widget.dawState.isDualContourOverlayActive,
                               ),
                             ),
                           ),
-                          // 5. ValueListenableBuilder explicitly for the lightweight Playhead
+                          
+                          // 2. DUAL TAKE LAYER
+                          if (widget.dawState.isDualTakeMode && widget.dawState.dualTakeSettings != null)
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(timelineWidth, totalHeight),
+                                painter: XrayDualTakePainter(
+                                  takeBNotes: widget.dawState.dualTakeSettings!.takeBNotes,
+                                  settings: widget.dawState.dualTakeSettings!,
+                                  zoomX: widget.dawState.zoomX,
+                                  zoomY: widget.dawState.zoomY,
+                                  minMidi: minMidi,
+                                  maxMidi: maxMidi,
+                                ),
+                              ),
+                            ),
+
+                          // 🩻 2.5. DUAL X-RAY CONTOUR OVERLAY LAYER (NEW)
+                          if (widget.dawState.isDualContourOverlayActive)
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(timelineWidth, totalHeight),
+                                painter: DualXRayContourPainter(
+                                  contour1: widget.dawState.dualContour1,
+                                  contour2: widget.dawState.dualContour2,
+                                  // ── NEW: Pass the continuous traces and culling scroll offset! ──
+                                  continuous1: widget.dawState.dualContinuous1,
+                                  continuous2: widget.dawState.dualContinuous2,
+                                  currentScrollX: currentScrollX,
+                                  identicalRegions: widget.dawState.identicalMatchRegions,
+                                  zoomX: widget.dawState.zoomX,
+                                  zoomY: widget.dawState.zoomY,
+                                  minMidi: minMidi,
+                                  maxMidi: maxMidi,
+                                ),
+                              ),
+                            ),
+
+                          // 3. AI HEATMAP OVERLAY LAYER
+                          if (widget.dawState.aiResult != null && widget.dawState.aiResult!.heatmap.isNotEmpty)
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                size: Size(timelineWidth, totalHeight),
+                                painter: AiHeatmapOverlayPainter(
+                                  heatmap: widget.dawState.aiResult!.heatmap,
+                                  zoomX: widget.dawState.zoomX,
+                                  trackHeight: totalHeight,
+                                ),
+                              ),
+                            ),
+
+                          // 4. PLAYHEAD
                           ValueListenableBuilder<double>(
                             valueListenable: exactPlayheadTime,
                             builder: (context, timeValue, child) {
-                              // 1. Calculate the exact pixel position
                               double rawX = timeValue * widget.dawState.zoomX;
-                              
-                              // 2. QUANTIZATION: Round to the nearest integer pixel. 
-                              // This kills the jitter because fluctuations < 0.5 pixels are ignored.
                               double snappedX = rawX.floorToDouble(); 
                           
                               return Positioned(
@@ -456,6 +633,10 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               color: Colors.redAccent.withOpacity(0.8),
                             ),
                           ),
+
+                          // 5. FLOATING AI BADGE
+                          if (widget.dawState.aiResult != null)
+                            _buildAiInspectorBadge(),
                         ],
                       ),
                     ),
@@ -565,6 +746,303 @@ class PianoKeysPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
+class XrayDualTakePainter extends CustomPainter {
+  final List<dynamic> takeBNotes;
+  final DualTakeXraySettings settings;
+  final double zoomX;
+  final double zoomY;
+  final int minMidi;
+  final int maxMidi;
+
+  XrayDualTakePainter({
+    required this.takeBNotes,
+    required this.settings,
+    required this.zoomX,
+    required this.zoomY,
+    required this.minMidi,
+    required this.maxMidi,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (takeBNotes.isEmpty) return;
+
+    if (settings.hasMatch) {
+      _drawSuspiciousRegion(canvas, size);
+    }
+
+    Color dynamicColor = Color.lerp(settings.colorB, Colors.white, settings.lockInPulse)!;
+    double extraGlowRadius = settings.lockInPulse * 12.0;
+
+    final Paint linePaint = Paint()
+      ..color = dynamicColor.withOpacity(settings.opacityB)
+      ..strokeWidth = 3.0 + (settings.lockInPulse * 2.0)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final Paint glowPaint = Paint()
+      ..color = dynamicColor.withOpacity(0.4 + (settings.lockInPulse * 0.5))
+      ..strokeWidth = 8.0 + extraGlowRadius
+      ..style = PaintingStyle.stroke
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4 + extraGlowRadius);
+
+    final Path path = Path();
+    bool isFirst = true;
+
+    for (var note in takeBNotes) {
+      double startTime = (note['start_time'] ?? 0.0) + settings.takeBOffsetSeconds;
+      double pitch = (note['pitch'] ?? 60.0).toDouble(); 
+
+      double x = startTime * zoomX;
+      double y = (maxMidi - pitch) * zoomY + (zoomY / 2);
+
+      if (isFirst) {
+        path.moveTo(x, y);
+        isFirst = false;
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    canvas.drawPath(path, glowPaint);
+    canvas.drawPath(path, linePaint);
+  }
+
+  void _drawSuspiciousRegion(Canvas canvas, Size size) {
+    double startX = settings.matchStartSeconds * zoomX;
+    double endX = settings.matchEndSeconds * zoomX;
+    
+    Color alertColor = settings.matchConfidence > 0.90 ? Colors.redAccent : Colors.orangeAccent;
+    final Rect matchRect = Rect.fromLTRB(startX, 0, endX, size.height);
+    
+    canvas.drawRect(matchRect, Paint()..color = alertColor.withOpacity(0.15)..style = PaintingStyle.fill);
+    
+    final Paint borderPaint = Paint()..color = alertColor..strokeWidth = 2.0..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset(startX, 0), Offset(endX, 0), borderPaint);
+    canvas.drawLine(Offset(startX, size.height), Offset(endX, size.height), borderPaint);
+    canvas.drawLine(Offset(startX, 0), Offset(startX, size.height), borderPaint);
+    canvas.drawLine(Offset(endX, 0), Offset(endX, size.height), borderPaint);
+
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: " MATCH DETECTED: ${(settings.matchConfidence * 100).toStringAsFixed(1)}% ",
+        style: TextStyle(color: alertColor, fontSize: 12, fontWeight: FontWeight.bold, backgroundColor: Colors.black87),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    textPainter.paint(canvas, Offset(startX + 4, 4));
+  }
+
+  @override
+  bool shouldRepaint(covariant XrayDualTakePainter oldDelegate) => true; 
+}
+
+class AiHeatmapOverlayPainter extends CustomPainter {
+  final List<Map<String, dynamic>> heatmap;
+  final double zoomX;
+  final double trackHeight;
+
+  AiHeatmapOverlayPainter({
+    required this.heatmap,
+    required this.zoomX,
+    required this.trackHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (heatmap.isEmpty) return;
+
+    final Paint fillPaint = Paint()..style = PaintingStyle.fill;
+    const double barHeight = 12.0; // Height of heatmap strip at canvas floor
+    final double topY = size.height - barHeight;
+
+    for (int i = 0; i < heatmap.length - 1; i++) {
+      double t1 = (heatmap[i]['time'] as num).toDouble();
+      double t2 = (heatmap[i + 1]['time'] as num).toDouble();
+      double score = (heatmap[i]['score'] as num).toDouble();
+
+      double x1 = t1 * zoomX;
+      double x2 = t2 * zoomX;
+      double width = x2 - x1;
+
+      if (width <= 0) continue;
+
+      Color frameColor;
+      if (score > 0.75) {
+        frameColor = Colors.redAccent.withOpacity(0.85);
+      } else if (score > 0.45) {
+        frameColor = Colors.orangeAccent.withOpacity(0.65);
+      } else {
+        frameColor = Colors.tealAccent.withOpacity(0.20);
+      }
+
+      fillPaint.color = frameColor;
+      canvas.drawRect(Rect.fromLTWH(x1, topY, width, barHeight), fillPaint);
+
+      if (score > 0.75) {
+        final Paint linePaint = Paint()
+          ..color = Colors.redAccent
+          ..strokeWidth = 2.0;
+        canvas.drawLine(Offset(x1, topY), Offset(x2, topY), linePaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant AiHeatmapOverlayPainter oldDelegate) {
+    return oldDelegate.heatmap != heatmap || oldDelegate.zoomX != zoomX;
+  }
+}
+
+class DualXRayContourPainter extends CustomPainter {
+  final List<dynamic> contour1;
+  final List<dynamic> contour2;
+  final List<dynamic> continuous1;
+  final List<dynamic> continuous2;
+  final double currentScrollX;
+  final List<dynamic> identicalRegions;
+  final double zoomX;
+  final double zoomY;
+  final int minMidi;
+  final int maxMidi;
+
+  DualXRayContourPainter({
+    required this.contour1,
+    required this.contour2,
+    required this.continuous1,
+    required this.continuous2,
+    required this.currentScrollX,
+    required this.identicalRegions,
+    required this.zoomX,
+    required this.zoomY,
+    required this.minMidi,
+    required this.maxMidi,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1. Draw Green Identical Match Regions First (Background Highlights)
+    final Paint matchPaint = Paint()
+      ..color = Colors.greenAccent.withOpacity(0.25)
+      ..style = PaintingStyle.fill;
+
+    for (var region in identicalRegions) {
+      double startSec = (region['start'] ?? 0.0).toDouble();
+      double endSec = (region['end'] ?? 0.0).toDouble();
+      double startX = startSec * zoomX;
+      double endX = endSec * zoomX;
+
+      canvas.drawRect(
+        Rect.fromLTRB(startX, 0, endX, size.height),
+        matchPaint,
+      );
+    }
+
+    // 2. Helper to draw the Continuous Background Traces (Like the old Green Line)
+    void drawContinuousTrace(List<dynamic> trace, Color color) {
+      if (trace.isEmpty) return;
+
+      final Paint paint = Paint()
+        ..color = color.withOpacity(0.35) // Matches original green line transparency
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round;
+
+      final Path path = Path();
+      bool isStarted = false;
+      double lastTime = -1.0;
+
+      for (var point in trace) {
+        double time = (point[0] ?? 0.0).toDouble();
+        double midiPitch = (point[1] ?? 60.0).toDouble();
+
+        double px = time * zoomX;
+        double py = (maxMidi - midiPitch) * zoomY + (zoomY / 2);
+
+        // Culling
+        if (px < currentScrollX - 100 || px > currentScrollX + size.width + 100) {
+          isStarted = false;
+          lastTime = time;
+          continue;
+        }
+
+        // Gap detection
+        if (isStarted && (time - lastTime) > 0.05) {
+          isStarted = false;
+        }
+
+        if (!isStarted) {
+          path.moveTo(px, py);
+          isStarted = true;
+        } else {
+          path.lineTo(px, py);
+        }
+        
+        lastTime = time;
+      }
+      canvas.drawPath(path, paint);
+    }
+
+    // 3. Helper to draw the High-Res Forensics contour path
+    void drawContour(List<dynamic> contour, Color color) {
+      if (contour.isEmpty) return;
+
+      final Paint paint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round;
+
+      final Path path = Path();
+      bool isStarted = false;
+
+      for (var point in contour) {
+        if (point is List && point.length >= 2) {
+          double time = (point[0] ?? 0.0).toDouble();
+          double freq = (point[1] ?? 0.0).toDouble();
+
+          if (freq > 0) {
+            double midi = 69.0 + (12.0 * (math.log(freq / 440.0) / math.ln2));
+            double x = time * zoomX;
+            double y = (maxMidi - midi) * zoomY + (zoomY / 2);
+
+            if (!isStarted) {
+              path.moveTo(x, y);
+              isStarted = true;
+            } else {
+              path.lineTo(x, y);
+            }
+          } else {
+            isStarted = false; 
+          }
+        }
+      }
+      canvas.drawPath(path, paint);
+    }
+
+    // 4. Draw Continuous Traces (Background)
+    drawContinuousTrace(continuous1, const Color(0xFF00E5FF));
+    drawContinuousTrace(continuous2, const Color(0xFFFF007F));
+
+    // 5. Draw High-Res Contours (Foreground)
+    drawContour(contour1, const Color(0xFF00E5FF));
+    drawContour(contour2, const Color(0xFFFF007F));
+  }
+
+  @override
+  bool shouldRepaint(covariant DualXRayContourPainter oldDelegate) {
+    return oldDelegate.contour1 != contour1 ||
+           oldDelegate.contour2 != contour2 ||
+           oldDelegate.continuous1 != continuous1 ||
+           oldDelegate.continuous2 != continuous2 ||
+           oldDelegate.currentScrollX != currentScrollX ||
+           oldDelegate.identicalRegions != identicalRegions ||
+           oldDelegate.zoomX != zoomX ||
+           oldDelegate.zoomY != zoomY;
+  }
+}
+
+
 class AdvancedPianoRollPainter extends CustomPainter {
   final List<Map<String, dynamic>> notes;
   final List<dynamic> continuousXray;
@@ -575,6 +1053,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
   final bool isDrumsMode;
   final int? draggingNoteIndex;
   final int initialSemitoneShift;
+  final bool isDualModeActive;
 
   AdvancedPianoRollPainter({
     required this.notes, 
@@ -587,7 +1066,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
     this.isXrayMode = false, 
     this.isDrumsMode = false,
     this.draggingNoteIndex, 
-    this.initialSemitoneShift = 0
+    this.initialSemitoneShift = 0,
+    this.isDualModeActive = false,
   });
 
   String getNoteName(int midi) { const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']; return '${noteNames[midi % 12]}${(midi ~/ 12) - 1}'; }
@@ -604,7 +1084,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
     // =========================================================================
     // LAYER 1: DRAW GLOBAL CONTINUOUS VISUAL X-RAY TRACKING LINE
     // =========================================================================
-    if (isXrayMode && continuousXray.isNotEmpty && !isDrumsMode) {
+    if (isXrayMode && continuousXray.isNotEmpty && !isDrumsMode && !isDualModeActive) {
       final xrayPaint = Paint()
         ..color = Colors.tealAccent.withOpacity(0.35)
         ..style = PaintingStyle.stroke
