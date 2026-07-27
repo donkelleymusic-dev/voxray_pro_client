@@ -3,7 +3,7 @@
 // ==============================================================================
 // Copyright (c) 2026 Donald Bayard Kelley. All Rights Reserved.
 //
-// voXRAY Enterprise DSP & Roformer Engine
+// voXRay Enterprise DSP & Roformer Engine
 //
 // PROPRIETARY AND CONFIDENTIAL
 // This source code, algorithms, binaries, and related documentation are the
@@ -3524,7 +3524,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         Navigator.push(context, MaterialPageRoute(builder: (_) => AccountSettingsScreen()));
         break;
       case 'about_info':
-        Navigator.push(context, MaterialPageRoute(builder: (_) => AboutInfoScreen(contentKey: 'about_me', pageTitle: 'About voXRAY')));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => AboutInfoScreen(contentKey: 'about_me', pageTitle: 'About voXRay')));
         break;
       case 'feedback':
         Navigator.push(context, MaterialPageRoute(builder: (_) => const FeedbackScreen()));
@@ -3797,7 +3797,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            /*const Text('voXRAY ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
+            /*const Text('voXRay ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
