@@ -30,9 +30,11 @@ import '../audio/vox_synth.dart';
 import '../main.dart'; // Gives access to VoxrayDAWStateBase
 
 double sliderToFrequency(double sliderValue) {
+  // Cubic curve gives a much more natural studio taper across 20Hz - 20kHz
   const double minFreq = 20.0;
   const double maxFreq = 20000.0;
-  return minFreq * math.pow(maxFreq / minFreq, sliderValue);
+  double p = math.pow(sliderValue, 3).toDouble();
+  return minFreq + (maxFreq - minFreq) * p;
 }
 
 /// Drop this mixin onto VoxrayDAWState.
@@ -378,6 +380,17 @@ mixin DawAudioController on VoxrayDAWStateBase {
   // =========================================================================
 
   void updateStemVolume(String stemKey) {
+    final handle = stemHandles[stemKey];
+    if (handle == null || !SoLoud.instance.getIsValidVoiceHandle(handle)) return;
+
+    if (stemKey == 'drums') {
+      SoLoud.instance.setVolume(handle, 0.0);
+    } else {
+      SoLoud.instance.setVolume(handle, getEffectiveVolume(stemKey));
+    }
+  }
+  
+  void updateStemVolume_old(String stemKey) {
     final state = getChannelState(stemKey);
     final handle = stemHandles[stemKey];
     if (handle == null || !SoLoud.instance.getIsValidVoiceHandle(handle)) return;
