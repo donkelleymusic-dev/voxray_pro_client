@@ -1,6 +1,6 @@
 {
-    "name": "voxray_pro_client",
-    "short_name": "voxray_pro_client",
+    "name": "voXRay Forensic DAW",
+    "short_name": "voXRay DAW",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
