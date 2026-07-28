@@ -1140,7 +1140,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _introController = VideoPlayerController.asset('assets/video/launch_anim.mp4')
+    _introController = VideoPlayerController.asset('assets/launch_anim.mp4')
       ..initialize().then((_) {
         setState(() {}); 
         _introController!.play();
