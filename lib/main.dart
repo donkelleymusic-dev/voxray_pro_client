@@ -1140,8 +1140,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
     _introController = VideoPlayerController.asset('assets/launch_anim.mp4')
       ..initialize().then((_) {
-        setState(() {}); 
+        // Force a rebuild as soon as it's ready
+        if (mounted) setState(() {}); 
         _introController!.play();
+        
+        // Ensure it doesn't loop forever, but stays for 5 seconds
+        _introController!.setLooping(false);
 
         Future.delayed(const Duration(seconds: 5), () {
           if (mounted) {
@@ -1152,6 +1156,15 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             });
           }
         });
+      }).catchError((error) {
+        // If the video fails to load, log it and hide the animation instantly so your app doesn't hang
+        debugPrint("VIDEO PLAYER CRASH: $error");
+        if (mounted) {
+          setState(() {
+            _showIntroAnimation = false;
+            _introController = null;
+          });
+        }
       });
     
     horizontalScrollController.addListener(() {
