@@ -75,7 +75,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:video_player/video_player.dart';
+import 'package:_player/_player.dart';
 
 import 'models/audio_channel.dart';
 import 'ui/dual_xray_dialog.dart';
@@ -857,6 +857,60 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     return baseVol.clamp(0.0, 4.0);
   }
 
+  Future<bool> _verifyTokens(int requiredTokens, String taskName) async {
+    try {
+      final session = BackendService.supabase.auth.currentSession;
+      if (session == null) return false;
+
+      final response = await BackendService.supabase
+          .from('profiles')
+          .select('dsp_tokens') // Adjust to your actual Supabase column if different
+          .eq('id', session.user.id)
+          .single();
+
+      int currentTokens = (response['dsp_tokens'] ?? 0) as int;
+      
+      if (currentTokens < requiredTokens) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: Colors.grey[900],
+              title: const Row(children: [
+                Icon(Icons.memory, color: Colors.greenAccent),
+                SizedBox(width: 8),
+                Text('Insufficient DSP Tokens', style: TextStyle(color: Colors.white)),
+              ]),
+              content: Text(
+                'The $taskName engine requires $requiredTokens DSP token(s), but you only have $currentTokens remaining.\n\nPlease top up your wallet to continue processing.',
+                style: const TextStyle(color: Colors.white70, height: 1.4),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx), 
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white54))
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent[700]),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen()));
+                  },
+                  child: const Text('Open Wallet', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+        }
+        return false;
+      }
+      return true;
+    } catch (e) {
+      logToSupabase('Token verification failed: $e');
+      return true; // Failsafe: let it through and let Python block it if it's a real issue
+    }
+  }
+
   void refreshAllVolumes() {
     if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
       SoLoud.instance.setVolume(masterHandle!, getEffectiveVolume('original'));
@@ -1526,13 +1580,15 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   }
   
   Future<void> _runAnyToAnyForensicAlign(AudioChannel source, AudioChannel target) async {
+    // 1. PRE-FLIGHT UX CHECK
+    if (!await _verifyTokens(2, 'Dual-Take Alignment')) return;
+
     setState(() {
       isLoading = true;
       processingProgress = 0.0;
       processingMessage = "Preparing audio and validating X-Ray data...";
     });
 
-    // ── 1. ENSURE HIGH-RES X-RAY DATA EXISTS FOR BOTH TRACKS ──
     bool sourceReady = await _ensureXrayGenerated(source.stemKey);
     bool targetReady = await _ensureXrayGenerated(target.stemKey);
 
@@ -1553,6 +1609,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       request.fields['session_id'] = currentTaskId ?? 'temp_session';
       request.fields['notes_a_json'] = jsonEncode(allStemsNotes[source.stemKey] ?? []);
       request.fields['notes_b_json'] = jsonEncode(allStemsNotes[target.stemKey] ?? []);
+
+      // 2. SEND TOKEN TO PYTHON
+      final session = BackendService.supabase.auth.currentSession;
+      if (session != null) {
+        request.fields['access_token'] = session.accessToken;
+      }
 
       Uint8List? bytes1 = cachedStemBytes[source.stemKey];
       Uint8List? bytes2 = cachedStemBytes[target.stemKey];
@@ -1715,9 +1777,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   }
   
   Future<void> _runAiVocalInspection() async {
+    // 1. PRE-FLIGHT UX CHECK
+    if (!await _verifyTokens(1, 'AI Synthetic Detection')) return;
+
     Uint8List? audioBytes;
 
-    // Retrieve vocal stem bytes from RAM or disk cache
     if (cachedStemBytes.containsKey('vocals')) {
       audioBytes = cachedStemBytes['vocals'];
     } else if (cachedStemPaths.containsKey('vocals')) {
@@ -1741,6 +1805,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       var uri = Uri.parse('$apiBase/detect-ai-vocal');
       var request = http.MultipartRequest('POST', uri)
         ..files.add(http.MultipartFile.fromBytes('file', audioBytes, filename: 'vocal_stem.wav'));
+
+      // 2. SEND TOKEN TO PYTHON
+      final session = BackendService.supabase.auth.currentSession;
+      if (session != null) {
+        request.fields['access_token'] = session.accessToken;
+      }
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
