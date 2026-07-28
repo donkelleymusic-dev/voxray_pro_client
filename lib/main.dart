@@ -4065,6 +4065,78 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                         : null,
                   ),
                 ),
+                const VerticalDivider(color: Colors.white24, width: 16, indent: 6, endIndent: 6),
+                
+                // 1. X-Ray Toggle
+                Tooltip(
+                  message: 'Toggle X-Ray',
+                  child: isXrayProcessing
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0), 
+                          child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent))
+                        )
+                      : IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
+                        icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
+                        onPressed: (!isApiBusy && generatedStems.contains(activeEditableStem)) ? toggleXrayMode : null,
+                      ),
+                ),
+                
+                // 2. Dual X-Ray Toggle
+                Tooltip(
+                  message: 'Dual X-Ray Comparison',
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
+                    icon: Stack(
+                      children: [
+                        Icon(Icons.fingerprint, size: 20, color: isDualContourOverlayActive ? const Color(0xFF00E5FF) : Colors.white38),
+                        Positioned(
+                          left: 3, top: 3,
+                          child: Icon(Icons.fingerprint, size: 20, color: isDualContourOverlayActive ? const Color(0xFFFF007F).withOpacity(0.8) : Colors.white24),
+                        ),
+                      ],
+                    ),
+                    onPressed: isApiBusy ? null : () {
+                      if (dualContour1.isNotEmpty && dualContour2.isNotEmpty) {
+                        setState(() => isDualContourOverlayActive = !isDualContourOverlayActive);
+                      } else {
+                        showDialog(
+                          context: context,
+                          builder: (context) => DualXRayComparatorDialog(
+                            availableChannels: activeChannels,
+                            onRunComparison: (source, target) => _runAnyToAnyForensicAlign(source, target),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+
+                // 3. AI Detection Tool (Uncommented and Active!)
+                Tooltip(
+                  message: 'Detect AI Synthetic Vocals (experimental)',
+                  child: isAnalyzingAiVocal
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.0),
+                        child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent)),
+                      )
+                    : IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
+                        icon: Icon(
+                          Icons.psychology_outlined,
+                          size: 20,
+                          color: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
+                              ? Colors.cyanAccent
+                              : Colors.white24,
+                        ),
+                        onPressed: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
+                            ? _runAiVocalInspection
+                            : null,
+                      ),
+                ),
               ],
             ),
           ),
@@ -4533,105 +4605,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                             },
                                           ),
                                         ),
-    
-                                        // 5. X-Ray Toggle
-                                        Tooltip(
-                                          message: 'Toggle X-Ray',
-                                          child: isXrayProcessing
-                                              ? const Padding(
-                                                  padding: EdgeInsets.all(8.0), 
-                                                  child: SizedBox(
-                                                    width: 14, 
-                                                    height: 14, 
-                                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)
-                                                  )
-                                                )
-                                              : IconButton(
-                                                padding: EdgeInsets.zero,
-                                                constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                                icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
-                                                onPressed: (!isApiBusy && generatedStems.contains(activeEditableStem)) ? toggleXrayMode : null,
-                                              ),
-                                        ),
-                                        
-                                        // ── NEW: DUAL X-RAY LAUNCHER & TOGGLE ──
-                                        Tooltip(
-                                          message: 'Dual X-Ray Comparison',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: Stack(
-                                              children: [
-                                                // Base Fingerprint (Cyan or Grey)
-                                                Icon(
-                                                  Icons.fingerprint, 
-                                                  size: 20, 
-                                                  color: isDualContourOverlayActive ? const Color(0xFF00E5FF) : Colors.white38
-                                                ),
-                                                // Offset Top Fingerprint (Magenta or Grey with transparency)
-                                                Positioned(
-                                                  left: 3,
-                                                  top: 3,
-                                                  child: Icon(
-                                                    Icons.fingerprint, 
-                                                    size: 20, 
-                                                    color: isDualContourOverlayActive 
-                                                        ? const Color(0xFFFF007F).withOpacity(0.8) 
-                                                        : Colors.white24
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            onPressed: isApiBusy ? null : () {
-                                              // 1. If we already have dual contours in memory, toggle the view on/off
-                                              if (dualContour1.isNotEmpty && dualContour2.isNotEmpty) {
-                                                setState(() {
-                                                  isDualContourOverlayActive = !isDualContourOverlayActive;
-                                                });
-                                              } 
-                                              // 2. If we don't have dual data yet, launch the comparator dialog
-                                              else {
-                                                showDialog(
-                                                  context: context,
-                                                  builder: (context) => DualXRayComparatorDialog(
-                                                    availableChannels: activeChannels,
-                                                    onRunComparison: (source, target) {
-                                                      _runAnyToAnyForensicAlign(source, target);
-                                                    },
-                                                  ),
-                                                );
-                                              }
-                                            },
-                                          ),
-                                        ),
-                                
-                                        // AI Vocal Detection Tool Icon
-                                        /*Tooltip(
-                                          message: 'Detect AI Synthetic Vocals (experimental)',
-                                          child: isAnalyzingAiVocal
-                                              ? const Padding(
-                                                  padding: EdgeInsets.all(8.0),
-                                                  child: SizedBox(
-                                                    width: 14,
-                                                    height: 14,
-                                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent),
-                                                  ),
-                                                )
-                                              : IconButton(
-                                                  padding: EdgeInsets.zero,
-                                                  constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                                  icon: Icon(
-                                                    Icons.psychology_outlined,
-                                                    size: 20,
-                                                    color: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
-                                                        ? Colors.cyanAccent
-                                                        : Colors.white24,
-                                                  ),
-                                                  onPressed: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
-                                                      ? _runAiVocalInspection
-                                                      : null,
-                                                ),
-                                        ),*/
                                 
                                         // Divider for Undo/Redo grouping
                                         Container(
