@@ -2267,6 +2267,23 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       ];
       undoStack.clear();
       redoStack.clear();
+
+      // --- THE CRITICAL FIX: WIPE ALL REMAINING GHOST STATES ---
+      mixerState.clear();
+      for (var v in channelLevels.values) { v.value = 0.0; }
+      activeChannels.clear();
+      trashBin.clear();
+
+      isDualContourOverlayActive = false;
+      dualContour1.clear();
+      dualContour2.clear();
+      dualContinuous1.clear();
+      dualContinuous2.clear();
+      identicalMatchRegions.clear();
+      dualLabel1 = '';
+      dualLabel2 = '';
+      dualTakeSettings = null;
+      // ---------------------------------------------------------
     });
 
     resetAiDetectorState();
