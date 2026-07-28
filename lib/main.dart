@@ -1100,8 +1100,6 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   void showSaveConfirmation(String message, {bool isPreview = false});
   void showEngineRecommendationDialog();
   void registerUndoSnapshot();
-
-  Future<bool> verifyTokens(int requiredTokens, String taskName);
   
   void addImportedStem(String baseType, String filePath, {bool isGenerated = true});
 
