@@ -1027,7 +1027,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     try {
       var uri = Uri.parse('$apiBase/extract-nuclear-piano');
       var request = http.MultipartRequest('POST', uri)
-        ..fields['project_id'] = currentProjectId ?? 'temp_proj'
+        ..fields['project_id'] = currentTaskId ?? 'temp_proj'
         ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'mix.wav'));
 
       var streamedResponse = await request.send();
