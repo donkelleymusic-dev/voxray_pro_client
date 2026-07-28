@@ -350,8 +350,14 @@ mixin DawApiService on VoxrayDAWStateBase {
 
     var uploadOptions = await showUploadTypeDialog(context);
     if (uploadOptions == null) return;
+    
+    // 1. PRE-FLIGHT UX CHECK FOR FULL MIX
+    if (uploadOptions['type'] == 'mix') {
+       if (!await _verifyTokens(5, 'Full Mix DSP Extraction')) return;
+    } else {
+       if (!await _verifyTokens(1, 'Single Stem Processing')) return;
+    }
 
-    // --- NEW: Ask for the acoustic profile if it's a full mix ---
     String acousticProfile = 'standard';
     List<String> requestTargets = []; // We will dynamically build the target list
 
