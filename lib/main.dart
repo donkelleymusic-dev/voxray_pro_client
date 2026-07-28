@@ -147,37 +147,25 @@ class AiDetectionResult {
     required this.events,
   });
 
+  // --- COMPATIBILITY SHIMS FOR TIMELINE_CANVAS.DART ---
+  // These translate the new Python backend data into the variables your old UI expects!
+  
+  double get overallConfidence => (summary['ai_probability_score'] ?? 0.0) / 100.0;
+  
+  bool get isAiDetected => (summary['ai_probability_score'] ?? 0.0) >= 50.0;
+  
+  List<String> get detectedArtifacts => events.map((e) => e['metric_name'].toString()).toList();
+  
+  List<Map<String, dynamic>> get heatmap => []; // Leave empty so the old canvas painter safely skips it
+
+  // ----------------------------------------------------
+
   factory AiDetectionResult.fromJson(Map<String, dynamic> json) {
     return AiDetectionResult(
       fileInfo: Map<String, dynamic>.from(json['file_info'] ?? {}),
       summary: Map<String, dynamic>.from(json['summary'] ?? {}),
       waveform: List<double>.from((json['waveform'] as List? ?? []).map((x) => (x as num).toDouble())),
       events: List<dynamic>.from(json['events'] ?? []),
-    );
-  }
-}
-
-class AiDetectionResult_old {
-  final double overallConfidence; // 0.0 to 1.0
-  final bool isAiDetected;
-  final List<String> detectedArtifacts;
-  final List<Map<String, dynamic>> heatmap;
-
-  AiDetectionResult({
-    required this.overallConfidence,
-    required this.isAiDetected,
-    required this.detectedArtifacts,
-    required this.heatmap,
-  });
-
-  factory AiDetectionResult.fromJson(Map<String, dynamic> json) {
-    return AiDetectionResult(
-      overallConfidence: (json['overall_synthetic_confidence'] ?? 0.0).toDouble(),
-      isAiDetected: json['is_ai_detected'] ?? false,
-      detectedArtifacts: List<String>.from(json['detected_artifacts'] ?? []),
-      heatmap: List<Map<String, dynamic>>.from(
-        (json['heatmap'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
-      ),
     );
   }
 }
@@ -2123,67 +2111,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         }
       } else {
         _showSaveConfirmation('AI Inspection failed: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint("AI Inspection Error: $e");
-      _showSaveConfirmation('AI Inspection Error: $e');
-    } finally {
-      setState(() {
-        isAnalyzingAiVocal = false;
-        isLoading = false;
-        processingMessage = '';
-      });
-    }
-  }
-  
-  Future<void> _runAiVocalInspection_old() async {
-    // 1. PRE-FLIGHT UX CHECK
-    if (!await verifyTokens(1, 'AI Synthetic Detection')) return;
-
-    Uint8List? audioBytes;
-
-    if (cachedStemBytes.containsKey('vocals')) {
-      audioBytes = cachedStemBytes['vocals'];
-    } else if (cachedStemPaths.containsKey('vocals')) {
-      audioBytes = await File(cachedStemPaths['vocals']!).readAsBytes();
-    } else if (activeEditableStem == 'vocals' && originalAudioBytes != null) {
-      audioBytes = originalAudioBytes;
-    }
-
-    if (audioBytes == null) {
-      _showSaveConfirmation('No vocal stem audio available to inspect.');
-      return;
-    }
-
-    setState(() {
-      isAnalyzingAiVocal = true;
-      isLoading = true;
-      processingMessage = "Analyzing vocal stem for AI synthetic signatures...";
-    });
-
-    try {
-      var uri = Uri.parse('$apiBase/detect-ai-vocal');
-      var request = http.MultipartRequest('POST', uri)
-        ..files.add(http.MultipartFile.fromBytes('file', audioBytes, filename: 'vocal_stem.wav'));
-
-      // 2. SEND TOKEN TO PYTHON
-      final session = BackendService.supabase.auth.currentSession;
-      if (session != null) {
-        request.fields['access_token'] = session.accessToken;
-      }
-
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          aiResult = AiDetectionResult.fromJson(data);
-        });
-        _showSaveConfirmation(
-            'AI Inspection Complete (${(aiResult!.overallConfidence * 100).toStringAsFixed(1)}% Synthetic confidence)');
-      } else {
-        _showSaveConfirmation('AI Vocal Inspection failed: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint("AI Inspection Error: $e");
