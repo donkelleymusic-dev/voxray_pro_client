@@ -403,6 +403,10 @@ mixin DawApiService on VoxrayDAWStateBase {
     
     setState(() {
       isLoading          = true;
+      // CLEAR GHOST AI DATA:
+      aiResult = null; 
+      resetAiDetectorState();
+      
       processingProgress = 0.0;
       originalAudioBytes = audioBytes;
       originalFileName   = result.files.single.name;
