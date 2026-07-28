@@ -95,6 +95,7 @@ flutter:
   #   - images/a_dot_ham.jpeg
   assets:
     - assets/images/
+    - assets/launch_anim.mp4
     #voXRay_logo_transparent_crop.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
