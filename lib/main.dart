@@ -622,7 +622,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
 }*/
 
 // =========================================================================
-// AI FORENSICS TESTBED DIALOG
+// AI FORENSICS TESTBED DIALOG (SCROLLABLE & CALIBRATED)
 // =========================================================================
 
 class AiForensicsDialog extends StatefulWidget {
@@ -647,27 +647,28 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
 
     double duration = (widget.analysisData['file_info']?['duration_sec'] ?? 10.0).toDouble();
     var summary = widget.analysisData['summary'];
+    double aiScore = (summary['ai_probability_score'] ?? 0.0).toDouble();
 
     return Dialog(
       backgroundColor: const Color(0xFF121212),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: 800,
-        height: 600,
-        padding: const EdgeInsets.all(20),
+        width: 850,
+        height: 700,
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('AI Audio Forensics Testbed', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text('AI Audio Forensics Analysis', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                 IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: () => Navigator.pop(context)),
               ],
             ),
-            const Divider(color: Colors.white24),
+            const Divider(color: Colors.white24, height: 24),
             
-            // Overview Header
+            // Overview Header Card
             Card(
               color: const Color(0xFF1E1E1E),
               child: Padding(
@@ -679,18 +680,21 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(widget.analysisData['file_info']['filename'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                        Text("Duration: ${duration}s | Rate: ${widget.analysisData['file_info']['sample_rate']}Hz", style: const TextStyle(color: Colors.white54)),
+                        const SizedBox(height: 4),
+                        Text("Duration: ${duration}s | Sample Rate: ${widget.analysisData['file_info']['sample_rate']}Hz", style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text("Total Anomalies Flagged: ${widget.analysisData['events'].length}", style: const TextStyle(color: Colors.amberAccent, fontSize: 12)),
                       ],
                     ),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          "${summary['ai_probability_score']}% AI",
+                          "${aiScore.toStringAsFixed(1)}% AI",
                           style: TextStyle(
-                            fontSize: 28,
+                            fontSize: 32,
                             fontWeight: FontWeight.bold,
-                            color: summary['ai_probability_score'] >= 50 ? Colors.redAccent : Colors.greenAccent,
+                            color: aiScore >= 50 ? Colors.redAccent : Colors.greenAccent,
                           ),
                         ),
                         Text(summary['verdict'], style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.white70)),
@@ -700,7 +704,7 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
             // Interactive Waveform & Timeline Playhead
             Card(
@@ -713,47 +717,48 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Playhead: ${_currentPlaybackTime.toStringAsFixed(2)}s', style: const TextStyle(color: Colors.white70)),
-                        Wrap(
-                          spacing: 8,
-                          children: [
-                            ChoiceChip(
-                              label: const Text('All', style: TextStyle(fontSize: 11)),
-                              selected: _selectedMetricFilter == null,
-                              onSelected: (_) => setState(() => _selectedMetricFilter = null),
-                            ),
-                            ChoiceChip(
-                              label: const Text('Pitch Slew', style: TextStyle(fontSize: 11)),
-                              selected: _selectedMetricFilter == 'pitch_slew',
-                              onSelected: (_) => setState(() => _selectedMetricFilter = 'pitch_slew'),
-                            ),
-                            ChoiceChip(
-                              label: const Text('Formants', style: TextStyle(fontSize: 11)),
-                              selected: _selectedMetricFilter == 'formant_decoupling',
-                              onSelected: (_) => setState(() => _selectedMetricFilter = 'formant_decoupling'),
-                            ),
-                            ChoiceChip(
-                              label: const Text('Grid Lock', style: TextStyle(fontSize: 11)),
-                              selected: _selectedMetricFilter == 'grid_lock',
-                              onSelected: (_) => setState(() => _selectedMetricFilter = 'grid_lock'),
-                            ),
-                          ],
+                        Text('Playhead: ${_currentPlaybackTime.toStringAsFixed(2)}s', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Wrap(
+                            spacing: 6,
+                            children: [
+                              ChoiceChip(
+                                label: const Text('All', style: TextStyle(fontSize: 10)),
+                                selected: _selectedMetricFilter == null,
+                                onSelected: (_) => setState(() => _selectedMetricFilter = null),
+                              ),
+                              ChoiceChip(
+                                label: const Text('Pitch Slew', style: TextStyle(fontSize: 10)),
+                                selected: _selectedMetricFilter == 'pitch_slew',
+                                onSelected: (_) => setState(() => _selectedMetricFilter = 'pitch_slew'),
+                              ),
+                              ChoiceChip(
+                                label: const Text('Formants', style: TextStyle(fontSize: 10)),
+                                selected: _selectedMetricFilter == 'formant_decoupling',
+                                onSelected: (_) => setState(() => _selectedMetricFilter = 'formant_decoupling'),
+                              ),
+                              ChoiceChip(
+                                label: const Text('Grid Lock', style: TextStyle(fontSize: 10)),
+                                selected: _selectedMetricFilter == 'grid_lock',
+                                onSelected: (_) => setState(() => _selectedMetricFilter = 'grid_lock'),
+                              ),
+                            ],
+                          ),
                         )
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     GestureDetector(
                       onTapDown: (details) {
-                        double renderWidth = context.size!.width - 64; // Approx width of dialog minus padding
-                        if (renderWidth > 0) {
-                          double clickedRatio = (details.localPosition.dx / renderWidth).clamp(0.0, 1.0);
-                          setState(() => _currentPlaybackTime = clickedRatio * duration);
-                        }
+                        double renderWidth = 750; // Estimated content width inside dialog
+                        double clickedRatio = (details.localPosition.dx / renderWidth).clamp(0.0, 1.0);
+                        setState(() => _currentPlaybackTime = clickedRatio * duration);
                       },
                       child: Container(
-                        height: 80,
+                        height: 70,
                         width: double.infinity,
-                        color: Colors.black26,
+                        color: Colors.black38,
                         child: CustomPaint(
                           painter: WaveformPainter(
                             waveformData: List<double>.from(widget.analysisData['waveform'].map((x) => (x as num).toDouble())),
@@ -775,9 +780,9 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
-            // Time-Series Forensic Event Inspector
+            // Scrollable Time-Series Forensic Event Inspector
             Expanded(
               child: Card(
                 color: const Color(0xFF1E1E1E),
@@ -786,7 +791,7 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Flagged Forensic Events (${events.length})', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      Text('Flagged Forensic Events (${events.length})', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
                       const Divider(color: Colors.white24),
                       Expanded(
                         child: ListView.builder(
@@ -794,18 +799,25 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
                           itemBuilder: (context, index) {
                             final event = events[index];
                             bool isSelected = (_currentPlaybackTime - (event['timestamp_sec'] as num).toDouble()).abs() < 1.0;
-                            return ListTile(
-                              selected: isSelected,
-                              selectedTileColor: Colors.white10,
-                              leading: CircleAvatar(
-                                backgroundColor: event['severity'] == 'high' ? Colors.redAccent : (event['severity'] == 'medium' ? Colors.orangeAccent : Colors.amber),
-                                child: Text('${event['timestamp_sec']}s', style: const TextStyle(fontSize: 9, color: Colors.black, fontWeight: FontWeight.bold)),
+                            return Container(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isSelected ? Colors.white10 : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              title: Text(event['metric_name'], style: const TextStyle(color: Colors.white)),
-                              subtitle: Text("${event['detail']} (Val: ${event['raw_value']})", style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                              onTap: () {
-                                setState(() => _currentPlaybackTime = (event['timestamp_sec'] as num).toDouble());
-                              },
+                              child: ListTile(
+                                dense: true,
+                                leading: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: event['severity'] == 'high' ? Colors.redAccent : (event['severity'] == 'medium' ? Colors.orangeAccent : Colors.amber),
+                                  child: Text('${event['timestamp_sec']}s', style: const TextStyle(fontSize: 9, color: Colors.black, fontWeight: FontWeight.bold)),
+                                ),
+                                title: Text(event['metric_name'], style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                                subtitle: Text("${event['detail']} (Val: ${event['raw_value']})", style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                onTap: () {
+                                  setState(() => _currentPlaybackTime = (event['timestamp_sec'] as num).toDouble());
+                                },
+                              ),
                             );
                           },
                         ),
