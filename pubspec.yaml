@@ -56,6 +56,7 @@ dependencies:
   sentry_flutter: ^8.6.0
   flutter_markdown: ^0.7.3
   package_info_plus: ^9.0.1
+  video_player: ^2.9.1
 
 dev_dependencies:
   flutter_test:
