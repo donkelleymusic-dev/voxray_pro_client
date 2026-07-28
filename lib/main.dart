@@ -75,7 +75,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:_player/_player.dart';
+import 'package:video_player/video_player.dart';
 
 import 'models/audio_channel.dart';
 import 'ui/dual_xray_dialog.dart';
@@ -857,7 +857,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     return baseVol.clamp(0.0, 4.0);
   }
 
-  Future<bool> _verifyTokens(int requiredTokens, String taskName) async {
+  Future<bool> verifyTokens(int requiredTokens, String taskName) async {
     try {
       final session = BackendService.supabase.auth.currentSession;
       if (session == null) return false;
@@ -1100,6 +1100,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   void showSaveConfirmation(String message, {bool isPreview = false});
   void showEngineRecommendationDialog();
   void registerUndoSnapshot();
+
+  Future<bool> verifyTokens(int requiredTokens, String taskName);
   
   void addImportedStem(String baseType, String filePath, {bool isGenerated = true});
 
@@ -1581,7 +1583,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   
   Future<void> _runAnyToAnyForensicAlign(AudioChannel source, AudioChannel target) async {
     // 1. PRE-FLIGHT UX CHECK
-    if (!await _verifyTokens(2, 'Dual-Take Alignment')) return;
+    if (!await verifyTokens(2, 'Dual-Take Alignment')) return;
 
     setState(() {
       isLoading = true;
@@ -1778,7 +1780,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   
   Future<void> _runAiVocalInspection() async {
     // 1. PRE-FLIGHT UX CHECK
-    if (!await _verifyTokens(1, 'AI Synthetic Detection')) return;
+    if (!await verifyTokens(1, 'AI Synthetic Detection')) return;
 
     Uint8List? audioBytes;
 
