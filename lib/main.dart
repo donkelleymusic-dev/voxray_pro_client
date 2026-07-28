@@ -839,17 +839,20 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
     
     // 2. GLOBAL SOLO ROUTING
     if (soloedChannels.isNotEmpty) {
-      // If this specific track is soloed, let it play
-      if (soloedChannels.contains(key)) return baseVol;
-      
-      // If it's a drum sub-stem AND the master drum bus is soloed, let it play
-      if (isDrumSub && soloedChannels.contains('drums')) return baseVol;
-      
-      // Otherwise, silence it
-      return 0.0;
+      if (!soloedChannels.contains(key) && !(isDrumSub && soloedChannels.contains('drums'))) {
+        return 0.0;
+      }
+    }
+
+    // 3. COMPRESSOR MAKEUP GAIN
+    final plugins = [state.plugin1, state.plugin2, state.plugin3, state.plugin4];
+    if (plugins.contains('Compressor')) {
+      double makeupDb = state.compressorThreshold.abs() * (1.0 - (1.0 / state.compressorRatio)) * 0.4;
+      double makeupLinear = math.pow(10.0, makeupDb / 20.0).toDouble();
+      baseVol *= makeupLinear;
     }
     
-    return baseVol;
+    return baseVol.clamp(0.0, 4.0);
   }
 
   void refreshAllVolumes() {
