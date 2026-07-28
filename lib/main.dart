@@ -2140,18 +2140,43 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   Future<void> _runAiVocalInspection() async { // not just for vocals any more!
     if (!await verifyTokens(1, 'AI Synthetic Detection')) return;
 
-    Uint8List? audioBytes;
+    List<http.MultipartFile> filesToSend = [];
 
-    if (cachedStemBytes.containsKey(activeEditableStem)) {
-      audioBytes = cachedStemBytes[activeEditableStem];
-    } else if (cachedStemPaths.containsKey(activeEditableStem)) {
-      audioBytes = await File(cachedStemPaths[activeEditableStem]!).readAsBytes();
-    } else if (activeEditableStem == 'original' && originalAudioBytes != null) {
-      // ONLY allow the original file if they explicitly clicked the 'original' / 'mix' track
-      audioBytes = originalAudioBytes;
+    // 1. IF DRUMS ARE SELECTED: Bundle all available sub-stems
+    if (activeEditableStem == 'drums') {
+      List<String> drumSubs = ['kick', 'snare', 'hihat', 'toms', 'cymbals'];
+      for (String sub in drumSubs) {
+        Uint8List? subBytes;
+        if (cachedStemBytes.containsKey(sub)) {
+          subBytes = cachedStemBytes[sub];
+        } else if (cachedStemPaths.containsKey(sub)) {
+          subBytes = await File(cachedStemPaths[sub]!).readAsBytes();
+        }
+        
+        if (subBytes != null) {
+          // Notice the field name is 'files' (plural) for the Python array
+          filesToSend.add(http.MultipartFile.fromBytes('files', subBytes, filename: '${sub}_check.wav'));
+        }
+      }
+    } 
+    // 2. OTHERWISE: Just send the single selected stem (vocal, mix, piano, etc.)
+    else {
+      Uint8List? audioBytes;
+      if (cachedStemBytes.containsKey(activeEditableStem)) {
+        audioBytes = cachedStemBytes[activeEditableStem];
+      } else if (cachedStemPaths.containsKey(activeEditableStem)) {
+        audioBytes = await File(cachedStemPaths[activeEditableStem]!).readAsBytes();
+      } else if (activeEditableStem == 'original' && originalAudioBytes != null) {
+        // ONLY allow the original file if they explicitly clicked the 'original' / 'mix' track
+        audioBytes = originalAudioBytes;
+      }
+
+      if (audioBytes != null) {
+        filesToSend.add(http.MultipartFile.fromBytes('files', audioBytes, filename: '${activeEditableStem}_check.wav'));
+      }
     }
 
-    if (audioBytes == null) {
+    if (filesToSend.isEmpty) {
       _showSaveConfirmation('No audio available for ${activeEditableStem.toUpperCase()}. Generate or load this stem first.');
       return;
     }
@@ -2164,8 +2189,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
     try {
       var uri = Uri.parse('$apiBase/detect-ai-vocal');
-      var request = http.MultipartRequest('POST', uri)
-        ..files.add(http.MultipartFile.fromBytes('file', audioBytes, filename: '${activeEditableStem}_check.wav'));
+      var request = http.MultipartRequest('POST', uri);
+      
+      // Attach the array of files (1 file, or 5 files)
+      request.files.addAll(filesToSend);
 
       final session = BackendService.supabase.auth.currentSession;
       if (session != null) {
