@@ -2142,17 +2142,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
     Uint8List? audioBytes;
 
-    // Pull whatever track is currently active
     if (cachedStemBytes.containsKey(activeEditableStem)) {
       audioBytes = cachedStemBytes[activeEditableStem];
     } else if (cachedStemPaths.containsKey(activeEditableStem)) {
       audioBytes = await File(cachedStemPaths[activeEditableStem]!).readAsBytes();
     } else if (activeEditableStem == 'original' && originalAudioBytes != null) {
+      // ONLY allow the original file if they explicitly clicked the 'original' / 'mix' track
       audioBytes = originalAudioBytes;
     }
 
     if (audioBytes == null) {
-      _showSaveConfirmation('No audio available for $activeEditableStem.');
+      _showSaveConfirmation('No audio available for ${activeEditableStem.toUpperCase()}. Generate or load this stem first.');
       return;
     }
 
