@@ -74,6 +74,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:video_player/video_player.dart';
 
 import 'models/audio_channel.dart';
 import 'ui/dual_xray_dialog.dart';
@@ -1062,6 +1063,9 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 // =========================================================================
 class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, DawAudioController, DawApiService {
 
+  VideoPlayerController? _introController;
+  bool _showIntroAnimation = true;
+  
   @override
   void showSaveConfirmation(String message, {bool isPreview = false}) {
     _showSaveConfirmation(message, isPreview: isPreview);
@@ -1079,6 +1083,22 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    _introController = VideoPlayerController.asset('assets/video/launch_anim.mp4')
+      ..initialize().then((_) {
+        setState(() {}); 
+        _introController!.play();
+
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) {
+            setState(() => _showIntroAnimation = false);
+            Future.delayed(const Duration(seconds: 1), () {
+              _introController?.dispose();
+              _introController = null;
+            });
+          }
+        });
+      });
+    
     horizontalScrollController.addListener(() {
       if (rulerScrollController.hasClients) {
         if ((rulerScrollController.position.pixels -
@@ -4113,468 +4133,498 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: isLandscape ? 40 : 56, // Shrink AppBar slightly in landscape
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            /*const Text('voXRay ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
-              child: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
-            ),*/
-            // ✅ TRANSPARENT LOGO REPLACEMENT
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Image.asset(
-                'assets/images/voXRay_logo_transparent_crop.png', // <--- Your asset path
-                height: isLandscape ? 22 : 30,    // Dynamically scales to toolbar height
-                fit: BoxFit.contain,
-              ),
-            ),
-            const SizedBox(width: 4),
-            if (!isLandscape) // Hide subtitle in landscape to save horizontal space
-              const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
-            IconButton(
-              icon: Icon(Icons.memory, size: 20, color: Colors.greenAccent[400]), // Glowing money green DSP chip
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen())),
-            ),
-          ],
-        ),
-        actions: [
-          // 5. In Landscape, inject the Status Text right into the AppBar
-          if (isLandscape)
-            Container(
-              width: MediaQuery.of(context).size.width * 0.35, // Cap width so it doesn't overflow
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 8.0),
-              child: buildStatusContent(true),
-            ),
-          if (!isLiveModeActive)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              tooltip: 'Main Menu',
-              onSelected: _handleMenuSelection,
-              itemBuilder: (context) => _buildMainMenu(),
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: isLiveModeActive
-            ? LivePedagogyView(onExit: () => setState(() => isLiveModeActive = false))
-            : Column(children: [
-                
-                // 6. In Portrait, render the classic Status Bar
-                if (!isLandscape)
-                  Container(
-                    width: double.infinity,
-                    color: Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: buildStatusContent(false),
-                  ),
-
-                // 7. Dynamic Tools & Meter Bridge Row
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            toolbarHeight: isLandscape ? 40 : 56, // Shrink AppBar slightly in landscape
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                /*const Text('voXRay ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
                 Container(
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900],
-                    border: const Border(bottom: BorderSide(color: Colors.black, width: 2)),
-                  ),
-                  child: isLandscape
-                      // LANDSCAPE: Tools and Meters live on the SAME horizontal strip
-                      ? SizedBox(
-                          height: 52,
-                          child: Row(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(left: 6.0, right: 8.0),
-                                child: buildToolGroup(),
-                              ),
-                              Container(width: 2, color: Colors.black),
-                              Expanded(child: buildMeterBridge()),
-                            ],
-                          ),
-                        )
-                      // PORTRAIT: Stack them cleanly with full unclipped height
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              height: 36,
-                              width: double.infinity,
-                              color: Colors.black26,
-                              padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                              alignment: Alignment.centerLeft,
-                              child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: buildToolGroup()),
-                            ),
-                            // Restored full container height for portrait mode so text & meters never clip
-                            SizedBox(
-                              height: 52,
-                              child: buildMeterBridge(),
-                            ),
-                          ],
-                        ),
-                ),
-
-                // ── Horizontal zoom ──────────────────────────────────────────
-                SizedBox(
-                  height: 16,
-                  child: SliderTheme(
-                    data: SliderThemeData(
-                      trackHeight: 2,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                      overlayShape: SliderComponentShape.noOverlay,
-                    ),
-                    child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: setZoomX),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
+                  child: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
+                ),*/
+                // ✅ TRANSPARENT LOGO REPLACEMENT
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Image.asset(
+                    'assets/images/voXRay_logo_transparent_crop.png', // <--- Your asset path
+                    height: isLandscape ? 22 : 30,    // Dynamically scales to toolbar height
+                    fit: BoxFit.contain,
                   ),
                 ),
-
-                // ── Workspace: Timeline + Sidebar ─────────────────────────────────────────────
-                Expanded(
-                  child: Column(children: [
-                    Row(children: [
+                const SizedBox(width: 4),
+                if (!isLandscape) // Hide subtitle in landscape to save horizontal space
+                  const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
+                IconButton(
+                  icon: Icon(Icons.memory, size: 20, color: Colors.greenAccent[400]), // Glowing money green DSP chip
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen())),
+                ),
+              ],
+            ),
+            actions: [
+              // 5. In Landscape, inject the Status Text right into the AppBar
+              if (isLandscape)
+                Container(
+                  width: MediaQuery.of(context).size.width * 0.35, // Cap width so it doesn't overflow
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: buildStatusContent(true),
+                ),
+              if (!isLiveModeActive)
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: 'Main Menu',
+                  onSelected: _handleMenuSelection,
+                  itemBuilder: (context) => _buildMainMenu(),
+                ),
+            ],
+          ),
+          body: SafeArea(
+            child: isLiveModeActive
+                ? LivePedagogyView(onExit: () => setState(() => isLiveModeActive = false))
+                : Column(children: [
+                    
+                    // 6. In Portrait, render the classic Status Bar
+                    if (!isLandscape)
                       Container(
-                        width: 46,
-                        height: 45,
+                        width: double.infinity,
+                        color: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: buildStatusContent(false),
+                      ),
+    
+                    // 7. Dynamic Tools & Meter Bridge Row
+                    Container(
+                      decoration: BoxDecoration(
                         color: Colors.grey[900],
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
-                          onPressed: _toggleMasterTransport,
-                        ),
+                        border: const Border(bottom: BorderSide(color: Colors.black, width: 2)),
                       ),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          controller: rulerScrollController,
-                          scrollDirection: Axis.horizontal,
-                          child: TimelineRulerWidget(dawState: this),
-                        ),
-                      ),
-                      SizedBox(width: isLandscape ? 100 : 50),
-                    ]),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: SizedBox(
-                              width: 24,
-                              child: RotatedBox(
-                                quarterTurns: 3,
-                                child: SliderTheme(
-                                  data: SliderThemeData(
-                                    trackHeight: 2,
-                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                    overlayShape: SliderComponentShape.noOverlay,
+                      child: isLandscape
+                          // LANDSCAPE: Tools and Meters live on the SAME horizontal strip
+                          ? SizedBox(
+                              height: 52,
+                              child: Row(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 6.0, right: 8.0),
+                                    child: buildToolGroup(),
                                   ),
-                                  child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: setZoomY),
-                                ),
+                                  Container(width: 2, color: Colors.black),
+                                  Expanded(child: buildMeterBridge()),
+                                ],
                               ),
+                            )
+                          // PORTRAIT: Stack them cleanly with full unclipped height
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  height: 36,
+                                  width: double.infinity,
+                                  color: Colors.black26,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                                  alignment: Alignment.centerLeft,
+                                  child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: buildToolGroup()),
+                                ),
+                                // Restored full container height for portrait mode so text & meters never clip
+                                SizedBox(
+                                  height: 52,
+                                  child: buildMeterBridge(),
+                                ),
+                              ],
+                            ),
+                    ),
+    
+                    // ── Horizontal zoom ──────────────────────────────────────────
+                    SizedBox(
+                      height: 16,
+                      child: SliderTheme(
+                        data: SliderThemeData(
+                          trackHeight: 2,
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                          overlayShape: SliderComponentShape.noOverlay,
+                        ),
+                        child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: setZoomX),
+                      ),
+                    ),
+    
+                    // ── Workspace: Timeline + Sidebar ─────────────────────────────────────────────
+                    Expanded(
+                      child: Column(children: [
+                        Row(children: [
+                          Container(
+                            width: 46,
+                            height: 45,
+                            color: Colors.grey[900],
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
+                              onPressed: _toggleMasterTransport,
                             ),
                           ),
                           Expanded(
-                            child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
-                                ? Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.music_note, size: 48, color: Colors.white24),
-                                        if (!isLoading && activeEditableStem.isNotEmpty) ...[
-                                          const SizedBox(height: 24),
-                                          ElevatedButton.icon(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.teal,
-                                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                                            ),
-                                            icon: const Icon(Icons.build),
-                                            label: Text('Generate & Analyze ${activeEditableStem.toUpperCase()}'),
-                                            onPressed: isApiBusy ? null : () => generateStemOnDemand(activeEditableStem),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  )
-                                : Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: TimelineCanvasWidget(
-                                          dawState: this,
-                                          horizontalScrollController: horizontalScrollController,
-                                          verticalScrollController: verticalScrollController,
-                                        ),
-                                      ),
-                                      // ── EXISTING DUAL X-RAY LEGEND OVERLAY ──
-                                      if (isDualContourOverlayActive)
-                                        Positioned(
-                                          bottom: 30, // Moved to the bottom
-                                          left: 20,   // Moved to the left
-                                          child: IgnorePointer( // <--- Allows clicks/drags to pass through to the canvas underneath!
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Text(
-                                                  'DUAL X-RAY KEY', 
-                                                  style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 4)])
-                                                ),
-                                                const SizedBox(height: 6),
-                                                Row(children: [
-                                                  Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
-                                                  const SizedBox(width: 6),
-                                                  Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
-                                                ]),
-                                                const SizedBox(height: 4),
-                                                Row(children: [
-                                                  Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
-                                                  const SizedBox(width: 6),
-                                                  Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
-                                                ]),
-                                                const SizedBox(height: 4),
-                                                Row(children: [
-                                                  Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.8)),
-                                                  const SizedBox(width: 6),
-                                                  const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
-                                                ]),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                          ),
-                          // Right: The Fully Restored Marker & Tool Sidebar
-                          Container(
-                            width: isLandscape ? 100 : 50,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[900],
-                              border: const Border(left: BorderSide(color: Colors.black, width: 2)),
-                            ),
                             child: SingleChildScrollView(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                child: Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 4.0, // Horizontal space between icons in landscape
-                                  runSpacing: 8.0, // Vertical space between rows
-                                  children: [
-                                    
-                                    // 1. Add Marker
-                                    Tooltip(
-                                      message: 'Add Marker',
-                                      child: IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                        icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), // Match jump-to-marker yellow!
-                                        onPressed: addMarkerAtCurrentPlayhead,
+                              controller: rulerScrollController,
+                              scrollDirection: Axis.horizontal,
+                              child: TimelineRulerWidget(dawState: this),
+                            ),
+                          ),
+                          SizedBox(width: isLandscape ? 100 : 50),
+                        ]),
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8.0),
+                                child: SizedBox(
+                                  width: 24,
+                                  child: RotatedBox(
+                                    quarterTurns: 3,
+                                    child: SliderTheme(
+                                      data: SliderThemeData(
+                                        trackHeight: 2,
+                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                        overlayShape: SliderComponentShape.noOverlay,
                                       ),
+                                      child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: setZoomY),
                                     ),
-                            
-                                    // 2. Go To Marker (Dropdown)
-                                    if (markers.isNotEmpty)
-                                      PopupMenuButton<double>(
-                                        icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
-                                        padding: EdgeInsets.zero,
-                                        tooltip: 'Go to Marker',
-                                        itemBuilder: (context) => markers.map((marker) {
-                                          int totalSeconds = (marker['time'] as double).round();
-                                          String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
-                                          return PopupMenuItem<double>(
-                                            value: marker['time'],
-                                            child: Row(children: [
-                                              const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
-                                              const SizedBox(width: 4),
-                                              Text('${marker['label']}  '),
-                                              Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                                            ]),
-                                          );
-                                        }).toList(),
-                                        onSelected: (time) => jumpToTimelinePosition(time),
-                                      ),
-                            
-                                    // 3. Set Loop Region Dropdown
-                                    if (markers.length >= 2)
-                                      PopupMenuButton<String>(
-                                        icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
-                                        padding: EdgeInsets.zero,
-                                        tooltip: 'Set Loop Region',
-                                        itemBuilder: (context) {
-                                          List<PopupMenuItem<String>> items = [];
-                                          for (int i = 0; i < markers.length; i++) {
-                                            for (int j = i + 1; j < markers.length; j++) {
-                                              items.add(PopupMenuItem(
-                                                value: '${markers[i]['time']}_${markers[j]['time']}',
-                                                child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
-                                              ));
-                                            }
-                                          }
-                                          return items;
-                                        },
-                                        onSelected: (val) {
-                                          final parts = val.split('_');
-                                          setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
-                                        },
-                                      ),
-                            
-                                    // 4. Loop On / Off Toggle
-                                    Tooltip(
-                                      message: 'Toggle Loop Playback',
-                                      child: IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                        icon: Icon(Icons.loop, size: 20, color: isLoopModeActive ? Colors.tealAccent : Colors.white38),
-                                        onPressed: () {
-                                          setState(() {
-                                            isLoopModeActive = !isLoopModeActive;
-                                          });
-                                        },
-                                      ),
-                                    ),
-
-                                    // 5. X-Ray Toggle
-                                    Tooltip(
-                                      message: 'Toggle X-Ray',
-                                      child: isXrayProcessing
-                                          ? const Padding(
-                                              padding: EdgeInsets.all(8.0), 
-                                              child: SizedBox(
-                                                width: 14, 
-                                                height: 14, 
-                                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)
-                                              )
-                                            )
-                                          : IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
-                                            onPressed: (!isApiBusy && generatedStems.contains(activeEditableStem)) ? toggleXrayMode : null,
-                                          ),
-                                    ),
-                                    
-                                    // ── NEW: DUAL X-RAY LAUNCHER & TOGGLE ──
-                                    Tooltip(
-                                      message: 'Dual X-Ray Comparison',
-                                      child: IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                        icon: Stack(
-                                          children: [
-                                            // Base Fingerprint (Cyan or Grey)
-                                            Icon(
-                                              Icons.fingerprint, 
-                                              size: 20, 
-                                              color: isDualContourOverlayActive ? const Color(0xFF00E5FF) : Colors.white38
-                                            ),
-                                            // Offset Top Fingerprint (Magenta or Grey with transparency)
-                                            Positioned(
-                                              left: 3,
-                                              top: 3,
-                                              child: Icon(
-                                                Icons.fingerprint, 
-                                                size: 20, 
-                                                color: isDualContourOverlayActive 
-                                                    ? const Color(0xFFFF007F).withOpacity(0.8) 
-                                                    : Colors.white24
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        onPressed: isApiBusy ? null : () {
-                                          // 1. If we already have dual contours in memory, toggle the view on/off
-                                          if (dualContour1.isNotEmpty && dualContour2.isNotEmpty) {
-                                            setState(() {
-                                              isDualContourOverlayActive = !isDualContourOverlayActive;
-                                            });
-                                          } 
-                                          // 2. If we don't have dual data yet, launch the comparator dialog
-                                          else {
-                                            showDialog(
-                                              context: context,
-                                              builder: (context) => DualXRayComparatorDialog(
-                                                availableChannels: activeChannels,
-                                                onRunComparison: (source, target) {
-                                                  _runAnyToAnyForensicAlign(source, target);
-                                                },
-                                              ),
-                                            );
-                                          }
-                                        },
-                                      ),
-                                    ),
-                            
-                                    // AI Vocal Detection Tool Icon
-                                    /*Tooltip(
-                                      message: 'Detect AI Synthetic Vocals (experimental)',
-                                      child: isAnalyzingAiVocal
-                                          ? const Padding(
-                                              padding: EdgeInsets.all(8.0),
-                                              child: SizedBox(
-                                                width: 14,
-                                                height: 14,
-                                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent),
-                                              ),
-                                            )
-                                          : IconButton(
-                                              padding: EdgeInsets.zero,
-                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                              icon: Icon(
-                                                Icons.psychology_outlined,
-                                                size: 20,
-                                                color: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
-                                                    ? Colors.cyanAccent
-                                                    : Colors.white24,
-                                              ),
-                                              onPressed: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
-                                                  ? _runAiVocalInspection
-                                                  : null,
-                                            ),
-                                    ),*/
-                            
-                                    // Divider for Undo/Redo grouping
-                                    Container(
-                                      width: isLandscape ? 100 : 50,
-                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                      child: Divider(color: Colors.grey[800], thickness: 1.5),
-                                    ),
-                            
-                                    // 6. Undo
-                                    Tooltip(
-                                      message: 'Undo',
-                                      child: IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                        icon: const Icon(Icons.undo, size: 20),
-                                        color: undoStack.isNotEmpty ? Colors.white : Colors.white24,
-                                        onPressed: (!isApiBusy && undoStack.isNotEmpty) ? _undo : null,
-                                      ),
-                                    ),
-                                    
-                                    // 7. Redo
-                                    Tooltip(
-                                      message: 'Redo',
-                                      child: IconButton(
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                        icon: const Icon(Icons.redo, size: 20),
-                                        color: redoStack.isNotEmpty ? Colors.white : Colors.white24,
-                                        onPressed: (!isApiBusy && redoStack.isNotEmpty) ? _redo : null,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          )
-                        ],
-                      ),
+                              Expanded(
+                                child: !isCurrentStemGenerated && originalAudioBytes != null && currentTaskId != null
+                                    ? Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.music_note, size: 48, color: Colors.white24),
+                                            if (!isLoading && activeEditableStem.isNotEmpty) ...[
+                                              const SizedBox(height: 24),
+                                              ElevatedButton.icon(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.teal,
+                                                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                                                ),
+                                                icon: const Icon(Icons.build),
+                                                label: Text('Generate & Analyze ${activeEditableStem.toUpperCase()}'),
+                                                onPressed: isApiBusy ? null : () => generateStemOnDemand(activeEditableStem),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      )
+                                    : Stack(
+                                        children: [
+                                          Positioned.fill(
+                                            child: TimelineCanvasWidget(
+                                              dawState: this,
+                                              horizontalScrollController: horizontalScrollController,
+                                              verticalScrollController: verticalScrollController,
+                                            ),
+                                          ),
+                                          // ── EXISTING DUAL X-RAY LEGEND OVERLAY ──
+                                          if (isDualContourOverlayActive)
+                                            Positioned(
+                                              bottom: 30, // Moved to the bottom
+                                              left: 20,   // Moved to the left
+                                              child: IgnorePointer( // <--- Allows clicks/drags to pass through to the canvas underneath!
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Text(
+                                                      'DUAL X-RAY KEY', 
+                                                      style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 4)])
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Row(children: [
+                                                      Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
+                                                      const SizedBox(width: 6),
+                                                      Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                    ]),
+                                                    const SizedBox(height: 4),
+                                                    Row(children: [
+                                                      Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
+                                                      const SizedBox(width: 6),
+                                                      Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                    ]),
+                                                    const SizedBox(height: 4),
+                                                    Row(children: [
+                                                      Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.8)),
+                                                      const SizedBox(width: 6),
+                                                      const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                    ]),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                              ),
+                              // Right: The Fully Restored Marker & Tool Sidebar
+                              Container(
+                                width: isLandscape ? 100 : 50,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[900],
+                                  border: const Border(left: BorderSide(color: Colors.black, width: 2)),
+                                ),
+                                child: SingleChildScrollView(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                    child: Wrap(
+                                      alignment: WrapAlignment.center,
+                                      spacing: 4.0, // Horizontal space between icons in landscape
+                                      runSpacing: 8.0, // Vertical space between rows
+                                      children: [
+                                        
+                                        // 1. Add Marker
+                                        Tooltip(
+                                          message: 'Add Marker',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), // Match jump-to-marker yellow!
+                                            onPressed: addMarkerAtCurrentPlayhead,
+                                          ),
+                                        ),
+                                
+                                        // 2. Go To Marker (Dropdown)
+                                        if (markers.isNotEmpty)
+                                          PopupMenuButton<double>(
+                                            icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
+                                            padding: EdgeInsets.zero,
+                                            tooltip: 'Go to Marker',
+                                            itemBuilder: (context) => markers.map((marker) {
+                                              int totalSeconds = (marker['time'] as double).round();
+                                              String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
+                                              return PopupMenuItem<double>(
+                                                value: marker['time'],
+                                                child: Row(children: [
+                                                  const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
+                                                  const SizedBox(width: 4),
+                                                  Text('${marker['label']}  '),
+                                                  Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                                ]),
+                                              );
+                                            }).toList(),
+                                            onSelected: (time) => jumpToTimelinePosition(time),
+                                          ),
+                                
+                                        // 3. Set Loop Region Dropdown
+                                        if (markers.length >= 2)
+                                          PopupMenuButton<String>(
+                                            icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
+                                            padding: EdgeInsets.zero,
+                                            tooltip: 'Set Loop Region',
+                                            itemBuilder: (context) {
+                                              List<PopupMenuItem<String>> items = [];
+                                              for (int i = 0; i < markers.length; i++) {
+                                                for (int j = i + 1; j < markers.length; j++) {
+                                                  items.add(PopupMenuItem(
+                                                    value: '${markers[i]['time']}_${markers[j]['time']}',
+                                                    child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
+                                                  ));
+                                                }
+                                              }
+                                              return items;
+                                            },
+                                            onSelected: (val) {
+                                              final parts = val.split('_');
+                                              setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
+                                            },
+                                          ),
+                                
+                                        // 4. Loop On / Off Toggle
+                                        Tooltip(
+                                          message: 'Toggle Loop Playback',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: Icon(Icons.loop, size: 20, color: isLoopModeActive ? Colors.tealAccent : Colors.white38),
+                                            onPressed: () {
+                                              setState(() {
+                                                isLoopModeActive = !isLoopModeActive;
+                                              });
+                                            },
+                                          ),
+                                        ),
+    
+                                        // 5. X-Ray Toggle
+                                        Tooltip(
+                                          message: 'Toggle X-Ray',
+                                          child: isXrayProcessing
+                                              ? const Padding(
+                                                  padding: EdgeInsets.all(8.0), 
+                                                  child: SizedBox(
+                                                    width: 14, 
+                                                    height: 14, 
+                                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent)
+                                                  )
+                                                )
+                                              : IconButton(
+                                                padding: EdgeInsets.zero,
+                                                constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                                icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
+                                                onPressed: (!isApiBusy && generatedStems.contains(activeEditableStem)) ? toggleXrayMode : null,
+                                              ),
+                                        ),
+                                        
+                                        // ── NEW: DUAL X-RAY LAUNCHER & TOGGLE ──
+                                        Tooltip(
+                                          message: 'Dual X-Ray Comparison',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: Stack(
+                                              children: [
+                                                // Base Fingerprint (Cyan or Grey)
+                                                Icon(
+                                                  Icons.fingerprint, 
+                                                  size: 20, 
+                                                  color: isDualContourOverlayActive ? const Color(0xFF00E5FF) : Colors.white38
+                                                ),
+                                                // Offset Top Fingerprint (Magenta or Grey with transparency)
+                                                Positioned(
+                                                  left: 3,
+                                                  top: 3,
+                                                  child: Icon(
+                                                    Icons.fingerprint, 
+                                                    size: 20, 
+                                                    color: isDualContourOverlayActive 
+                                                        ? const Color(0xFFFF007F).withOpacity(0.8) 
+                                                        : Colors.white24
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            onPressed: isApiBusy ? null : () {
+                                              // 1. If we already have dual contours in memory, toggle the view on/off
+                                              if (dualContour1.isNotEmpty && dualContour2.isNotEmpty) {
+                                                setState(() {
+                                                  isDualContourOverlayActive = !isDualContourOverlayActive;
+                                                });
+                                              } 
+                                              // 2. If we don't have dual data yet, launch the comparator dialog
+                                              else {
+                                                showDialog(
+                                                  context: context,
+                                                  builder: (context) => DualXRayComparatorDialog(
+                                                    availableChannels: activeChannels,
+                                                    onRunComparison: (source, target) {
+                                                      _runAnyToAnyForensicAlign(source, target);
+                                                    },
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                
+                                        // AI Vocal Detection Tool Icon
+                                        /*Tooltip(
+                                          message: 'Detect AI Synthetic Vocals (experimental)',
+                                          child: isAnalyzingAiVocal
+                                              ? const Padding(
+                                                  padding: EdgeInsets.all(8.0),
+                                                  child: SizedBox(
+                                                    width: 14,
+                                                    height: 14,
+                                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent),
+                                                  ),
+                                                )
+                                              : IconButton(
+                                                  padding: EdgeInsets.zero,
+                                                  constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                                  icon: Icon(
+                                                    Icons.psychology_outlined,
+                                                    size: 20,
+                                                    color: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
+                                                        ? Colors.cyanAccent
+                                                        : Colors.white24,
+                                                  ),
+                                                  onPressed: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
+                                                      ? _runAiVocalInspection
+                                                      : null,
+                                                ),
+                                        ),*/
+                                
+                                        // Divider for Undo/Redo grouping
+                                        Container(
+                                          width: isLandscape ? 100 : 50,
+                                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                          child: Divider(color: Colors.grey[800], thickness: 1.5),
+                                        ),
+                                
+                                        // 6. Undo
+                                        Tooltip(
+                                          message: 'Undo',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: const Icon(Icons.undo, size: 20),
+                                            color: undoStack.isNotEmpty ? Colors.white : Colors.white24,
+                                            onPressed: (!isApiBusy && undoStack.isNotEmpty) ? _undo : null,
+                                          ),
+                                        ),
+                                        
+                                        // 7. Redo
+                                        Tooltip(
+                                          message: 'Redo',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: const Icon(Icons.redo, size: 20),
+                                            color: redoStack.isNotEmpty ? Colors.white : Colors.white24,
+                                            onPressed: (!isApiBusy && redoStack.isNotEmpty) ? _redo : null,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ]),
                     ),
-                  ]),
+                  ]), // <--- Closes the main Workspace Column
+            ), // <--- Closes the SafeArea
+
+        ), // <--- THIS WAS MISSING! This completely closes the Scaffold.
+
+        // 2. THE VIDEO OVERLAY (Now safely a sibling to the Scaffold, inside the Stack)
+        if (_introController != null && _introController!.value.isInitialized)
+          IgnorePointer(
+            ignoring: !_showIntroAnimation, 
+            child: AnimatedOpacity(
+              opacity: _showIntroAnimation ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 800), 
+              child: Container(
+                color: Colors.black, 
+                width: double.infinity,
+                height: double.infinity,
+                alignment: Alignment.center,
+                child: FittedBox(
+                  fit: BoxFit.contain, 
+                  child: SizedBox(
+                    width: _introController!.value.size.width,
+                    height: _introController!.value.size.height,
+                    child: VideoPlayer(_introController!),
+                  ),
                 ),
-              ]),
-      ),
-    );
-  }
-}
+              ),
+            ),
+          ),
+
+      ], // <--- Closes the Stack's children array
+    ); // <--- Closes the Stack itself
+  } // <--- Closes the build() method
+} // <--- Closes the VoxrayDAWState class
