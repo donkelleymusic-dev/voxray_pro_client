@@ -353,9 +353,9 @@ mixin DawApiService on VoxrayDAWStateBase {
     
     // 1. PRE-FLIGHT UX CHECK FOR FULL MIX
     if (uploadOptions['type'] == 'mix') {
-       if (!await _verifyTokens(5, 'Full Mix DSP Extraction')) return;
+       if (!await verifyTokens(5, 'Full Mix DSP Extraction')) return;
     } else {
-       if (!await _verifyTokens(1, 'Single Stem Processing')) return;
+       if (!await verifyTokens(1, 'Single Stem Processing')) return;
     }
 
     String acousticProfile = 'standard';
