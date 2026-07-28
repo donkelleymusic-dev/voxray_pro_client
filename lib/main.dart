@@ -170,64 +170,6 @@ class AiDetectionResult {
   }
 }
 
-Future<void> _runNuclearPianoExtraction() async {
-  // Requires a track to operate on (usually the original mix)
-  if (originalAudioBytes == null) {
-    _showSaveConfirmation('Load an original track first to extract the piano.');
-    return;
-  }
-
-  setState(() {
-    isLoading = true;
-    processingMessage = "Going nuclear... Extracting pristine piano via MelBand-RoFormer...";
-  });
-
-  try {
-    var uri = Uri.parse('$apiBase/extract-nuclear-piano');
-    var request = http.MultipartRequest('POST', uri)
-      ..fields['project_id'] = currentProjectId ?? 'temp_proj'
-      ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'mix.wav'));
-
-    var streamedResponse = await request.send();
-    var response = await http.Response.fromStream(streamedResponse);
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['status'] == 'success') {
-        Map<String, dynamic> stemData = data['stems'];
-        
-        if (stemData.containsKey('piano')) {
-           Uint8List nuclearPianoBytes = base64Decode(stemData['piano']);
-           
-           // Overwrite or create the piano stem in the DAW
-           cachedStemBytes['piano'] = nuclearPianoBytes;
-           if (!generatedStems.contains('piano')) generatedStems.add('piano');
-           
-           // Ensure it has a mixer channel
-           if (!channelLevels.containsKey('piano')) {
-             channelLevels['piano'] = ValueNotifier(1.0);
-           }
-           if (!mixerState.containsKey('piano')) {
-             mixerState['piano'] = ChannelState();
-           }
-           
-           _showSaveConfirmation('Nuclear Piano Extraction Complete!');
-        }
-      } else {
-        _showSaveConfirmation('Piano extraction failed: ${data['detail']}');
-      }
-    }
-  } catch (e) {
-    debugPrint("Nuclear Piano Error: $e");
-    _showSaveConfirmation('Connection Error: $e');
-  } finally {
-    if (mounted) setState(() {
-      isLoading = false;
-      processingMessage = '';
-    });
-  }
-}
-
 enum XrayCompareMode { overlay, split }
 
 class DualTakeXraySettings {
@@ -1069,6 +1011,65 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
         ],
       ),
     );
+  }
+
+  Future<void> _runNuclearPianoExtraction() async {
+    if (originalAudioBytes == null) {
+      _showSaveConfirmation('Load an original track first to extract the piano.');
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+      processingMessage = "Going nuclear... Extracting pristine piano via MelBand-RoFormer...";
+    });
+
+    try {
+      var uri = Uri.parse('$apiBase/extract-nuclear-piano');
+      var request = http.MultipartRequest('POST', uri)
+        ..fields['project_id'] = currentProjectId ?? 'temp_proj'
+        ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'mix.wav'));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'success') {
+          Map<String, dynamic> stemData = data['stems'];
+          
+          if (stemData.containsKey('piano')) {
+             Uint8List nuclearPianoBytes = base64Decode(stemData['piano']);
+             
+             setState(() {
+               cachedStemBytes['piano'] = nuclearPianoBytes;
+               if (!generatedStems.contains('piano')) generatedStems.add('piano');
+               
+               if (!channelLevels.containsKey('piano')) {
+                 channelLevels['piano'] = ValueNotifier(1.0);
+               }
+               if (!mixerState.containsKey('piano')) {
+                 mixerState['piano'] = ChannelState();
+               }
+             });
+             
+             _showSaveConfirmation('Nuclear Piano Extraction Complete!');
+          }
+        } else {
+          _showSaveConfirmation('Piano extraction failed: ${data['detail']}');
+        }
+      }
+    } catch (e) {
+      debugPrint("Nuclear Piano Error: $e");
+      _showSaveConfirmation('Connection Error: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          processingMessage = '';
+        });
+      }
+    }
   }
   
   Future<void> _showAboutApp(BuildContext context) async {
