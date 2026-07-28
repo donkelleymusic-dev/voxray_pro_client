@@ -135,6 +135,29 @@ Future<void> main() async {
 }
 
 class AiDetectionResult {
+  final Map<String, dynamic> fileInfo;
+  final Map<String, dynamic> summary;
+  final List<double> waveform;
+  final List<dynamic> events;
+
+  AiDetectionResult({
+    required this.fileInfo,
+    required this.summary,
+    required this.waveform,
+    required this.events,
+  });
+
+  factory AiDetectionResult.fromJson(Map<String, dynamic> json) {
+    return AiDetectionResult(
+      fileInfo: Map<String, dynamic>.from(json['file_info'] ?? {}),
+      summary: Map<String, dynamic>.from(json['summary'] ?? {}),
+      waveform: List<double>.from((json['waveform'] as List? ?? []).map((x) => (x as num).toDouble())),
+      events: List<dynamic>.from(json['events'] ?? []),
+    );
+  }
+}
+
+class AiDetectionResult_old {
   final double overallConfidence; // 0.0 to 1.0
   final bool isAiDetected;
   final List<String> detectedArtifacts;
@@ -551,6 +574,264 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
     return const VoxrayDAW();
   }
 }*/
+
+// =========================================================================
+// AI FORENSICS TESTBED DIALOG
+// =========================================================================
+
+class AiForensicsDialog extends StatefulWidget {
+  final Map<String, dynamic> analysisData;
+
+  const AiForensicsDialog({Key? key, required this.analysisData}) : super(key: key);
+
+  @override
+  State<AiForensicsDialog> createState() => _AiForensicsDialogState();
+}
+
+class _AiForensicsDialogState extends State<AiForensicsDialog> {
+  double _currentPlaybackTime = 0.0;
+  String? _selectedMetricFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    List<dynamic> events = widget.analysisData['events'] ?? [];
+    if (_selectedMetricFilter != null) {
+      events = events.where((e) => e['metric_key'] == _selectedMetricFilter).toList();
+    }
+
+    double duration = (widget.analysisData['file_info']?['duration_sec'] ?? 10.0).toDouble();
+    var summary = widget.analysisData['summary'];
+
+    return Dialog(
+      backgroundColor: const Color(0xFF121212),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        width: 800,
+        height: 600,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('AI Audio Forensics Testbed', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: () => Navigator.pop(context)),
+              ],
+            ),
+            const Divider(color: Colors.white24),
+            
+            // Overview Header
+            Card(
+              color: const Color(0xFF1E1E1E),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.analysisData['file_info']['filename'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        Text("Duration: ${duration}s | Rate: ${widget.analysisData['file_info']['sample_rate']}Hz", style: const TextStyle(color: Colors.white54)),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          "${summary['ai_probability_score']}% AI",
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: summary['ai_probability_score'] >= 50 ? Colors.redAccent : Colors.greenAccent,
+                          ),
+                        ),
+                        Text(summary['verdict'], style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.white70)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Interactive Waveform & Timeline Playhead
+            Card(
+              color: const Color(0xFF1E1E1E),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Playhead: ${_currentPlaybackTime.toStringAsFixed(2)}s', style: const TextStyle(color: Colors.white70)),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            ChoiceChip(
+                              label: const Text('All', style: TextStyle(fontSize: 11)),
+                              selected: _selectedMetricFilter == null,
+                              onSelected: (_) => setState(() => _selectedMetricFilter = null),
+                            ),
+                            ChoiceChip(
+                              label: const Text('Pitch Slew', style: TextStyle(fontSize: 11)),
+                              selected: _selectedMetricFilter == 'pitch_slew',
+                              onSelected: (_) => setState(() => _selectedMetricFilter = 'pitch_slew'),
+                            ),
+                            ChoiceChip(
+                              label: const Text('Formants', style: TextStyle(fontSize: 11)),
+                              selected: _selectedMetricFilter == 'formant_decoupling',
+                              onSelected: (_) => setState(() => _selectedMetricFilter = 'formant_decoupling'),
+                            ),
+                            ChoiceChip(
+                              label: const Text('Grid Lock', style: TextStyle(fontSize: 11)),
+                              selected: _selectedMetricFilter == 'grid_lock',
+                              onSelected: (_) => setState(() => _selectedMetricFilter = 'grid_lock'),
+                            ),
+                          ],
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTapDown: (details) {
+                        double renderWidth = context.size!.width - 64; // Approx width of dialog minus padding
+                        if (renderWidth > 0) {
+                          double clickedRatio = (details.localPosition.dx / renderWidth).clamp(0.0, 1.0);
+                          setState(() => _currentPlaybackTime = clickedRatio * duration);
+                        }
+                      },
+                      child: Container(
+                        height: 80,
+                        width: double.infinity,
+                        color: Colors.black26,
+                        child: CustomPaint(
+                          painter: WaveformPainter(
+                            waveformData: List<double>.from(widget.analysisData['waveform'].map((x) => (x as num).toDouble())),
+                            events: events,
+                            durationSec: duration,
+                            playheadSec: _currentPlaybackTime,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Slider(
+                      value: _currentPlaybackTime.clamp(0.0, duration),
+                      min: 0.0, max: duration,
+                      activeColor: Colors.cyanAccent,
+                      inactiveColor: Colors.white24,
+                      onChanged: (val) => setState(() => _currentPlaybackTime = val),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Time-Series Forensic Event Inspector
+            Expanded(
+              child: Card(
+                color: const Color(0xFF1E1E1E),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Flagged Forensic Events (${events.length})', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                      const Divider(color: Colors.white24),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: events.length,
+                          itemBuilder: (context, index) {
+                            final event = events[index];
+                            bool isSelected = (_currentPlaybackTime - (event['timestamp_sec'] as num).toDouble()).abs() < 1.0;
+                            return ListTile(
+                              selected: isSelected,
+                              selectedTileColor: Colors.white10,
+                              leading: CircleAvatar(
+                                backgroundColor: event['severity'] == 'high' ? Colors.redAccent : (event['severity'] == 'medium' ? Colors.orangeAccent : Colors.amber),
+                                child: Text('${event['timestamp_sec']}s', style: const TextStyle(fontSize: 9, color: Colors.black, fontWeight: FontWeight.bold)),
+                              ),
+                              title: Text(event['metric_name'], style: const TextStyle(color: Colors.white)),
+                              subtitle: Text("${event['detail']} (Val: ${event['raw_value']})", style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                              onTap: () {
+                                setState(() => _currentPlaybackTime = (event['timestamp_sec'] as num).toDouble());
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class WaveformPainter extends CustomPainter {
+  final List<double> waveformData;
+  final List<dynamic> events;
+  final double durationSec;
+  final double playheadSec;
+
+  WaveformPainter({
+    required this.waveformData,
+    required this.events,
+    required this.durationSec,
+    required this.playheadSec,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (waveformData.isEmpty || durationSec <= 0) return;
+
+    final paintWave = Paint()
+      ..color = Colors.blueGrey.shade700
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    final paintPlayhead = Paint()
+      ..color = Colors.cyanAccent
+      ..strokeWidth = 2.0;
+
+    double barWidth = size.width / waveformData.length;
+    double midY = size.height / 2;
+
+    for (int i = 0; i < waveformData.length; i++) {
+      double x = i * barWidth;
+      double h = waveformData[i] * size.height * 1.5; // Scaled up slightly for visibility
+      canvas.drawLine(Offset(x, midY - h / 2), Offset(x, midY + h / 2), paintWave);
+    }
+
+    for (var ev in events) {
+      double tSec = (ev['timestamp_sec'] as num).toDouble();
+      double xRatio = tSec / durationSec;
+      double eventX = xRatio * size.width;
+
+      final paintMarker = Paint()
+        ..color = ev['severity'] == 'high' ? Colors.redAccent : Colors.amberAccent
+        ..strokeWidth = 2.0;
+
+      canvas.drawLine(Offset(eventX, 0), Offset(eventX, size.height), paintMarker);
+      canvas.drawCircle(Offset(eventX, 10), 4, paintMarker);
+    }
+
+    double playheadX = (playheadSec / durationSec) * size.width;
+    canvas.drawLine(Offset(playheadX, 0), Offset(playheadX, size.height), paintPlayhead);
+  }
+
+  @override
+  bool shouldRepaint(covariant WaveformPainter oldDelegate) => true;
+}
+
 
 class VoxrayDAW extends StatefulWidget {
   const VoxrayDAW({Key? key}) : super(key: key);
@@ -1788,8 +2069,74 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       });
     }
   }
+
+  Future<void> _runAiVocalInspection() async { // not just for vocals any more!
+    if (!await verifyTokens(1, 'AI Synthetic Detection')) return;
+
+    Uint8List? audioBytes;
+
+    // Pull whatever track is currently active
+    if (cachedStemBytes.containsKey(activeEditableStem)) {
+      audioBytes = cachedStemBytes[activeEditableStem];
+    } else if (cachedStemPaths.containsKey(activeEditableStem)) {
+      audioBytes = await File(cachedStemPaths[activeEditableStem]!).readAsBytes();
+    } else if (activeEditableStem == 'original' && originalAudioBytes != null) {
+      audioBytes = originalAudioBytes;
+    }
+
+    if (audioBytes == null) {
+      _showSaveConfirmation('No audio available for $activeEditableStem.');
+      return;
+    }
+
+    setState(() {
+      isAnalyzingAiVocal = true;
+      isLoading = true;
+      processingMessage = "Running deep forensic analysis on ${activeEditableStem.toUpperCase()}...";
+    });
+
+    try {
+      var uri = Uri.parse('$apiBase/detect-ai-vocal');
+      var request = http.MultipartRequest('POST', uri)
+        ..files.add(http.MultipartFile.fromBytes('file', audioBytes, filename: '${activeEditableStem}_check.wav'));
+
+      final session = BackendService.supabase.auth.currentSession;
+      if (session != null) {
+        request.fields['access_token'] = session.accessToken;
+      }
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          aiResult = AiDetectionResult.fromJson(data);
+        });
+        
+        // LAUNCH THE NEW UI DIALOG
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AiForensicsDialog(analysisData: data),
+          );
+        }
+      } else {
+        _showSaveConfirmation('AI Inspection failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint("AI Inspection Error: $e");
+      _showSaveConfirmation('AI Inspection Error: $e');
+    } finally {
+      setState(() {
+        isAnalyzingAiVocal = false;
+        isLoading = false;
+        processingMessage = '';
+      });
+    }
+  }
   
-  Future<void> _runAiVocalInspection() async {
+  Future<void> _runAiVocalInspection_old() async {
     // 1. PRE-FLIGHT UX CHECK
     if (!await verifyTokens(1, 'AI Synthetic Detection')) return;
 
@@ -4076,8 +4423,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       Color dualTopColor  = isDualContourOverlayActive ? const Color(0xFFFF007F).withOpacity(0.8) : (canRunDualXray ? const Color(0xFFFF007F).withOpacity(0.25) : Colors.transparent);
 
       // 3. AI Detection State Logic
-      bool hasVocalAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
-      bool canRunAi = isVocalTrack && hasVocalAudio;
+      bool hasTrackAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
+      bool canRunAi = activeEditableStem.isNotEmpty && hasTrackAudio; // Removed isVocalTrack requirement
+      // old, vocal only version:
+      //bool hasVocalAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
+      //bool canRunAi = isVocalTrack && hasVocalAudio;
       
       Color aiColor;
       if (!canRunAi) {
