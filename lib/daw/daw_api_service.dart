@@ -1587,6 +1587,13 @@ mixin DawApiService on VoxrayDAWStateBase {
   // =========================================================================
 
   Future<Uint8List> packageProjectBytes() async {
+    // minimap nav data
+    Map<String, List<double>> rmsDataToSave = {};
+    for (var key in mixerState.keys) {
+      if (mixerState[key]!.rmsEnvelope.isNotEmpty) {
+        rmsDataToSave[key] = mixerState[key]!.rmsEnvelope;
+      }
+    }
     Map<String, dynamic> projectData = {
       'voxray_version': '1.5.0',
       'project_name': projectName,
@@ -1857,6 +1864,23 @@ mixin DawApiService on VoxrayDAWStateBase {
       isLoading         = true;
       processingMessage = 'Unpacking .vxp archive and loading offline files...';
 
+      // --- THE CRITICAL FIX: WIPE GHOST STATES ON LOAD ---
+      mixerState.clear();
+      for (var v in channelLevels.values) { v.value = 0.0; }
+      activeChannels.clear();
+      trashBin.clear();
+      
+      isDualContourOverlayActive = false;
+      dualContour1.clear();
+      dualContour2.clear();
+      dualContinuous1.clear();
+      dualContinuous2.clear();
+      identicalMatchRegions.clear();
+      dualLabel1 = '';
+      dualLabel2 = '';
+      dualTakeSettings = null;
+      // ----------------------------------------------------
+
       // Force-mute hidden/utility tracks so they don't blast on load
       if (mixerState.containsKey('original')) {
         mixerState['original']!.isMuted = true;
@@ -1977,6 +2001,15 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..clear()
           ..addAll(ms.map((k, v) => MapEntry(k, ChannelState.fromJson(v))));
       }
+
+      // --- RESTORE MINIMAP NAVIGATION DATA ---
+      if (projectData['stem_rms_data'] != null) {
+        Map<String, dynamic> rmsMap = projectData['stem_rms_data'];
+        rmsMap.forEach((k, v) {
+          getChannelState(k).rmsEnvelope = (v as List).map((e) => (e as num).toDouble()).toList();
+        });
+      }
+      // ----------------------------------------------
 
       if (projectData['target_stems_selection'] != null) {
         targetStemsSelection
