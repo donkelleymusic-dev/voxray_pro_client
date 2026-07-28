@@ -1853,6 +1853,11 @@ mixin DawApiService on VoxrayDAWStateBase {
 
     setState(() {
       isProjectLoaded = true;
+      
+      // CLEAR GHOST AI DATA:
+      aiResult = null; 
+      resetAiDetectorState();
+      
       hasBeenSaved    = true;
       dirtyStems.clear();
       cachedStemPaths.clear();
