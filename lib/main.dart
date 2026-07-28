@@ -4028,8 +4028,49 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       );
     }
 
-    // 3. Extract the Tool Group (Mixer + Pan + Preview)
+    // 3. Extract the Tool Group (Mixer + Pan + Preview + Analysis)
     Widget buildToolGroup() {
+      
+      // ── DYNAMIC CONTEXT STATES ──
+      bool isDrumTrack  = ['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(activeEditableStem);
+      bool isVocalTrack = activeEditableStem.startsWith('vocal');
+      
+      // 1. X-Ray State Logic
+      bool canRunXray  = activeEditableStem.isNotEmpty && !isDrumTrack && generatedStems.contains(activeEditableStem);
+      bool hasXrayData = rawNotes.isNotEmpty && rawNotes.any((n) => n is Map && n.containsKey('contour') && n['contour'] != null);
+      
+      Color xrayColor;
+      if (!canRunXray) {
+        xrayColor = Colors.white24; // Disabled (e.g., Drums or not generated)
+      } else if (isXrayMode) {
+        xrayColor = Colors.amberAccent; // Generated & Active
+      } else if (hasXrayData) {
+        xrayColor = Colors.amberAccent.withOpacity(0.6); // Generated but toggled off
+      } else {
+        xrayColor = Colors.amberAccent.withOpacity(0.25); // Available but not run
+      }
+
+      // 2. Dual X-Ray State Logic
+      // Available whenever there are at least 2 non-drum tracks in the project
+      bool canRunDualXray = activeChannels.where((c) => !['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(c.stemKey)).length >= 2;
+      
+      Color dualBaseColor = isDualContourOverlayActive ? const Color(0xFF00E5FF) : (canRunDualXray ? const Color(0xFF00E5FF).withOpacity(0.25) : Colors.white24);
+      Color dualTopColor  = isDualContourOverlayActive ? const Color(0xFFFF007F).withOpacity(0.8) : (canRunDualXray ? const Color(0xFFFF007F).withOpacity(0.25) : Colors.transparent);
+
+      // 3. AI Detection State Logic
+      bool hasVocalAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
+      bool canRunAi = isVocalTrack && hasVocalAudio;
+      
+      Color aiColor;
+      if (!canRunAi) {
+        aiColor = Colors.white24; // Disabled (Non-vocal track)
+      } else if (aiResult != null) {
+        aiColor = Colors.cyanAccent; // Generated & Active (Results exist)
+      } else {
+        aiColor = Colors.cyanAccent.withOpacity(0.25); // Available but not run
+      }
+      // ────────────────────────────
+
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -4050,7 +4091,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   icon: Icon(
                     Icons.pan_tool, 
                     size: 18, 
-                    // Dynamic Drag Pitch Colors: Off=Green, Semi=Orange, Micro=Yellow
                     color: currentDragMode == DragMode.semitone 
                         ? Colors.orangeAccent 
                         : (currentDragMode == DragMode.microTuning 
@@ -4069,9 +4109,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   message: 'Preview pitch/DSP edits',
                   child: IconButton(
                     icon: Icon(
-                      Icons.hearing, // or Icons.update might look better
+                      Icons.hearing, 
                       size: 20,
-                      // Grey when clean, glowing red when dirty
                       color: dirtyStems.contains(activeEditableStem) ? Colors.redAccent : Colors.white38,
                       shadows: dirtyStems.contains(activeEditableStem)
                           ? [const Shadow(color: Colors.red, blurRadius: 10.0)]
@@ -4095,8 +4134,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                       : IconButton(
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
-                        icon: Icon(Icons.fingerprint, size: 20, color: isXrayMode ? Colors.amberAccent : Colors.white38),
-                        onPressed: (!isApiBusy && generatedStems.contains(activeEditableStem)) ? toggleXrayMode : null,
+                        icon: Icon(Icons.fingerprint, size: 20, color: xrayColor),
+                        onPressed: (!isApiBusy && canRunXray) ? toggleXrayMode : null,
                       ),
                 ),
                 
@@ -4108,17 +4147,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
                     icon: Stack(
                       children: [
-                        Icon(Icons.fingerprint, size: 20, color: isDualContourOverlayActive ? const Color(0xFF00E5FF) : Colors.white38),
+                        Icon(Icons.fingerprint, size: 20, color: dualBaseColor),
                         Positioned(
                           left: 3, top: 3,
-                          child: Icon(Icons.fingerprint, size: 20, color: isDualContourOverlayActive ? const Color(0xFFFF007F).withOpacity(0.8) : Colors.white24),
+                          child: Icon(Icons.fingerprint, size: 20, color: dualTopColor),
                         ),
                       ],
                     ),
                     onPressed: isApiBusy ? null : () {
                       if (dualContour1.isNotEmpty && dualContour2.isNotEmpty) {
                         setState(() => isDualContourOverlayActive = !isDualContourOverlayActive);
-                      } else {
+                      } else if (canRunDualXray) {
                         showDialog(
                           context: context,
                           builder: (context) => DualXRayComparatorDialog(
@@ -4131,28 +4170,24 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   ),
                 ),
 
-                // 3. AI Detection Tool (Uncommented and Active!)
+                // 3. AI Detection Tool
                 Tooltip(
                   message: 'Detect AI Synthetic Vocals (experimental)',
                   child: isAnalyzingAiVocal
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                        child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent)),
-                      )
-                    : IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
-                        icon: Icon(
-                          Icons.psychology_outlined,
-                          size: 20,
-                          color: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
-                              ? Colors.cyanAccent
-                              : Colors.white24,
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent)),
+                        )
+                      : IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
+                          icon: Icon(
+                            Icons.psychology_outlined,
+                            size: 20,
+                            color: aiColor,
+                          ),
+                          onPressed: (!isApiBusy && canRunAi) ? _runAiVocalInspection : null,
                         ),
-                        onPressed: (generatedStems.contains('vocals') || cachedStemBytes.containsKey('vocals') || cachedStemPaths.containsKey('vocals'))
-                            ? _runAiVocalInspection
-                            : null,
-                      ),
                 ),
               ],
             ),
