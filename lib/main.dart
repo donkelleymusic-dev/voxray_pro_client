@@ -2267,6 +2267,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       allStemsContinuousXray.clear();
       activePlaybackSources.clear();
       activeEditableStem     = '';
+      isXrayMode             = false; 
+      isXrayProcessing       = false;
+      isAnalyzingAiVocal     = false;
+      aiResult               = null;
+      
       currentTaskId          = null;
       currentJobId           = null;
       currentProjectPath     = null;
