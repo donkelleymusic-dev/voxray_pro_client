@@ -151,8 +151,8 @@ class _MinimapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MinimapPainter oldDelegate) {
-    return oldDelegate.dawState.currentPosition != dawState.currentPosition ||
-           oldDelegate.visibleStart != visibleStart ||
-           oldDelegate.dawState.generatedStems.length != dawState.generatedStems.length;
+    // Returning true guarantees the minimap instantly refreshes 
+    // when projects load, zoom changes, or tracks are added/deleted.
+    return true; 
   }
 }
