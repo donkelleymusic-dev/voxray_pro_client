@@ -1015,7 +1015,9 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
   Future<void> _runNuclearPianoExtraction() async {
     if (originalAudioBytes == null) {
-      _showSaveConfirmation('Load an original track first to extract the piano.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Load an original track first to extract the piano.'), backgroundColor: Colors.red)
+      );
       return;
     }
 
@@ -1053,15 +1055,21 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
                }
              });
              
-             _showSaveConfirmation('Nuclear Piano Extraction Complete!');
+             ScaffoldMessenger.of(context).showSnackBar(
+               const SnackBar(content: Text('Nuclear Piano Extraction Complete!'), backgroundColor: Colors.teal)
+             );
           }
         } else {
-          _showSaveConfirmation('Piano extraction failed: ${data['detail']}');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Piano extraction failed: ${data['detail']}'), backgroundColor: Colors.red)
+          );
         }
       }
     } catch (e) {
       debugPrint("Nuclear Piano Error: $e");
-      _showSaveConfirmation('Connection Error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red)
+      );
     } finally {
       if (mounted) {
         setState(() {
