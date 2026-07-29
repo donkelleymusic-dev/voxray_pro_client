@@ -366,7 +366,7 @@ class _GodModeDashboardState extends State<GodModeDashboard> {
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: const Text('God Mode: AutoML Engine', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.red900,
+        backgroundColor: Colors.red[900],
         actions: [
           IconButton(
             icon: const Icon(Icons.cloud_upload),
