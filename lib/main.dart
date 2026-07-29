@@ -3523,6 +3523,26 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 _showPitchPrintOptions();
               },
             ),
+            const Divider(color: Colors.white24),
+            ListTile(
+              leading: const Icon(Icons.adjust, color: Colors.pinkAccent, size: 28),
+              title: const Text('Export Marked Stem',
+                  style: TextStyle(color: Colors.white)),
+              subtitle: const Text('WAV w/ Embedded DAW Markers',
+                  style: TextStyle(color: Colors.white54, fontSize: 11)),
+              onTap: () async {
+                Navigator.pop(context);
+                final xrayStems = getStemsWithXray();
+                if (xrayStems.isEmpty) {
+                  _showSaveConfirmation('No X-Ray data to embed. Process a stem first.');
+                  return;
+                }
+                final targetStem = await _promptForReportStem(xrayStems, 'Marked Stem Export');
+                if (targetStem != null) {
+                  exportMarkedStem(targetStem);
+                }
+              },
+            ),
           ],
         ),
         actions: [
