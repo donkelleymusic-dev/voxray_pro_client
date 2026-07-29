@@ -80,6 +80,7 @@ import 'package:video_player/video_player.dart';
 import 'models/audio_channel.dart';
 import 'ui/dual_xray_dialog.dart';
 
+import '../services/supabase_service.dart'; // To get god mode account email
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTRY POINT
@@ -272,6 +273,208 @@ class _HorizontalVuMeterPainter extends CustomPainter {
   bool shouldRepaint(covariant _HorizontalVuMeterPainter oldDelegate) {
     // Now correctly checks if the actual NUMBER of lit LEDs changed
     return (oldDelegate.level * 8).ceil() != (level * 8).ceil();
+  }
+}
+
+class GodModeDashboard extends StatefulWidget {
+  const GodModeDashboard({Key? key}) : super(key: key);
+
+  @override
+  State<GodModeDashboard> createState() => _GodModeDashboardState();
+}
+
+class _GodModeDashboardState extends State<GodModeDashboard> {
+  Timer? _pollTimer;
+  Map<String, dynamic> _status = {};
+  bool _isLoading = true;
+  String _userEmail = "";
+  
+  // Replace with your actual Modal endpoint URL
+  final String _baseUrl = "https://donkelleymusic--voxray-pro-api-api.modal.run"; 
+
+  @override
+  void initState() {
+    super.initState();
+    _userEmail = BackendService.supabase.auth.currentUser?.email ?? "";
+    _fetchStatus();
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _fetchStatus());
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchStatus() async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_baseUrl/automl/status'),
+        headers: {"x-user-email": _userEmail},
+      );
+      if (res.statusCode == 200) {
+        if (mounted) {
+          setState(() {
+            _status = jsonDecode(res.body);
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _triggerAction(String endpoint) async {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Triggering $endpoint...")));
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/automl/$endpoint'),
+        headers: {"x-user-email": _userEmail},
+      );
+      
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Success! ${data.toString()}"),
+          backgroundColor: Colors.teal,
+        ));
+        _fetchStatus();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Error: ${res.body}"),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Network Error: $e")));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_userEmail != "donkelleymusic@gmail.com") {
+      return const Scaffold(body: Center(child: Text("ACCESS DENIED", style: TextStyle(color: Colors.red, fontSize: 24, fontWeight: FontWeight.bold))));
+    }
+
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        title: const Text('God Mode: AutoML Engine', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.red900,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.cloud_upload),
+            tooltip: 'Backup DB to HuggingFace',
+            onPressed: () => _triggerAction('backup'),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // STEP 1: INGESTION CARD
+            Card(
+              color: const Color(0xFF1E1E1E),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Step 1: Dataset Ingestion', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    const Divider(color: Colors.white24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildStatColumn('AI Tracks', '${_status['ai_tracks'] ?? 0}', Colors.redAccent),
+                        _buildStatColumn('Human Tracks', '${_status['human_tracks'] ?? 0}', Colors.greenAccent),
+                        _buildStatColumn('Total Cached', '${(_status['ai_tracks'] ?? 0) + (_status['human_tracks'] ?? 0)}', Colors.white),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.precision_manufacturing),
+                      label: const Text('Scan Directory & Extract Features'),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                      onPressed: () => _triggerAction('ingest'),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "To add data, use Modal CLI: modal volume put voxray-data-vol local_song.mp3 /training_audio/ai/",
+                      style: TextStyle(color: Colors.white38, fontSize: 11),
+                    )
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // STEP 2: OPTIMIZATION CARD
+            Card(
+              color: const Color(0xFF1E1E1E),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Step 2: Bayesian Optimization', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                    const Divider(color: Colors.white24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildStatColumn('Trials Complete', '${_status['trials'] ?? 0}', Colors.blueAccent),
+                        _buildStatColumn('Best F1 Score', '${_status['best_f1'] ?? 0.0}', Colors.amber),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Run 50 Optimization Trials'),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent, foregroundColor: Colors.black),
+                      onPressed: () => _triggerAction('optimize?n_trials=50'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // WEIGHTS OUTPUT
+            if (_status['best_params'] != null)
+              Card(
+                color: Colors.black,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Best Algorithm Weights', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                      const Divider(color: Colors.white24),
+                      Text(
+                        const JsonEncoder.withIndent('  ').convert(_status['best_params']),
+                        style: const TextStyle(fontFamily: 'monospace', color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatColumn(String label, String value, Color valueColor) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: valueColor)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+      ],
+    );
   }
 }
 
