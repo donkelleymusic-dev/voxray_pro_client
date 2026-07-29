@@ -4977,10 +4977,19 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 // ✅ TRANSPARENT LOGO REPLACEMENT
                 Padding(
                   padding: const EdgeInsets.only(right: 8.0),
-                  child: Image.asset(
-                    'assets/images/voXRay_logo_transparent_crop.png', // <--- Your asset path
-                    height: isLandscape ? 22 : 30,    // Dynamically scales to toolbar height
-                    fit: BoxFit.contain,
+                  child: GestureDetector(
+                    onLongPress: () {
+                      // Secret God Mode Trigger
+                      final email = BackendService.supabase.auth.currentUser?.email;
+                      if (email == 'donkelleymusic@gmail.com') {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const GodModeDashboard()));
+                      }
+                    },
+                    child: Image.asset(
+                      'assets/images/voXRay_logo_transparent_crop.png', 
+                      height: isLandscape ? 22 : 30,    
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 4),
