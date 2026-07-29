@@ -635,8 +635,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           ),
 
                           // 5. FLOATING AI BADGE
-                          if (widget.dawState.aiResult != null)
-                            _buildAiInspectorBadge(),
+                          //if (widget.dawState.aiResult != null)
+                          //  _buildAiInspectorBadge(),
                         ],
                       ),
                     ),
