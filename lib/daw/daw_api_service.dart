@@ -1473,6 +1473,74 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
   }
 
+  Future<void> exportMarkedStem(String stem) async {
+    final stemNotes = allStemsNotes[stem] ?? [];
+    List<Map<String, dynamic>> markers = [];
+    
+    // 1. Extract X-Ray Tuning Artifacts
+    for (var note in stemNotes) {
+      if (note['forensics'] != null && note['forensics']['is_analyzed'] == true) {
+        double prob = (note['forensics']['tuning_probability'] ?? 0.0).toDouble();
+        if (prob > 0.65) {
+          markers.add({
+            "timestamp_sec": note['start_time'],
+            "label": "[TUNE] Pitch Corrected (${(prob * 100).round()}%)"
+          });
+        }
+      }
+    }
+    
+    // 2. Extract Deep AI Artifacts (if the AI detector was run on this stem)
+    if (activeEditableStem == stem && aiResult != null) {
+      for (var ev in aiResult!.events) {
+        markers.add({
+          "timestamp_sec": ev['timestamp_sec'],
+          "label": "[${ev['severity'].toString().toUpperCase()}] ${ev['metric_name']}"
+        });
+      }
+    }
+
+    if (markers.isEmpty) {
+      showSaveConfirmation('No forensic artifacts found to embed for ${stem.toUpperCase()}.');
+      return;
+    }
+
+    setState(() { isExporting = true; exportMessage = 'Embedding markers into WAV...'; });
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('$apiBase/api/export-marked-stem'))
+        ..fields['task_id'] = currentTaskId ?? 'offline_session'
+        ..fields['stem_target'] = stem
+        ..fields['markers_json'] = jsonEncode(markers);
+
+      var response = await request.send();
+      if (response.statusCode != 200) throw Exception('Server error ${response.statusCode}');
+
+      final bytes = await response.stream.toBytes();
+      String saveName = originalFileName.contains('.')
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : originalFileName;
+
+      String finalName = '${saveName}_${stem}_marked';
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: finalName, bytes: bytes,
+          fileExtension: 'wav', mimeType: MimeType.custom, customMimeType: 'audio/wav');
+      } else {
+        String? path = await FileSaver.instance.saveAs(
+          name: finalName, bytes: bytes,
+          fileExtension: 'wav', mimeType: MimeType.custom, customMimeType: 'audio/wav');
+        showSaveConfirmation(path != null && path.isNotEmpty
+            ? 'Marked WAV saved successfully.' : 'Save cancelled.');
+      }
+    } catch (e) {
+      showSaveConfirmation('Marked stem export failed: $e');
+    } finally {
+      setState(() { isExporting = false; exportMessage = ''; });
+    }
+  }
+
   Future<void> downloadDossier() async {
     final xrayStems = getStemsWithXray();
     if (xrayStems.isEmpty) {
