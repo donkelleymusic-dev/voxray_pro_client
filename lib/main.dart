@@ -80,8 +80,6 @@ import 'package:video_player/video_player.dart';
 import 'models/audio_channel.dart';
 import 'ui/dual_xray_dialog.dart';
 
-import '../services/supabase_service.dart'; // To get god mode account email
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTRY POINT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -312,6 +310,9 @@ class _GodModeDashboardState extends State<GodModeDashboard> {
         Uri.parse('$_baseUrl/automl/status'),
         headers: {"x-user-email": _userEmail},
       );
+
+      if (!mounted) return;
+      
       if (res.statusCode == 200) {
         if (mounted) {
           setState(() {
@@ -345,6 +346,7 @@ class _GodModeDashboardState extends State<GodModeDashboard> {
         ));
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Network Error: $e")));
     }
   }
