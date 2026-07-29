@@ -797,149 +797,192 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
     var summary = widget.analysisData['summary'];
     double aiScore = (summary['ai_probability_score'] ?? 0.0).toDouble();
 
+    // 1. Get the screen size to constrain the dialog dynamically
+    final screenSize = MediaQuery.of(context).size;
+
     return Dialog(
       backgroundColor: const Color(0xFF121212),
+      insetPadding: const EdgeInsets.all(12), // Give it breathing room on small phones
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: 850,
-        height: 700,
-        padding: const EdgeInsets.all(24),
+        width: screenSize.width * 0.95,
+        height: screenSize.height * 0.90, // Almost full screen height to allow scrolling
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // --- TITLE HEADER ---
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('AI Audio Forensics Analysis', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: () => Navigator.pop(context)),
+                const Expanded(
+                  child: Text(
+                    'AI Forensics Analysis', 
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white54), 
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.pop(context)
+                ),
               ],
             ),
-            const Divider(color: Colors.white24, height: 24),
+            const Divider(color: Colors.white24, height: 16),
             
-            // Overview Header Card
+            // --- OVERVIEW HEADER CARD (Responsive) ---
             Card(
               color: const Color(0xFF1E1E1E),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(12.0),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(widget.analysisData['file_info']['filename'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                        const SizedBox(height: 4),
-                        Text("Duration: ${duration}s | Sample Rate: ${widget.analysisData['file_info']['sample_rate']}Hz", style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Text("Total Anomalies Flagged: ${widget.analysisData['events'].length}", style: const TextStyle(color: Colors.amberAccent, fontSize: 12)),
-                      ],
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(widget.analysisData['file_info']['filename'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white), overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 4),
+                          Text("Dur: ${duration}s | SR: ${widget.analysisData['file_info']['sample_rate']}Hz", style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                          const SizedBox(height: 4),
+                          Text("Flags: ${widget.analysisData['events'].length}", style: const TextStyle(color: Colors.amberAccent, fontSize: 11)),
+                        ],
+                      ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          "${aiScore.toStringAsFixed(1)}% AI",
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: aiScore >= 50 ? Colors.redAccent : Colors.greenAccent,
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              "${aiScore.toStringAsFixed(1)}% AI",
+                              style: TextStyle(
+                                fontSize: 24, // Reduced from 32, scales down if needed
+                                fontWeight: FontWeight.bold,
+                                color: aiScore >= 50 ? Colors.redAccent : Colors.greenAccent,
+                              ),
+                            ),
                           ),
-                        ),
-                        Text(summary['verdict'], style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.white70)),
-                      ],
+                          Text(summary['verdict'], style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.white70, fontSize: 11), textAlign: TextAlign.right),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
-            // Interactive Waveform & Timeline Playhead
+            // --- INTERACTIVE WAVEFORM & FILTERS CARD ---
             Card(
               color: const Color(0xFF1E1E1E),
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(12.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // Changed to a Wrap to prevent cutoff on portrait phones
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
-                        Text('Playhead: ${_currentPlaybackTime.toStringAsFixed(2)}s', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Wrap(
-                            spacing: 6,
-                            children: [
-                              ChoiceChip(
-                                label: const Text('All', style: TextStyle(fontSize: 10)),
-                                selected: _selectedMetricFilter == null,
-                                onSelected: (_) => setState(() => _selectedMetricFilter = null),
-                              ),
-                              ChoiceChip(
-                                label: const Text('Pitch Slew', style: TextStyle(fontSize: 10)),
-                                selected: _selectedMetricFilter == 'pitch_slew',
-                                onSelected: (_) => setState(() => _selectedMetricFilter = 'pitch_slew'),
-                              ),
-                              ChoiceChip(
-                                label: const Text('Formants', style: TextStyle(fontSize: 10)),
-                                selected: _selectedMetricFilter == 'formant_decoupling',
-                                onSelected: (_) => setState(() => _selectedMetricFilter = 'formant_decoupling'),
-                              ),
-                              ChoiceChip(
-                                label: const Text('Grid Lock', style: TextStyle(fontSize: 10)),
-                                selected: _selectedMetricFilter == 'grid_lock',
-                                onSelected: (_) => setState(() => _selectedMetricFilter = 'grid_lock'),
-                              ),
-                            ],
-                          ),
+                        Text('Playhead: ${_currentPlaybackTime.toStringAsFixed(2)}s', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: -8, // Keep chips tight vertically if they wrap
+                          children: [
+                            ChoiceChip(
+                              label: const Text('All', style: TextStyle(fontSize: 9)),
+                              selected: _selectedMetricFilter == null,
+                              onSelected: (_) => setState(() => _selectedMetricFilter = null),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            ChoiceChip(
+                              label: const Text('Pitch', style: TextStyle(fontSize: 9)),
+                              selected: _selectedMetricFilter == 'pitch_slew',
+                              onSelected: (_) => setState(() => _selectedMetricFilter = 'pitch_slew'),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            ChoiceChip(
+                              label: const Text('Formants', style: TextStyle(fontSize: 9)),
+                              selected: _selectedMetricFilter == 'formant_decoupling',
+                              onSelected: (_) => setState(() => _selectedMetricFilter = 'formant_decoupling'),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            ChoiceChip(
+                              label: const Text('Grid', style: TextStyle(fontSize: 9)),
+                              selected: _selectedMetricFilter == 'grid_lock',
+                              onSelected: (_) => setState(() => _selectedMetricFilter = 'grid_lock'),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
                         )
                       ],
                     ),
                     const SizedBox(height: 8),
-                    GestureDetector(
-                      onTapDown: (details) {
-                        double renderWidth = 750; // Estimated content width inside dialog
-                        double clickedRatio = (details.localPosition.dx / renderWidth).clamp(0.0, 1.0);
-                        setState(() => _currentPlaybackTime = clickedRatio * duration);
-                      },
-                      child: Container(
-                        height: 70,
-                        width: double.infinity,
-                        color: Colors.black38,
-                        child: CustomPaint(
-                          painter: WaveformPainter(
-                            waveformData: List<double>.from(widget.analysisData['waveform'].map((x) => (x as num).toDouble())),
-                            events: events,
-                            durationSec: duration,
-                            playheadSec: _currentPlaybackTime,
+                    // Use LayoutBuilder for accurate tap math on any screen size
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return GestureDetector(
+                          onTapDown: (details) {
+                            double clickedRatio = (details.localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
+                            setState(() => _currentPlaybackTime = clickedRatio * duration);
+                          },
+                          child: Container(
+                            height: 50, // Slightly thinner for mobile landscape support
+                            width: double.infinity,
+                            color: Colors.black38,
+                            child: CustomPaint(
+                              painter: WaveformPainter(
+                                waveformData: List<double>.from(widget.analysisData['waveform'].map((x) => (x as num).toDouble())),
+                                events: events,
+                                durationSec: duration,
+                                playheadSec: _currentPlaybackTime,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      }
                     ),
-                    Slider(
-                      value: _currentPlaybackTime.clamp(0.0, duration),
-                      min: 0.0, max: duration,
-                      activeColor: Colors.cyanAccent,
-                      inactiveColor: Colors.white24,
-                      onChanged: (val) => setState(() => _currentPlaybackTime = val),
+                    const SizedBox(height: 4),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 2,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        overlayShape: SliderComponentShape.noOverlay,
+                      ),
+                      child: Slider(
+                        value: _currentPlaybackTime.clamp(0.0, duration),
+                        min: 0.0, max: duration,
+                        activeColor: Colors.cyanAccent,
+                        inactiveColor: Colors.white24,
+                        onChanged: (val) => setState(() => _currentPlaybackTime = val),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
-            // Scrollable Time-Series Forensic Event Inspector
+            // --- SCROLLABLE FORENSIC EVENT INSPECTOR ---
             Expanded(
               child: Card(
                 color: const Color(0xFF1E1E1E),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(12.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Flagged Forensic Events (${events.length})', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                      Text('Flagged Forensic Events (${events.length})', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
                       const Divider(color: Colors.white24),
                       Expanded(
                         child: ListView.builder(
@@ -948,20 +991,21 @@ class _AiForensicsDialogState extends State<AiForensicsDialog> {
                             final event = events[index];
                             bool isSelected = (_currentPlaybackTime - (event['timestamp_sec'] as num).toDouble()).abs() < 1.0;
                             return Container(
-                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              margin: const EdgeInsets.symmetric(vertical: 2),
                               decoration: BoxDecoration(
                                 color: isSelected ? Colors.white10 : Colors.transparent,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: ListTile(
                                 dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
                                 leading: CircleAvatar(
-                                  radius: 16,
+                                  radius: 14,
                                   backgroundColor: event['severity'] == 'high' ? Colors.redAccent : (event['severity'] == 'medium' ? Colors.orangeAccent : Colors.amber),
-                                  child: Text('${event['timestamp_sec']}s', style: const TextStyle(fontSize: 9, color: Colors.black, fontWeight: FontWeight.bold)),
+                                  child: Text('${event['timestamp_sec']}s', style: const TextStyle(fontSize: 8, color: Colors.black, fontWeight: FontWeight.bold)),
                                 ),
-                                title: Text(event['metric_name'], style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-                                subtitle: Text("${event['detail']} (Val: ${event['raw_value']})", style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                title: Text(event['metric_name'], style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                subtitle: Text("${event['detail']}", style: const TextStyle(color: Colors.white54, fontSize: 10)),
                                 onTap: () {
                                   setState(() => _currentPlaybackTime = (event['timestamp_sec'] as num).toDouble());
                                 },
