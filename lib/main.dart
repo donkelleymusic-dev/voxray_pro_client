@@ -2959,7 +2959,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     }
 
     setState(() {
-      markers.add({
+      markers = List.from(markers)..add({
         'id': 'mk_${DateTime.now().millisecondsSinceEpoch}',
         'time': targetTime,
         'label': 'Marker ${markers.length + 1}',
@@ -5278,11 +5278,13 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                         // 1. Add Marker
                                         Tooltip(
                                           message: 'Add Marker',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent), // Match jump-to-marker yellow!
-                                            onPressed: addMarkerAtCurrentPlayhead,
+                                          child: GestureDetector(
+                                            onTapDown: (_) => addMarkerAtCurrentPlayhead(), // Instantly fires on touch!
+                                            child: Container(
+                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              color: Colors.transparent, // Required to capture taps in an empty container
+                                              child: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent),
+                                            ),
                                           ),
                                         ),
                                 
