@@ -239,10 +239,10 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: const Text('Sign In', style: TextStyle(fontSize: 16)),
                 ),
                 TextButton(onPressed: _showForgotPasswordDialog, child: const Text("Forgot Password?"))
-                /*const Text(
+                const Text(
                   "Beta Registration: visit voxray.info",
                   style: TextStyle(color: Colors.white70, fontSize: 14),
-                )*/
+                )
                 /*const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: _signUp,
