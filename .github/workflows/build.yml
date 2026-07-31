@@ -50,6 +50,32 @@ jobs:
       #    releaseFiles: build/app/outputs/bundle/release/app-release.aab
       #    track: beta
       #    status: completed
+      # NEW: Sign the AAB and APK securely using the secrets you just added
+      - name: Sign Android Release
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: build/app/outputs/bundle/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY_STORE_BASE64 }}
+          alias: ${{ secrets.SIGNING_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.SIGNING_STORE_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+
+        # Uncommented: Upload to GitHub Releases
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: always() 
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Voxray Build #${{ github.run_number }}"
+          prerelease: true
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            ${{steps.sign_app.outputs.signedReleaseFile}}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 4. Upload BOTH the APK and AAB to GitHub Releases (bypassing artifact storage)
       #- name: Upload to GitHub Releases
