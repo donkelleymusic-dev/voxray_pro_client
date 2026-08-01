@@ -2,11 +2,12 @@
 cmake_minimum_required(VERSION 3.14)
 project(voxray_pro_client LANGUAGES CXX)
 
-# 1. Force Sentry to use NO backend (skips crashpad C++ compilation)
-set(SENTRY_BACKEND "none" CACHE STRING "Disable sentry crashpad backend" FORCE)
+# 1. Stop Sentry from forcing the backend configuration to "crashpad".
+# We must set this as an ENV variable so the Flutter plugin reads it properly.
+set(ENV{SENTRY_NATIVE_BACKEND} "none")
 
-# 2. THE HIJACK: Preempt the sentry_flutter plugin's fetch command 
-# and explicitly force CMake to skip downloading ALL Git submodules!
+# 2. Stop CMake from unconditionally downloading the broken Google submodules.
+# We preempt the plugin's fetch command and explicitly tell it to skip submodules.
 include(FetchContent)
 FetchContent_Declare(
     sentry-native
