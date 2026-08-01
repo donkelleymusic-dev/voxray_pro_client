@@ -1335,6 +1335,67 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
       }
     }
   }
+
+  void _showPitchColorKeyDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Row(children: [
+          Icon(Icons.palette, color: Colors.white),
+          SizedBox(width: 8),
+          Text('Timeline Color Key', style: TextStyle(color: Colors.white)),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _legendRow(Colors.lightBlueAccent, 'Perfect Tuning (≤ 10¢)', 'Studio accurate pitch.'),
+            _legendRow(Colors.amberAccent, 'Moderate Variance (11-25¢)', 'Natural human drift.'),
+            _legendRow(Colors.redAccent, 'Poor Tuning (> 25¢)', 'Requires pitch correction.'),
+            const Divider(color: Colors.white24, height: 24),
+            _legendRow(Colors.grey, 'Grey Notes', 'Muted notes.'),
+            _legendRow(Colors.white.withOpacity(0.5), 'Faded / Transparent', 'Quiet notes (Low Amplitude).'),
+            _legendRow(null, '* Asterisk / White Border', 'User has manually edited this note.', isOutline: true),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.white54))),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendRow(Color? color, String title, String desc, {bool isOutline = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 16, height: 16,
+            margin: const EdgeInsets.only(top: 2, right: 12),
+            decoration: BoxDecoration(
+              color: isOutline ? Colors.transparent : color,
+              border: isOutline ? Border.all(color: Colors.white, width: 1.5) : null,
+              borderRadius: BorderRadius.circular(2),
+            ),
+            alignment: Alignment.center,
+            child: isOutline ? const Text('*', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)) : null,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(color: color ?? Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                Text(desc, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
   
   Future<void> _showAboutApp(BuildContext context) async {
     PackageInfo packageInfo = await PackageInfo.fromPlatform();
@@ -4528,6 +4589,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               leading: Icon(Icons.assessment, color: Colors.greenAccent),
               title: Text('Show Scorecard'))),
       PopupMenuItem(
+          value: 'show_color_key',
+          child: const ListTile(
+              leading: Icon(Icons.palette, color: Colors.lightBlueAccent),
+              title: Text('Pitch Color Key'))),
+      PopupMenuItem(
           value: 'show_dossier',
           enabled: !isApiBusy,
           child: const ListTile(
@@ -4629,6 +4695,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'run_nuclear_piano':  _runNuclearPianoExtraction(); break;
       case 'synth_settings':  _showSynthSettingsDialog(); break;
       case 'show_scorecard':    _showScorecard(); break;
+      case 'show_color_key':  _showPitchColorKeyDialog(); break;
       case 'show_dossier':    _showDossier(); break;
       case 'downloads':       _showAdvancedDownloadsDialog(); break;
       case 'live_mode':       setState(() => isLiveModeActive = !isLiveModeActive); break;
