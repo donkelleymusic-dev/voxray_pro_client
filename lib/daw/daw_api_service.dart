@@ -1911,8 +1911,12 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> loadVoxrayProject(BuildContext context) async {
+    //FilePickerResult? result = await FilePicker.pickFiles(
+    //  type: FileType.custom, allowedExtensions: ['vxp'], withData: true);
     FilePickerResult? result = await FilePicker.pickFiles(
-      type: FileType.custom, allowedExtensions: ['vxp'], withData: true);
+      type: FileType.any, 
+      withData: true,
+    );
     if (result == null) return;
 
     String fileName = result.files.single.name.toLowerCase();
