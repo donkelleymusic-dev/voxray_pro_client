@@ -1,6 +1,6 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-set(ENV{SENTRY_BACKEND} "none")
+set(SENTRY_BACKEND "none" CACHE STRING "Disable sentry crashpad backend" FORCE)
 project(voxray_pro_client LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
