@@ -23,9 +23,8 @@ class TimelineRulerWidget extends StatelessWidget {
         },
         // NEW: Allows smooth dragging/scrubbing across the ruler!
         onPanUpdate: (details) {
-          // ✅ NEW: Ignore accidental micro-drags from mouse clicks!
-          if (details.delta.dx.abs() < 2.0) return;
-          
+          // ✅ Removed the per-frame delta check! 
+          // Slow scrubbing will now work perfectly.
           double draggedSeconds = details.localPosition.dx / dawState.zoomX;
           dawState.jumpToTimelinePosition(draggedSeconds.clamp(0.0, dawState.songDuration));
         },
