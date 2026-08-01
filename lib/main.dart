@@ -123,6 +123,7 @@ Future<void> main() async {
     (options) {
       options.dsn = 'https://d6a836c92a35e39f8a73a143d2bca99d@o4511748451729408.ingest.us.sentry.io/4511748461363200';
       options.tracesSampleRate = 1.0; 
+      options.autoInitializeNativeSdk = false;
     },
     appRunner: () => runApp(
       MaterialApp(
