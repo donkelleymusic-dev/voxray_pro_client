@@ -135,6 +135,15 @@ mixin DawAudioController on VoxrayDAWStateBase {
     if (wasPlaying) pauseAllPlayers();
   
     try {
+      // 🟢 NEW: NON-DESTRUCTIVE ROUTING
+      // Prefer the pitch-shifted audio if it exists, but keep mapping it to the 
+      // original 'stemName' (e.g. 'vocals') so the UI mixer still controls it!
+      String cacheKey = stemName;
+      if (cachedStemBytes.containsKey('${stemName}_rendered') || cachedStemPaths.containsKey('${stemName}_rendered')) {
+        cacheKey = '${stemName}_rendered';
+        logToSupabase("Loading non-destructive rendered audio for track [$stemName]...");
+      }
+      
       // ── ALIGNED / RAM BUFFER PRIORITY OVERRIDE ──
       // If we performed an auto-alignment, the shifted audio bytes live here. 
       // Force loading them via memory so both web and native play the aligned audio!
@@ -187,12 +196,11 @@ mixin DawAudioController on VoxrayDAWStateBase {
   
       if (kIsWeb) {
         // ── 1. WEB COMPATIBLE PATH ──
-        logToSupabase("Web platform detected. Processing track [$stemName]...");
+        logToSupabase("Web platform detected. Processing track [$cacheKey]...");
         
         Uint8List bytes;
-        
-        if (cachedStemBytes.containsKey(stemName)) {
-           bytes = cachedStemBytes[stemName]!;
+        if (cachedStemBytes.containsKey(cacheKey)) {
+           bytes = cachedStemBytes[cacheKey]!;
         } else {
            bytes = await fetchStemBytes(stemName, apiBase, taskId);
            cachedStemBytes[stemName] = bytes;
@@ -237,7 +245,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
       } else {
         // ── 2. NATIVE PATH (Mobile / Desktop) ──
         bool localFileExists = false;
-        String? targetPath = cachedStemPaths[stemName];
+        String? targetPath = cachedStemPaths[cacheKey];
   
         if (targetPath != null && targetPath.isNotEmpty) {
           if (await File(targetPath).exists()) {
@@ -270,7 +278,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         }
   
         final newSource = await SoLoud.instance.loadFile(
-          cachedStemPaths[stemName]!,
+          cachedStemPaths[cacheKey]!,
           mode: LoadMode.disk,
         );
   
