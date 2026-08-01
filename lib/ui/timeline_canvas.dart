@@ -557,7 +557,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           RepaintBoundary(
                             child: CustomPaint(
                               size: Size(timelineWidth, totalHeight),
-                              painter: AdvancedPianoRollPainter(
+                              painter: (
                                 notes: processedNotes, 
                                 continuousXray: widget.dawState.continuousXray,
                                 currentScrollX: currentScrollX,                 
@@ -1193,17 +1193,23 @@ class AdvancedPianoRollPainter extends CustomPainter {
         double exactCurrentMidi = actualMidi.round() + baseFraction + semitoneShift + (currentShiftCents / 100.0);
         int deviationFromDisplay = ((exactCurrentMidi - note['display_midi']) * 100).round();
 
-        Color noteColor = deviationFromDisplay.abs() <= 10 ? Colors.blueAccent : deviationFromDisplay.abs() <= 25 ? Colors.amberAccent : Colors.redAccent;
+        // 🟢 FIX 1: Use lightBlueAccent instead of blueAccent for visibility
+        Color noteColor = deviationFromDisplay.abs() <= 10 ? Colors.lightBlueAccent : deviationFromDisplay.abs() <= 25 ? Colors.amberAccent : Colors.redAccent;
         if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
         if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
 
         Color finalNoteColor = noteColor;
         if (isQuiet) {
-            finalNoteColor = noteColor.withOpacity(0.15);
+            // 🟢 FIX 2: Bump quiet opacity from 0.15 to 0.35 so notes don't vanish
+            finalNoteColor = noteColor.withOpacity(0.35);
         } else if (isXrayMode && i != draggingNoteIndex) {
             finalNoteColor = noteColor.withOpacity(0.4);
         }
 
+        // 🟢 NEW: Check if the note has been manually shifted
+        bool isEdited = semitoneShift != 0 || currentShiftCents != 0;
+
+        // Draw the base note fill
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), 
@@ -1214,7 +1220,24 @@ class AdvancedPianoRollPainter extends CustomPainter {
             ..style = PaintingStyle.fill 
         );
 
-        String labelText = '${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
+        // 🟢 NEW: THE GLOWING EDIT HIGHLIGHT
+        // If edited, draw a crisp white border around it
+        if (isEdited) {
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), 
+              const Radius.circular(4)
+            ), 
+            Paint()
+              ..color = Colors.white.withOpacity(0.85)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5
+          );
+        }
+
+        // 🟢 NEW: Add an asterisk to the text label if edited
+        String editAsterisk = isEdited ? "* " : "";
+        String labelText = '$editAsterisk${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
         
         // ==========================================
         // NEW TEXT RENDERING (DYNAMIC RESIZE & OUTLINE)
