@@ -107,3 +107,46 @@ jobs:
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: "New Voxray build deployed to Play Store Beta! Download direct APK here: https://github.com/${{ github.repository }}/releases/tag/build-${{ github.run_number }}"
           document: build/app/outputs/flutter-apk/app-release.apk
+
+  build_ios:
+    name: Build iOS Unsigned IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate Launcher Icons
+        run: dart run flutter_launcher_icons
+
+      # This is the magic command! It tells Xcode to build the app but SKIP checking for a paid $99 developer certificate.
+      - name: Build unsigned iOS App
+        run: flutter build ios --release --no-codesign
+
+      # iOS builds output a '.app' folder. We need to manually zip it into an '.ipa' file for Sideloadly to read it.
+      - name: Package into IPA format
+        run: |
+          mkdir -p build/ios/iphoneos/Payload
+          mv build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          cd build/ios/iphoneos
+          zip -qq -r voXRay-iOS.ipa Payload
+
+      # Upload the IPA directly to the exact same GitHub Release page as your Android APK!
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: always() 
+        with:
+          tag_name: build-${{ github.run_number }}
+          prerelease: true
+          files: build/ios/iphoneos/voXRay-iOS.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
