@@ -348,6 +348,7 @@ mixin DawApiService on VoxrayDAWStateBase {
     //FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.any,
+      withData: true,
     );
     /*FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
@@ -522,6 +523,7 @@ mixin DawApiService on VoxrayDAWStateBase {
     //FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.any,
+      withData: true,
     );
     if (result == null) return;
 
