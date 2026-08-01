@@ -1190,13 +1190,23 @@ mixin DawApiService on VoxrayDAWStateBase {
         
         var dlRes = await http.get(Uri.parse('$apiBase/api/download-mix/$fileId?format=$rFormat')).timeout(const Duration(seconds: 60));
         if (dlRes.statusCode != 200) {
-          
-          logToSupabase('renderStemEdits UI statusCode: $dlRes.statusCode for http.get("$apiBase/api/download-mix/$fileId?format=$rFormat")');
+          logToSupabase('renderStemEdits UI statusCode: $dlRes.statusCode for http.get(...)');
           throw Exception('Failed to download preview audio.');
         }
         
         Uint8List previewBytes = dlRes.bodyBytes;
 
+        // 🟢 NEW: NON-DESTRUCTIVE CACHING
+        // Save the rendered result as a distinct file, keeping the original pristine!
+        cachedStemBytes['${activeStem}_rendered'] = previewBytes;
+        if (!kIsWeb) {
+          final dir = await getTemporaryDirectory();
+          final path = '${dir.path}/${currentTaskId}_${activeStem}_rendered.ogg';
+          await File(path).writeAsBytes(previewBytes);
+          cachedStemPaths['${activeStem}_rendered'] = path;
+        }
+
+        // Now load it into the player...
         if (stemHandles.containsKey(activeStem) &&
             SoLoud.instance.getIsValidVoiceHandle(stemHandles[activeStem]!)) {
           SoLoud.instance.stop(stemHandles[activeStem]!);
