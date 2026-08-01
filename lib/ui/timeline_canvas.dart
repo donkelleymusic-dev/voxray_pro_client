@@ -390,7 +390,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
 
                     // 1. User physically touched the screen to pan (or a fling starts)
                     if (scrollInfo is ScrollStartNotification && scrollInfo.dragDetails != null) {
-                      widget.dawState.isUserInteracting = true;
+                      // ❌ OLD: widget.dawState.isUserInteracting = true;
+                      // ✅ NEW: Do nothing here! Let ScrollUpdate verify it's a real drag first.
                     } 
                     // 2. User let go AND the fling inertia has completely come to a stop
                     else if (scrollInfo is ScrollEndNotification) {
@@ -435,6 +436,12 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                     }
                     // 3. Maintain your exact scrub mode math during the drag/fling
                     else if (scrollInfo is ScrollUpdateNotification) {
+                      // ✅ NEW: Desktop slop threshold! 
+                      // Only engage the clutch if they actually moved the mouse more than 2 pixels.
+                      if (scrollInfo.dragDetails != null && scrollInfo.scrollDelta != null && scrollInfo.scrollDelta!.abs() > 2.0) {
+                        widget.dawState.isUserInteracting = true;
+                      }
+
                       if (widget.dawState.isUserInteracting && widget.dawState.isScrubMode) {
                         double viewportWidth = scrollInfo.metrics.viewportDimension;
                         double maxScroll = scrollInfo.metrics.maxScrollExtent;
