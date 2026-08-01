@@ -50,6 +50,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter/gestures.dart'; // for windows
 
 import 'models/channel_state.dart';
 import 'daw/daw_audio_controller.dart';
@@ -125,6 +126,10 @@ Future<void> main() async {
     },
     appRunner: () => runApp(
       MaterialApp(
+        // Force Windows/Mac to allow click-and-drag scrolling with a mouse!
+        scrollBehavior: const MaterialScrollBehavior().copyWith(
+          dragDevices: {PointerDeviceKind.mouse, PointerDeviceKind.touch, PointerDeviceKind.trackpad},
+        ),
         home: const AppGatekeeper(),
         theme: ThemeData(brightness: Brightness.dark),
       )
