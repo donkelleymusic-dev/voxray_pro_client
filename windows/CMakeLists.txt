@@ -1,7 +1,22 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-set(SENTRY_BACKEND "none" CACHE STRING "Disable sentry crashpad backend" FORCE)
 project(voxray_pro_client LANGUAGES CXX)
+
+# 1. Force Sentry to use NO backend (skips crashpad C++ compilation)
+set(SENTRY_BACKEND "none" CACHE STRING "Disable sentry crashpad backend" FORCE)
+
+# 2. THE HIJACK: Preempt the sentry_flutter plugin's fetch command 
+# and explicitly force CMake to skip downloading ALL Git submodules!
+include(FetchContent)
+FetchContent_Declare(
+    sentry-native
+    GIT_REPOSITORY https://github.com/getsentry/sentry-native.git
+    GIT_TAG        0.16.1
+    GIT_SUBMODULES ""
+)
+
+# The name of the executable created for the application. Change this to change
+# the on-disk name of your application.
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
