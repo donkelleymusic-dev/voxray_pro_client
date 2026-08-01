@@ -347,9 +347,12 @@ mixin DawApiService on VoxrayDAWStateBase {
   Future<void> loadFileAndAnalyze(BuildContext context) async {
     //FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
     FilePickerResult? result = await FilePicker.pickFiles(
+      type: FileType.any,
+    );
+    /*FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['mp3', 'wav', 'aac', 'm4a', 'flac'],
-    );
+    );*/
     if (result == null) return;
 
     var uploadOptions = await showUploadTypeDialog(context);
@@ -516,7 +519,10 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> importIndividualStem(BuildContext context) async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
+    //FilePickerResult? result = await FilePicker.pickFiles(type: FileType.audio, withData: true);
+    FilePickerResult? result = await FilePicker.pickFiles(
+      type: FileType.any,
+    );
     if (result == null) return;
 
     Uint8List bytes = result.files.single.bytes ?? await File(result.files.single.path!).readAsBytes();
