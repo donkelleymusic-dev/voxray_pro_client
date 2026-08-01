@@ -53,7 +53,7 @@ dependencies:
   path_provider: ^2.1.0
   supabase_flutter: ^2.15.4
   url_launcher: ^6.3.2
-  sentry_flutter: ^8.6.0
+  sentry_flutter: ^9.22.0
   flutter_markdown: ^0.7.3
   package_info_plus: ^9.0.1
   video_player: ^2.9.1
