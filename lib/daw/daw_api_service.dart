@@ -1760,6 +1760,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         String? path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
           fileName: '$defaultSaveName.vxp',
+          type: FileType.any,
         );
   
         if (path != null) {
