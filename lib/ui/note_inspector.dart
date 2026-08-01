@@ -27,9 +27,6 @@ class NoteInspector {
     final Map<String, dynamic>? forensics = note['forensics'];
     final bool isAnalyzed = forensics != null && forensics['is_analyzed'] == true;
     final double prob = isAnalyzed ? (forensics['tuning_probability'] ?? 0.0).toDouble() : 0.0;
-    // Example UI Logic:
-    // if (prob > 0.85) -> Show Red "Mechanical Tuning Detected" warning
-    // if (prob < 0.30) -> Show Green "Natural Human Wobble" text
 
     showModalBottomSheet(
       context: context, backgroundColor: Colors.grey[950], isScrollControlled: true,
@@ -72,6 +69,9 @@ class NoteInspector {
                 double prob = forensics['tuning_probability'];
                 double stdDev = forensics['std_deviation'];
             }
+
+            // 🟢 Check if the note has been manually shifted
+            bool isEdited = semitoneShift != 0 || originalCents != 0;
             
             return SafeArea(
               child: Padding(
@@ -135,15 +135,43 @@ class NoteInspector {
                               const Text('X-Ray not enabled', style: TextStyle(fontSize: 12, color: Colors.white38)),
                           ],
                         ),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.amber[700]),
-                          icon: const Icon(Icons.auto_fix_high, size: 16),
-                          label: const Text("Snap to Scale"),
-                          onPressed: () {
-                            setModalState(() {
-                              tempCents = -rawCentsFromPitch.round();
-                            });
-                          },
+
+                        // 🟢 NEW: Action Column for Revert and Snap buttons
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (isEdited)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.redAccent,
+                                    side: const BorderSide(color: Colors.redAccent),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  ),
+                                  icon: const Icon(Icons.history, size: 16),
+                                  label: const Text("Revert Pitch", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  onPressed: () {
+                                    // registerUndoSnapshot handles adding to dirtyStems and triggering the UI!
+                                    dawState.registerUndoSnapshot(); 
+                                    note['semitone_shift'] = 0;
+                                    note['cents_shift'] = 0;
+                                    dawState.notifyChanged();
+                                    Navigator.pop(context); // Close the inspector
+                                  },
+                                ),
+                              ),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber[700]),
+                              icon: const Icon(Icons.auto_fix_high, size: 16),
+                              label: const Text("Snap to Scale"),
+                              onPressed: () {
+                                setModalState(() {
+                                  tempCents = -rawCentsFromPitch.round();
+                                });
+                              },
+                            ),
+                          ],
                         )
                       ],
                     ),
