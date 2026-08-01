@@ -557,7 +557,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           RepaintBoundary(
                             child: CustomPaint(
                               size: Size(timelineWidth, totalHeight),
-                              painter: (
+                              painter: AdvancedPianoRollPainter(
                                 notes: processedNotes, 
                                 continuousXray: widget.dawState.continuousXray,
                                 currentScrollX: currentScrollX,                 
