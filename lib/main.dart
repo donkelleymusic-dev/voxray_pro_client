@@ -4884,7 +4884,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                           ? [const Shadow(color: Colors.red, blurRadius: 10.0)]
                           : null,
                     ),
-                    onPressed: (!isApiBusy && rawNotes.isNotEmpty && originalAudioBytes != null && dirtyStems.contains(activeEditableStem))
+                    // 🟢 FIX: Removed the strict originalAudioBytes requirement!
+                    onPressed: (!isApiBusy && rawNotes.isNotEmpty && dirtyStems.contains(activeEditableStem))
                         ? () => renderStemEdits(activeEditableStem)
                         : null,
                   ),
