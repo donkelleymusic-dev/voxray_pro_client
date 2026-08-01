@@ -122,17 +122,19 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
-        run: flutter pub get
+      - name: Install dependencies & Generate Configs
+        run: |
+          flutter clean
+          flutter pub get
+          flutter precache --ios
+          flutter build ios --config-only --no-codesign
 
       - name: Generate Launcher Icons
         run: dart run flutter_launcher_icons
 
-      # This is the magic command! It tells Xcode to build the app but SKIP checking for a paid $99 developer certificate.
       - name: Build unsigned iOS App
         run: flutter build ios --release --no-codesign
 
-      # iOS builds output a '.app' folder. We need to manually zip it into an '.ipa' file for Sideloadly to read it.
       - name: Package into IPA format
         run: |
           mkdir -p build/ios/iphoneos/Payload
@@ -140,7 +142,6 @@ jobs:
           cd build/ios/iphoneos
           zip -qq -r voXRay-iOS.ipa Payload
 
-      # Upload the IPA directly to the exact same GitHub Release page as your Android APK!
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: always() 
