@@ -1,5 +1,6 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
+set(ENV{SENTRY_NATIVE_BACKEND} "none")
 project(voxray_pro_client LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
