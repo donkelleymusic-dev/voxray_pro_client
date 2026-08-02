@@ -443,11 +443,31 @@ mixin DawApiService on VoxrayDAWStateBase {
         processingMessage = 'Analyzing and extracting all stems... Please keep app open.';
       } else {
         isOriginalMixAvailable   = false;
+        
+        // 🟢 FIX: Formally register the initial stem in the dynamic track pool!
+        // This ensures activeChannels isn't empty when we import a second stem later.
+        addImportedStem(uploadOptions['stem']!, originalFileName, isGenerated: false);
+        activeEditableStem       = uploadOptions['stem']!;
+        
+        activePlaybackSources.add(activeEditableStem);
+        
+        // Ensure the RAM cache holds the initial audio so we can play/render it!
+        cachedStemBytes[activeEditableStem] = originalAudioBytes!;
+
+        processingMessage = 'Uploading ${activeEditableStem.toUpperCase()} stem... Please keep app open.';
+      }
+
+      /*if (uploadOptions['type'] == 'mix') {
+        isOriginalMixAvailable = true;
+        activePlaybackSources.add('original');
+        processingMessage = 'Analyzing and extracting all stems... Please keep app open.';
+      } else {
+        isOriginalMixAvailable   = false;
         activeEditableStem       = uploadOptions['stem']!;
         activePlaybackSources.add(activeEditableStem);
         targetStemsSelection.add(activeEditableStem);
         processingMessage = 'Uploading ${activeEditableStem.toUpperCase()} stem... Please keep app open.';
-      }
+      }*/
     });
 
     if (synthHandle  != null) SoLoud.instance.stop(synthHandle!);
