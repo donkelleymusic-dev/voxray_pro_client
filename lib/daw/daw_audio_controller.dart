@@ -147,11 +147,11 @@ mixin DawAudioController on VoxrayDAWStateBase {
       // ── ALIGNED / RAM BUFFER PRIORITY OVERRIDE ──
       // If we performed an auto-alignment, the shifted audio bytes live here. 
       // Force loading them via memory so both web and native play the aligned audio!
-      if (cachedStemBytes.containsKey(stemName)) {
-        logToSupabase("Loading aligned/cached RAM buffer for track [$stemName]...");
-        Uint8List bytes = cachedStemBytes[stemName]!;
+      if (cachedStemBytes.containsKey(cacheKey)) { // 🟢 FIX: Use cacheKey!
+        logToSupabase("Loading aligned/cached RAM buffer for track [$cacheKey]...");
+        Uint8List bytes = cachedStemBytes[cacheKey]!; // 🟢 FIX: Use cacheKey!
   
-        if (stemHandles.containsKey(stemName)) {
+        if (stemHandles.containsKey(stemName)) { // Keep stemName for the mixer handle mapping
           if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[stemName]!)) {
             SoLoud.instance.stop(stemHandles[stemName]!);
           }
