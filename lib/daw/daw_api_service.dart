@@ -1140,6 +1140,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       var request = http.MultipartRequest('POST', Uri.parse('$apiBase/batch-render-and-mix'))
         ..fields['task_id']      = currentTaskId!
         ..fields['is_test_mode'] = isTestModeActive.toString()
+        ..fields['export_format'] = 'opus'
         ..files.add(http.MultipartFile.fromString(
           'render_data_file',
           jsonEncode({
