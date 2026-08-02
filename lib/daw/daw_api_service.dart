@@ -667,6 +667,24 @@ mixin DawApiService on VoxrayDAWStateBase {
                 targetStemsSelection.addAll(returnedStems);
                 generatedStems.addAll(returnedStems);
                 
+                // 🟢 FIX: Sync the dynamic activeChannels pool with any newly extracted stems!
+                // This guarantees the 'Import Individual Stem' counter is always 100% accurate.
+                for (String stem in returnedStems) {
+                  if (!activeChannels.any((c) => c.stemKey == stem)) {
+                    final String baseType = stem.replaceAll(RegExp(r'\d+$'), ''); 
+                    final String displayName = stem == 'vocals' ? 'Vocals' : stem.toUpperCase();
+                    activeChannels.add(
+                      AudioChannel(
+                        id: DateTime.now().millisecondsSinceEpoch.toString() + stem,
+                        name: displayName,
+                        stemKey: stem,
+                        baseType: baseType,
+                        filePath: cachedStemPaths[stem] ?? '',
+                      ),
+                    );
+                  }
+                }
+                
                 // Ensure activeEditableStem does not default to 'instrumental'
                 if (targetStem == 'mix' && returnedStems.isNotEmpty) {
                     activeEditableStem = returnedStems.firstWhere(
