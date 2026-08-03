@@ -5410,60 +5410,18 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     Expanded(
                       child: Column(children: [
                         Row(children: [
-                          // 🟢 1. LOCK RULER CONTROLS TO EXACTLY 190 PIXELS WIDE
-                          SizedBox(
-                            width: 190,
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 46,
-                                  height: 45,
-                                  color: Colors.grey[900],
-                                  child: IconButton(
-                                    padding: EdgeInsets.zero,
-                                    icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
-                                    onPressed: _toggleMasterTransport,
-                                  ),
-                                ),
-                                // ✂️ GLOBAL TRIM BUTTONS
-                                Expanded(
-                                  child: Container(
-                                    height: 45,
-                                    color: Colors.black26,
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                      children: [
-                                        Tooltip(
-                                          message: 'Set Mix Start (Trim Left)',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-                                            icon: const Icon(Icons.arrow_right_alt, color: Colors.orangeAccent),
-                                            onPressed: () => setState(() => projectTrimStart = currentPosition),
-                                          ),
-                                        ),
-                                        Tooltip(
-                                          message: 'Set Mix End (Trim Right)',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-                                            icon: const Icon(Icons.keyboard_backspace, color: Colors.orangeAccent),
-                                            onPressed: () => setState(() => projectTrimEnd = currentPosition),
-                                          ),
-                                        ),
-                                        Tooltip(
-                                          message: 'Clear Trims',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-                                            icon: const Icon(Icons.clear_all, color: Colors.white38, size: 18),
-                                            onPressed: () => setState(() { projectTrimStart = 0.0; projectTrimEnd = songDuration; }),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          Container(
+                            width: 46,
+                            height: 45,
+                            color: Colors.grey[900],
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
+                              onPressed: _toggleMasterTransport,
                             ),
                           ),
+                          // 🟢 1. PERFECT RULER ALIGNMENT (46 + 16 = 62px)
+                          const SizedBox(width: 16),
                           Expanded(
                             child: SingleChildScrollView(
                               controller: rulerScrollController,
@@ -5477,11 +5435,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // 🟢 2. LOCK CANVAS CONTROLS TO 160 PIXELS (+ 30px Piano Keys = 190px Total!)
-                              Container(
-                                width: 160,
-                                alignment: Alignment.center, 
-                                color: Colors.transparent,
+                              // 🟢 2. RESTORE CANVAS SLIDER COMPACT WIDTH (8 + 24 = 32px)
+                              // (32px + 30px Piano Keys = 62px total, matching the Ruler perfectly!)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8.0),
                                 child: SizedBox(
                                   width: 24,
                                   child: RotatedBox(
@@ -5654,6 +5611,31 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                                 isLoopModeActive = !isLoopModeActive;
                                               });
                                             },
+                                          ),
+                                        ),
+                                        // 🟢 3. MOVED GLOBAL TRIM BUTTONS HERE
+                                        Tooltip(
+                                          message: 'Set Mix Start (Trim Left)',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: const Icon(Icons.arrow_right_alt, color: Colors.orangeAccent, size: 20),
+                                            onPressed: () => setState(() => projectTrimStart = currentPosition),
+                                          ),
+                                        ),
+                                        Tooltip(
+                                          message: 'Set Mix End (Trim Right)',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: const Icon(Icons.keyboard_backspace, color: Colors.orangeAccent, size: 20),
+                                            onPressed: () => setState(() => projectTrimEnd = currentPosition),
+                                          ),
+                                        ),
+                                        Tooltip(
+                                          message: 'Clear Trims',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                            icon: const Icon(Icons.clear_all, color: Colors.white38, size: 18),
+                                            onPressed: () => setState(() { projectTrimStart = 0.0; projectTrimEnd = songDuration; }),
                                           ),
                                         ),
                                 
