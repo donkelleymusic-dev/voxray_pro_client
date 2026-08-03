@@ -132,9 +132,23 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
           if (!SoLoud.instance.getIsValidVoiceHandle(entry.value)) continue;
           String stemName = entry.key;
           
+          bool isDrumSub = ['kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(stemName);
+
           bool inMuteZone = false;
+          
+          // 1. Check if the specific stem has a cut region
           if (widget.dawState.mutedRegions.containsKey(stemName)) {
             for (var region in widget.dawState.mutedRegions[stemName]!) {
+              if (uiVuMeterTime >= region['start']! && uiVuMeterTime <= region['end']!) {
+                inMuteZone = true;
+                break;
+              }
+            }
+          }
+          
+          // 🟢 2. THE FIX: If this is a drum sub-stem, also check the master 'drums' track for cuts!
+          if (!inMuteZone && isDrumSub && widget.dawState.mutedRegions.containsKey('drums')) {
+            for (var region in widget.dawState.mutedRegions['drums']!) {
               if (uiVuMeterTime >= region['start']! && uiVuMeterTime <= region['end']!) {
                 inMuteZone = true;
                 break;
@@ -146,7 +160,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
           double targetVol = inMuteZone ? 0.0 : widget.dawState.getEffectiveVolume(stemName);
           
           if (stemName == 'drums') {
-            SoLoud.instance.setVolume(entry.value, 0.0); // Drums master stays muted
+            SoLoud.instance.setVolume(entry.value, 0.0); // Drums master stays permanently silent
           } else {
             SoLoud.instance.setVolume(entry.value, targetVol);
           }
