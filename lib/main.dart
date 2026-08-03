@@ -5139,7 +5139,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               );
             },
             child: Container(
-              width: 85,
+              width: 96,
               margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
               decoration: BoxDecoration(
                 color: isSelected ? Colors.blueGrey[800] : Colors.black45,
@@ -5189,29 +5189,32 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            IconButton(
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                              icon: const Icon(Icons.remove, size: 14, color: Colors.white54),
-                              onPressed: () => setState(() {
+                            // 🟢 Replaced IconButton with a tight GestureDetector
+                            GestureDetector(
+                              onTap: () => setState(() {
                                 double current = stemTimeOffsets[stemName] ?? 0.0;
                                 stemTimeOffsets[stemName] = (current - 0.1).clamp(-10.0, 10.0);
                                 hasBeenSaved = false;
                               }),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+                                child: Icon(Icons.remove, size: 14, color: Colors.white54),
+                              ),
                             ),
                             Text(
                               '${(stemTimeOffsets[stemName] ?? 0.0).toStringAsFixed(1)}s',
                               style: const TextStyle(color: Colors.tealAccent, fontSize: 10, fontWeight: FontWeight.bold),
                             ),
-                            IconButton(
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                              icon: const Icon(Icons.add, size: 14, color: Colors.white54),
-                              onPressed: () => setState(() {
+                            GestureDetector(
+                              onTap: () => setState(() {
                                 double current = stemTimeOffsets[stemName] ?? 0.0;
                                 stemTimeOffsets[stemName] = (current + 0.1).clamp(-10.0, 10.0);
                                 hasBeenSaved = false;
                               }),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+                                child: Icon(Icons.add, size: 14, color: Colors.white54),
+                              ),
                             ),
                           ],
                         ),
@@ -5347,7 +5350,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                       child: isLandscape
                           // LANDSCAPE: Tools and Meters live on the SAME horizontal strip
                           ? SizedBox(
-                              height: 52,
+                              height: 72,
                               child: Row(
                                 children: [
                                   Padding(
@@ -5373,7 +5376,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                 ),
                                 // Restored full container height for portrait mode so text & meters never clip
                                 SizedBox(
-                                  height: 52,
+                                  height: 72,
                                   child: buildMeterBridge(),
                                 ),
                               ],
