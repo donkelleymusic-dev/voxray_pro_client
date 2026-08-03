@@ -25,11 +25,22 @@ android {
         versionName = flutter.versionName
     }
 
+    // 1. Create a dynamic signing configuration to catch GitHub's environment variables
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "keystore.jks")
+            storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+            keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+            keyPassword = System.getenv("SIGNING_STORE_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            //signingConfig = signingConfigs.getByName("debug")
+            // 2. Point to the new release config (instead of "debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
