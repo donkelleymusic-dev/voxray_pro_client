@@ -92,6 +92,14 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
           widget.dawState.seekAllPlayers(widget.dawState.loopStartBoundary);
           rawHardwareTime = widget.dawState.loopStartBoundary;
         }
+
+        // 3.5. HANDLE GLOBAL TRIM END BOUNDARY
+        if (widget.dawState.projectTrimEnd < widget.dawState.songDuration && rawHardwareTime >= widget.dawState.projectTrimEnd) {
+          widget.dawState.pauseAllPlayers();
+          widget.dawState.seekAllPlayers(widget.dawState.projectTrimStart);
+          exactPlayheadTime.value = widget.dawState.projectTrimStart;
+          return;
+        }
         
         // 4. CALCULATE SPLIT OFFSETS 
         double uiPlayheadTime = math.max(0.0, rawHardwareTime - playheadVisualOffset);
@@ -701,6 +709,18 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               ),
                             ),
 
+                          // 3.5 GLOBAL TRIM CURTAINS
+                          RepaintBoundary(
+                            child: CustomPaint(
+                              size: Size(timelineWidth, totalHeight),
+                              painter: GlobalTrimPainter(
+                                trimStart: widget.dawState.projectTrimStart,
+                                trimEnd: widget.dawState.projectTrimEnd,
+                                zoomX: widget.dawState.zoomX,
+                              ),
+                            ),
+                          ),
+
                           // 4. PLAYHEAD
                           ValueListenableBuilder<double>(
                             valueListenable: exactPlayheadTime,
@@ -1084,25 +1104,62 @@ class DualXRayContourPainter extends CustomPainter {
   }
 }
 
+class GlobalTrimPainter extends CustomPainter {
+  final double trimStart;
+  final double trimEnd;
+  final double zoomX;
+
+  GlobalTrimPainter({required this.trimStart, required this.trimEnd, required this.zoomX});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint curtainPaint = Paint()..color = Colors.black.withOpacity(0.65)..style = PaintingStyle.fill;
+    final Paint borderPaint = Paint()..color = Colors.orangeAccent..style = PaintingStyle.stroke..strokeWidth = 2.0;
+
+    // Trim Start Curtain (Left side)
+    if (trimStart > 0) {
+      double x = trimStart * zoomX;
+      canvas.drawRect(Rect.fromLTRB(0, 0, x, size.height), curtainPaint);
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), borderPaint);
+    }
+
+    // Trim End Curtain (Right side)
+    if (trimEnd > 0 && trimEnd < (size.width / zoomX)) {
+      double x = trimEnd * zoomX;
+      canvas.drawRect(Rect.fromLTRB(x, 0, size.width, size.height), curtainPaint);
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), borderPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant GlobalTrimPainter oldDelegate) {
+    return oldDelegate.trimStart != trimStart || oldDelegate.trimEnd != trimEnd || oldDelegate.zoomX != zoomX;
+  }
+}
+
 
 class AdvancedPianoRollPainter extends CustomPainter {
   final List<Map<String, dynamic>> notes;
   final List<dynamic> continuousXray;
   final double currentScrollX;
-  final double zoomX; final double zoomY;
-  final int minMidi; final int maxMidi;
+  final double zoomX; 
+  final double zoomY;
+  final int minMidi; 
+  final int maxMidi;
   final bool isXrayMode;
   final bool isDrumsMode;
   final int? draggingNoteIndex;
   final int initialSemitoneShift;
   final bool isDualModeActive;
+  
+  // 🟢 PRIORITY 3 ADDITIONS
+  final List<Map<String, double>> mutedRegions; 
+  final double? selectionStartX;                
+  final double? selectionCurrentX;              
 
   AdvancedPianoRollPainter({
     required this.notes, 
     required this.continuousXray,
-    final List<Map<String, double>> mutedRegions;
-    final double? selectionStartX;
-    final double? selectionCurrentX;
     required this.currentScrollX,
     required this.zoomX, 
     required this.zoomY, 
@@ -1113,6 +1170,10 @@ class AdvancedPianoRollPainter extends CustomPainter {
     this.draggingNoteIndex, 
     this.initialSemitoneShift = 0,
     this.isDualModeActive = false,
+    // 🟢 INITIALIZING THE NEW PROPS
+    this.mutedRegions = const [],
+    this.selectionStartX,
+    this.selectionCurrentX,
   });
 
   String getNoteName(int midi) { const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']; return '${noteNames[midi % 12]}${(midi ~/ 12) - 1}'; }
@@ -1147,14 +1208,12 @@ class AdvancedPianoRollPainter extends CustomPainter {
         double px = time * zoomX;
         double py = (maxMidi - midiPitch) * zoomY + (zoomY / 2);
 
-        // Culling: Don't draw point artifacts if they clip completely outside viewport bounds
         if (px < currentScrollX - 100 || px > currentScrollX + size.width + 100) {
           isPathStarted = false;
           lastTime = time;
           continue;
         }
 
-        // THE MAGIC GAP DETECTOR
         if (isPathStarted && (time - lastTime) > 0.05) {
           isPathStarted = false;
         }
@@ -1172,7 +1231,7 @@ class AdvancedPianoRollPainter extends CustomPainter {
     }
 
     // =========================================================================
-    // LAYER 1.5: DRAW COMMITTED MUTE REGIONS & ACTIVE DRAG MARQUEE
+    // LAYER 1.5: DRAW COMMITTED MUTE REGIONS & ACTIVE DRAG MARQUEE (NEW)
     // =========================================================================
     final Paint mutePaint = Paint()..color = Colors.redAccent.withOpacity(0.15)..style = PaintingStyle.fill;
     final Paint muteBorder = Paint()..color = Colors.redAccent.withOpacity(0.5)..style = PaintingStyle.stroke..strokeWidth = 1.0;
@@ -1209,7 +1268,6 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double endX = (note['start_time'] + ((note['end_time'] - note['start_time']) * (note['time_ratio'] ?? 1.0))) * zoomX;
       double padding = zoomY * 0.15; 
 
-      // Calculate the amplitude-based style
       double amplitude = (note['amplitude'] ?? 0.8).toDouble();
       bool isQuiet = amplitude < 0.15; 
 
@@ -1218,15 +1276,10 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double effectiveMidi = actualMidi + semitoneShift + (currentShiftCents / 100.0);
       double visualY = (maxMidi - effectiveMidi) * zoomY;
 
-      // ==========================================
-      // THE DRUM BLOB INTERCEPTOR
-      // ==========================================
       bool isDrumHit = note['type'] == 'drum_hit' || isDrumsMode;
 
       if (isDrumHit) {
-        double amplitude = (note['amplitude'] ?? 0.8).toDouble();
         Color drumColor = Colors.deepOrangeAccent.withOpacity((0.3 + (amplitude * 0.7)).clamp(0.0, 1.0));
-        
         double blobRadius = zoomY * 0.45; 
         
         canvas.drawCircle(
@@ -1234,11 +1287,9 @@ class AdvancedPianoRollPainter extends CustomPainter {
           blobRadius,
           Paint()..color = drumColor
         );
-        
         continue; 
       }
 
-      // Only process Ghost Rectangles and Solid Blocks for real pitched notes
       if (!isXrayLine) {
         if (i == draggingNoteIndex) {
           double ghostEffectiveMidi = actualMidi + initialSemitoneShift + (currentShiftCents / 100.0);
@@ -1252,23 +1303,19 @@ class AdvancedPianoRollPainter extends CustomPainter {
         double exactCurrentMidi = actualMidi.round() + baseFraction + semitoneShift + (currentShiftCents / 100.0);
         int deviationFromDisplay = ((exactCurrentMidi - note['display_midi']) * 100).round();
 
-        // 🟢 FIX 1: Use lightBlueAccent instead of blueAccent for visibility
         Color noteColor = deviationFromDisplay.abs() <= 10 ? Colors.lightBlueAccent : deviationFromDisplay.abs() <= 25 ? Colors.amberAccent : Colors.redAccent;
         if (note['isMuted'] == true) noteColor = Colors.grey.withOpacity(0.3);
         if (i == draggingNoteIndex) noteColor = noteColor.withOpacity(0.7);
 
         Color finalNoteColor = noteColor;
         if (isQuiet) {
-            // 🟢 FIX 2: Bump quiet opacity from 0.15 to 0.35 so notes don't vanish
             finalNoteColor = noteColor.withOpacity(0.35);
         } else if (isXrayMode && i != draggingNoteIndex) {
             finalNoteColor = noteColor.withOpacity(0.4);
         }
 
-        // 🟢 NEW: Check if the note has been manually shifted
         bool isEdited = semitoneShift != 0 || currentShiftCents != 0;
 
-        // Draw the base note fill
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             Rect.fromLTRB(startX, visualY + padding, endX, visualY + zoomY - padding), 
@@ -1279,8 +1326,6 @@ class AdvancedPianoRollPainter extends CustomPainter {
             ..style = PaintingStyle.fill 
         );
 
-        // 🟢 NEW: THE GLOWING EDIT HIGHLIGHT
-        // If edited, draw a crisp white border around it
         if (isEdited) {
           canvas.drawRRect(
             RRect.fromRectAndRadius(
@@ -1294,13 +1339,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
           );
         }
 
-        // 🟢 NEW: Add an asterisk to the text label if edited
         String editAsterisk = isEdited ? "* " : "";
         String labelText = '$editAsterisk${getNoteName(note['display_midi'])} ${deviationFromDisplay > 0 ? '+$deviationFromDisplay¢' : (deviationFromDisplay == 0 ? '±0¢' : '$deviationFromDisplay¢')}';
-        
-        // ==========================================
-        // NEW TEXT RENDERING (DYNAMIC RESIZE & OUTLINE)
-        // ==========================================
         
         double maxFontSize = (zoomY * 0.6).clamp(6.0, 14.0); 
         double availableWidth = (endX - startX) - 6.0; 
@@ -1382,6 +1422,8 @@ class AdvancedPianoRollPainter extends CustomPainter {
            oldDelegate.draggingNoteIndex != draggingNoteIndex ||
            oldDelegate.isXrayMode != isXrayMode ||
            oldDelegate.isDrumsMode != isDrumsMode ||
+           oldDelegate.selectionStartX != selectionStartX ||
+           oldDelegate.selectionCurrentX != selectionCurrentX ||
            oldDelegate.notes != notes; 
   }
 }
