@@ -4581,6 +4581,27 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       
       const PopupMenuDivider(),
 
+
+      PopupMenuItem(
+          value: 'import_stem',
+          enabled: !isApiBusy,
+          child: const ListTile(
+              leading: Icon(Icons.file_open, color: Colors.tealAccent),
+              title: Text('Import Individual Track'))),
+      
+      PopupMenuItem(
+          value: 'restore_stems',
+          enabled: trashBin.isNotEmpty && !isApiBusy,
+          child: ListTile(
+            leading: const Icon(Icons.restore_from_trash, color: Colors.tealAccent),
+            title: Text(
+              'Restore Hidden Stems (${trashBin.length})',
+              style: TextStyle(color: trashBin.isNotEmpty ? Colors.white : Colors.white38),
+            ),
+          ),
+      ),
+      const PopupMenuDivider(),
+
     
       PopupMenuItem(
           value: 'show_scorecard',
@@ -4607,13 +4628,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               title: Text('Advanced Downloads'))),
       
       // Removed the Dual X-Ray menu item as requested!
-
-      PopupMenuItem(
-          value: 'import_stem',
-          enabled: !isApiBusy,
-          child: const ListTile(
-              leading: Icon(Icons.file_open, color: Colors.tealAccent),
-              title: Text('Import Individual Track'))),
       PopupMenuItem(
           value: 'export_stems',
           enabled: !isApiBusy,
@@ -4687,6 +4701,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'load':            loadVoxrayProject(context); break;
       case 'save':            saveVoxrayProject(); break;
       case 'save_as':         saveVoxrayProjectAs(); break;
+      case 'restore_stems':     _showRestoreStemsDialog(); break;
       case 'export_stems':    exportStemsAsZip(); break;
       case 'scrub_toggle':    setState(() => isScrubMode = !isScrubMode); break;
       case 'processing_mode':
@@ -4730,6 +4745,49 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         break;
       
     }
+  }
+
+  void _showRestoreStemsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Row(children: [
+          Icon(Icons.restore_from_trash, color: Colors.tealAccent),
+          SizedBox(width: 8),
+          Text('Restore Hidden Stems', style: TextStyle(color: Colors.white)),
+        ]),
+        content: SizedBox(
+          width: 300,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: trashBin.length,
+            itemBuilder: (context, index) {
+              final channel = trashBin[index];
+              return ListTile(
+                title: Text(channel.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                subtitle: Text('Type: ${channel.baseType}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                trailing: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    restoreChannel(channel);
+                    _showSaveConfirmation('Restored ${channel.name}!');
+                  },
+                  child: const Text('Restore', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: Colors.white54)),
+          ),
+        ],
+      ),
+    );
   }
 
   // =========================================================================
@@ -5020,6 +5078,29 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               if (!isGenerated && originalAudioBytes != null && currentTaskId != null && !isLoading) {
                 generateStemOnDemand(stemName);
               }
+            },
+            // Long press a stem strip to non-destructively hide/delete it!
+            onLongPress: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: Colors.grey[900],
+                  title: Text('Hide "${stemName.toUpperCase()}"?', style: const TextStyle(color: Colors.white)),
+                  content: const Text('This will hide the track and mute it. You can restore it anytime from the main menu under "Restore Hidden Stems".', style: TextStyle(color: Colors.white54)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        deleteChannel(stemName);
+                        _showSaveConfirmation('Hidden ${stemName.toUpperCase()}. Moved to Trash Bin.');
+                      },
+                      child: const Text('Hide Track', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              );
             },
             child: Container(
               width: 85,
