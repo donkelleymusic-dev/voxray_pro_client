@@ -30,6 +30,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
   //late Ticker;
   late Ticker _audioSyncTicker;
   final ValueNotifier<double> exactPlayheadTime = ValueNotifier<double>(0.0);
+  int _interactionSessionId = 0; // Tracks swipe sessions to prevent timer collisions!
   // universal tuning variables
   final double playheadVisualOffset = 0.100; // 350ms delay for flying notes
   final double vuMeterVisualOffset = 0.020;  // 80ms delay for VU meters
@@ -439,19 +440,24 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
 
                     // 1. User physically touched the screen to pan (or a fling starts)
                     if (scrollInfo is ScrollStartNotification && scrollInfo.dragDetails != null) {
+                      _interactionSessionId++; // 🟢 Cancel any pending delayed timers
                       widget.dawState.isUserInteracting = true;
                     } 
                     // 2. User let go AND the fling inertia has completely come to a stop
                     else if (scrollInfo is ScrollEndNotification) {
                       if (widget.dawState.isUserInteracting) {
+                        _interactionSessionId++;
+                        int currentSession = _interactionSessionId;
                         
                         // 🛡️ THE FIX: Delay the release of the clutch so fling momentum can execute!
                         Future.delayed(const Duration(milliseconds: 150), () {
-                          if (!mounted) return;
+                          // 🟢 Abort if the user touched the screen again during this 150ms window!
+                          if (!mounted || _interactionSessionId != currentSession) return; 
+                          
                           widget.dawState.isUserInteracting = false;
                           
-                          // Snap the audio to wherever the fling landed
-                          if (widget.dawState.isPlaying) {
+                          // Snap the audio to wherever the fling landed (ONLY if scrub mode is active)
+                          if (widget.dawState.isPlaying && widget.dawState.isScrubMode) {
                             double viewportWidth = scrollInfo.metrics.viewportDimension;
                             double maxScroll = scrollInfo.metrics.maxScrollExtent;
                             double pixels = scrollInfo.metrics.pixels.clamp(0.0, maxScroll);
@@ -459,11 +465,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                             double anchorOffset = viewportWidth * 0.25; 
                             double dynamicAnchor = anchorOffset;
                     
-                            // STATE 1: Smoothly collapse the anchor to 0% as we hit the left edge
                             if (pixels < anchorOffset) {
                               dynamicAnchor = (pixels / anchorOffset) * anchorOffset;
                             } 
-                            // STATE 3: Smoothly push the anchor to 100% as we hit the right edge
                             else {
                               double rightZone = viewportWidth * 0.75;
                               if (pixels > maxScroll - rightZone) {
@@ -487,6 +491,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                       // ✅ NEW: Desktop slop threshold! 
                       // Only engage the clutch if they actually moved the mouse more than 2 pixels.
                       if (scrollInfo.dragDetails != null && scrollInfo.scrollDelta != null && scrollInfo.scrollDelta!.abs() > 2.0) {
+                        _interactionSessionId++; // 🟢 Cancel any pending delayed timers
                         widget.dawState.isUserInteracting = true;
                       }
 
