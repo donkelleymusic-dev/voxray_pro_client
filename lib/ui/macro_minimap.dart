@@ -126,6 +126,17 @@ class _MinimapPainter extends CustomPainter {
       canvas.drawPath(wavePath, wavePaint);
     }
 
+    // 2.5. ✂️ Draw Muted Regions (Darken them out on the minimap)
+    final Paint muteMinimapPaint = Paint()..color = Colors.redAccent.withOpacity(0.5)..style = PaintingStyle.fill;
+    
+    if (dawState.activeEditableStem.isNotEmpty && dawState.mutedRegions.containsKey(dawState.activeEditableStem)) {
+      for (var region in dawState.mutedRegions[dawState.activeEditableStem]!) {
+        double startX = (region['start']! / dawState.songDuration) * size.width;
+        double endX = (region['end']! / dawState.songDuration) * size.width;
+        canvas.drawRect(Rect.fromLTRB(startX, 0, endX, size.height), muteMinimapPaint);
+      }
+    }
+
     // 3. Dim the areas outside the current viewbox
     double startX = (visibleStart / dawState.songDuration) * size.width;
     double boxWidth = (visibleDuration / dawState.songDuration) * size.width;
@@ -147,12 +158,41 @@ class _MinimapPainter extends CustomPainter {
       ..color = Colors.yellowAccent
       ..strokeWidth = 1.8;
     canvas.drawLine(Offset(playheadX, 0), Offset(playheadX, size.height), playheadPaint);
+
+    // 6. 🚩 Draw Markers & Smart Labels
+    final Paint markerLinePaint = Paint()..color = Colors.orangeAccent..strokeWidth = 1.5;
+    
+    // Sort markers chronologically to handle crowding detection
+    List<Map<String, dynamic>> sortedMarkers = List.from(dawState.markers)
+      ..sort((a, b) => (a['time'] as double).compareTo(b['time'] as double));
+
+    double? lastDrawnLabelX;
+
+    for (int i = 0; i < sortedMarkers.length; i++) {
+      var marker = sortedMarkers[i];
+      double t = marker['time'] ?? 0.0;
+      double x = (t / dawState.songDuration) * size.width;
+
+      // Draw the vertical flag line across the minimap
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), markerLinePaint);
+
+      // Smart Labeling: Only draw the number if it won't crash into the previous label
+      if (lastDrawnLabelX == null || (x - lastDrawnLabelX) > 20.0) {
+        String labelText = '${i + 1}'; 
+        TextPainter tp = TextPainter(
+          text: TextSpan(text: labelText, style: const TextStyle(color: Colors.orangeAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        // Draw slightly inset from the top so it doesn't clip
+        tp.paint(canvas, Offset(x + 3, 2));
+        lastDrawnLabelX = x + tp.width;
+      }
+    }
   }
 
   @override
   bool shouldRepaint(covariant _MinimapPainter oldDelegate) {
-    // Returning true guarantees the minimap instantly refreshes 
-    // when projects load, zoom changes, or tracks are added/deleted.
     return true; 
   }
 }
