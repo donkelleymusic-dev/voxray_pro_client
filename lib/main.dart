@@ -1934,9 +1934,19 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      logToSupabase('App resumed. Polling timers will automatically catch up.');
-    } else if (state == AppLifecycleState.paused) {
-      logToSupabase('App backgrounded. OS suspended network sockets.');
+      logToSupabase('App resumed. Reclaiming OS audio session...');
+      // 🟢 iOS/Android often steals the audio context for notifications or other apps while backgrounded. 
+      // We must explicitly ask the OS to give us the hardware back!
+      configureAudioSession(); 
+      
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.hidden) {
+      logToSupabase('App backgrounded. Suspending hardware audio to prevent deadlocks.');
+      // 🛑 If we leave voices open when the OS suspends the app, the C++ audio engine permanently corrupts!
+      // Force pause immediately before the OS kills our thread.
+      if (isPlaying) {
+        pauseAllPlayers();
+        setState(() {}); // Update the play button UI
+      }
     }
   }
 
@@ -5416,8 +5426,14 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                             color: Colors.grey[900],
                             child: IconButton(
                               padding: EdgeInsets.zero,
-                              icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
-                              onPressed: _toggleMasterTransport,
+                              icon: Icon(
+                                isPlaying ? Icons.pause : Icons.play_arrow, 
+                                // 🟢 Dim the icon if the API/Engine is busy
+                                color: isApiBusy ? Colors.white24 : Colors.tealAccent, 
+                                size: 28
+                              ),
+                              // 🟢 Disable the tap entirely if busy
+                              onPressed: isApiBusy ? null : _toggleMasterTransport,
                             ),
                           ),
                           // 🟢 1. PERFECT RULER ALIGNMENT (46 + 16 = 62px)
