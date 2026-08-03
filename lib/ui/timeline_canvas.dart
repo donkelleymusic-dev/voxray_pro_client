@@ -107,6 +107,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
     
         // 5. UPDATE the playhead state
         exactPlayheadTime.value = uiPlayheadTime; 
+        widget.dawState.currentPosition = uiPlayheadTime; // Silently keep main.dart perfectly in sync!
 
         // --- UPDATE VU METERS ---
         // 1. Synth Meter (Respects mute state)
@@ -424,8 +425,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
 
                     // 1. User physically touched the screen to pan (or a fling starts)
                     if (scrollInfo is ScrollStartNotification && scrollInfo.dragDetails != null) {
-                      // ❌ OLD: widget.dawState.isUserInteracting = true;
-                      // ✅ NEW: Do nothing here! Let ScrollUpdate verify it's a real drag first.
+                      widget.dawState.isUserInteracting = true;
                     } 
                     // 2. User let go AND the fling inertia has completely come to a stop
                     else if (scrollInfo is ScrollEndNotification) {
