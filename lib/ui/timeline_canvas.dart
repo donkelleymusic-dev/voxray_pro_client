@@ -505,7 +505,11 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                     return false;
                   },
 
-                  child: GestureDetector(
+                  child: SingleChildScrollView(
+                    controller: widget.horizontalScrollController,
+                    physics: scrollPhysics,
+                    scrollDirection: Axis.horizontal,
+                    child: GestureDetector(
                       onTapDown: (details) {
                         print("Tap registered. Current DragMode: ${widget.dawState.currentDragMode}"); // Check the console
                         // ✂️ If Cut tool is active, tapping a muted region deletes the cut!
@@ -748,7 +752,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                       ),
                     ),
                   ),
-                
+                ),
               ),
             ],
           ),
