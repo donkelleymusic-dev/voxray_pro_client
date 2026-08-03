@@ -1700,6 +1700,9 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   bool isRegionMuteMode = false;
   Map<String, List<Map<String, double>>> mutedRegions = {};
 
+  // ── Stem Time-Shifting (Offset in Seconds) ──────────────────────────────
+  Map<String, double> stemTimeOffsets = {};
+  
   // ── File info ─────────────────────────────────────────────────────────────
   String originalFileName = 'Unknown File';
   String originalFilePath = '';
