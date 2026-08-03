@@ -1693,6 +1693,9 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   double dualLegendLeft = 20.0;
   double dualLegendTop = 20.0;
 
+  bool isRegionMuteMode = false;
+  Map<String, List<Map<String, double>>> mutedRegions = {};
+
   // ── File info ─────────────────────────────────────────────────────────────
   String originalFileName = 'Unknown File';
   String originalFilePath = '';
@@ -4859,6 +4862,19 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
             child: Row(
               children: [
+                // ✂️ NEW: Mute Region Tool
+                Tooltip(
+                  message: 'Cut / Mute Region (Tap to delete cut)',
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32),
+                    icon: Icon(Icons.content_cut, size: 18, color: isRegionMuteMode ? Colors.redAccent : Colors.white38),
+                    onPressed: () => setState(() {
+                      isRegionMuteMode = !isRegionMuteMode;
+                      if (isRegionMuteMode) currentDragMode = DragMode.off; // Disable pitch drag when cutting
+                    }),
+                  ),
+                ),
                 PopupMenuButton<DragMode>(
                   padding: EdgeInsets.zero,
                   icon: Icon(
