@@ -596,9 +596,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               child: CustomPaint(
                                 size: Size(timelineWidth, totalHeight),
                                 painter: DualXRayContourPainter(
-                                  contour1: widget.dawState.dualContour1,
-                                  contour2: widget.dawState.dualContour2,
-                                  // ── NEW: Pass the continuous traces and culling scroll offset! ──
+                                  // 🟢 FIXED: Removed the stray unshifted contour arrays entirely!
                                   continuous1: widget.dawState.dualContinuous1,
                                   continuous2: widget.dawState.dualContinuous2,
                                   currentScrollX: currentScrollX,
@@ -905,8 +903,6 @@ class AiHeatmapOverlayPainter extends CustomPainter {
 }
 
 class DualXRayContourPainter extends CustomPainter {
-  final List<dynamic> contour1;
-  final List<dynamic> contour2;
   final List<dynamic> continuous1;
   final List<dynamic> continuous2;
   final double currentScrollX;
@@ -917,8 +913,6 @@ class DualXRayContourPainter extends CustomPainter {
   final int maxMidi;
 
   DualXRayContourPainter({
-    required this.contour1,
-    required this.contour2,
     required this.continuous1,
     required this.continuous2,
     required this.currentScrollX,
@@ -948,12 +942,12 @@ class DualXRayContourPainter extends CustomPainter {
       );
     }
 
-    // 2. Helper to draw the Continuous Background Traces (Like the old Green Line)
+    // 2. Helper to draw the Continuous Background Traces
     void drawContinuousTrace(List<dynamic> trace, Color color) {
       if (trace.isEmpty) return;
 
       final Paint paint = Paint()
-        ..color = color.withOpacity(0.35) // Matches original green line transparency
+        ..color = color.withOpacity(0.35) 
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.0
         ..strokeCap = StrokeCap.round;
@@ -993,57 +987,16 @@ class DualXRayContourPainter extends CustomPainter {
       canvas.drawPath(path, paint);
     }
 
-    // 3. Helper to draw the High-Res Forensics contour path
-    void drawContour(List<dynamic> contour, Color color) {
-      if (contour.isEmpty) return;
-
-      final Paint paint = Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..strokeCap = StrokeCap.round;
-
-      final Path path = Path();
-      bool isStarted = false;
-
-      for (var point in contour) {
-        if (point is List && point.length >= 2) {
-          double time = (point[0] ?? 0.0).toDouble();
-          double freq = (point[1] ?? 0.0).toDouble();
-
-          if (freq > 0) {
-            double midi = 69.0 + (12.0 * (math.log(freq / 440.0) / math.ln2));
-            double x = time * zoomX;
-            double y = (maxMidi - midi) * zoomY + (zoomY / 2);
-
-            if (!isStarted) {
-              path.moveTo(x, y);
-              isStarted = true;
-            } else {
-              path.lineTo(x, y);
-            }
-          } else {
-            isStarted = false; 
-          }
-        }
-      }
-      canvas.drawPath(path, paint);
-    }
-
-    // 4. Draw Continuous Traces (Background)
+    // 3. Draw Continuous Traces (Background)
     drawContinuousTrace(continuous1, const Color(0xFF00E5FF));
     drawContinuousTrace(continuous2, const Color(0xFFFF007F));
-
-    // 5. Draw High-Res Contours (Foreground)
-    drawContour(contour1, const Color(0xFF00E5FF));
-    drawContour(contour2, const Color(0xFFFF007F));
+    
+    // 🟢 FIXED: The redundant, unshifted foreground contours have been completely deleted!
   }
 
   @override
   bool shouldRepaint(covariant DualXRayContourPainter oldDelegate) {
-    return oldDelegate.contour1 != contour1 ||
-           oldDelegate.contour2 != contour2 ||
-           oldDelegate.continuous1 != continuous1 ||
+    return oldDelegate.continuous1 != continuous1 ||
            oldDelegate.continuous2 != continuous2 ||
            oldDelegate.currentScrollX != currentScrollX ||
            oldDelegate.identicalRegions != identicalRegions ||
