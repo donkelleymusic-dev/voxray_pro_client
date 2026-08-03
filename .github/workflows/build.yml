@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build_android:
     runs-on: ubuntu-latest
 
     steps:
@@ -29,41 +29,29 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # 1. GENERATE APP ICONS AUTOMATICALLY ON THE BUILD SERVER
       - name: Generate Launcher Icons
         run: dart run flutter_launcher_icons
 
-      # 1. Build App Bundle (.aab) for Google Play
+      # NEW: Decode Keystore natively so Gradle can sign BOTH the APK and AAB automatically
+      - name: Decode Android Keystore
+        env:
+          ENCODED_KEYSTORE: ${{ secrets.SIGNING_KEY_STORE_BASE64 }}
+        run: echo $ENCODED_KEYSTORE | base64 -di > android/app/keystore.jks
+
       - name: Build Android App Bundle (.aab)
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KEYSTORE_PATH: keystore.jks
         run: flutter build appbundle --build-name=1.5.${{ github.run_number }} --build-number=${{ github.run_number }} --obfuscate --split-debug-info=build/app/outputs/symbols
 
-      # 2. Build APK for direct download via Releases & Telegram
       - name: Build APK
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KEYSTORE_PATH: keystore.jks
         run: flutter build apk --build-name=1.5.${{ github.run_number }} --build-number=${{ github.run_number }} --target-platform android-arm64 --obfuscate --split-debug-info=build/app/outputs/symbols
 
-      # 3. NEW: Upload directly to Google Play Store (Beta Track)
-      #- name: Deploy to Google Play Beta
-      #  uses: r0adkll/upload-google-play@v1
-      #  with:
-      #    serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-      #    packageName: com.donkelleymusic.voxray_pro_client # ⚠️ Replace with your exact Android package name
-      #    releaseFiles: build/app/outputs/bundle/release/app-release.aab
-      #    track: beta
-      #    status: completed
-      # NEW: Sign the AAB and APK securely using the secrets you just added
-      - name: Sign Android Release
-        uses: r0adkll/sign-android-release@v1
-        id: sign_app
-        with:
-          releaseDirectory: build/app/outputs/bundle/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY_STORE_BASE64 }}
-          alias: ${{ secrets.SIGNING_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.SIGNING_STORE_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-        # Uncommented: Upload to GitHub Releases
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: always() 
@@ -73,39 +61,24 @@ jobs:
           prerelease: true
           files: |
             build/app/outputs/flutter-apk/app-release.apk
-            ${{steps.sign_app.outputs.signedReleaseFile}}
+            build/app/outputs/bundle/release/app-release.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 4. Upload BOTH the APK and AAB to GitHub Releases (bypassing artifact storage)
-      #- name: Upload to GitHub Releases
-      #  uses: softprops/action-gh-release@v2
-      #  if: always() 
-      #  with:
-      #    tag_name: build-${{ github.run_number }}
-      #    name: "Voxray Build #${{ github.run_number }}"
-      #    prerelease: true
-      #    files: |
-      #      build/app/outputs/flutter-apk/app-release.apk
-      #      build/app/outputs/bundle/release/app-release.aab
-      #  env:
-      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 5. Display Clickable Link in GitHub Action Summary
       - name: Display Clickable Link
         if: always()
         run: |
           echo "### 📱 Download Your Build Directly" >> $GITHUB_STEP_SUMMARY
           echo "Click here to download your compiled app: [Download Mobile APK](https://github.com/${{ github.repository }}/releases/tag/build-${{ github.run_number }})" >> $GITHUB_STEP_SUMMARY
 
-      # 6. Telegram Notification
+      # 🟢 FIXED: This APK is now permanently signed by Gradle, so updates won't require uninstalling!
       - name: Send APK to Telegram
         continue-on-error: true
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: "New Voxray build deployed to Play Store Beta! Download direct APK here: https://github.com/${{ github.repository }}/releases/tag/build-${{ github.run_number }}"
+          message: "New Voxray build deployed! Version 1.5.${{ github.run_number }}"
           document: build/app/outputs/flutter-apk/app-release.apk
 
   build_ios:
@@ -132,8 +105,9 @@ jobs:
       - name: Generate Launcher Icons
         run: dart run flutter_launcher_icons
 
+      # 🟢 FIXED: Added build-name and build-number variables to match Android perfectly
       - name: Build unsigned iOS App
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --build-name=1.5.${{ github.run_number }} --build-number=${{ github.run_number }}
 
       - name: Package into IPA format
         run: |
@@ -149,5 +123,40 @@ jobs:
           tag_name: build-${{ github.run_number }}
           prerelease: true
           files: build/ios/iphoneos/voXRay-iOS.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build_windows:
+    name: Build Windows Portable
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 🟢 NEW: Added Windows build with synced version numbers
+      - name: Build Windows
+        run: flutter build windows --release --build-name=1.5.${{ github.run_number }} --build-number=${{ github.run_number }}
+
+      # 🟢 NEW: Zips the Windows build into a portable folder for distribution
+      - name: Zip Windows Build
+        run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath voXRay-Windows.zip
+
+      - name: Upload Windows to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: always() 
+        with:
+          tag_name: build-${{ github.run_number }}
+          prerelease: true
+          files: voXRay-Windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
