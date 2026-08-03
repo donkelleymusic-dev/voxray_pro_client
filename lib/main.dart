@@ -3030,39 +3030,24 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // =========================================================================
 
   void addMarkerAtCurrentPlayhead() {
-  // 1. FETCH ACTUAL HARDWARE TIME (Bypasses the static UI state)
-  double targetTime = currentPosition;
-  
-  if (isPlaying) {
-    if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
-      targetTime = SoLoud.instance.getPosition(masterHandle!).inMilliseconds / 1000.0;
-    } else if (stemHandles.isNotEmpty) {
-      for (var handle in stemHandles.values) {
-        if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
-          targetTime = SoLoud.instance.getPosition(handle).inMilliseconds / 1000.0;
-          break;
-        }
-      }
+    // Trust the UI playhead time directly!
+    double targetTime = currentPosition.clamp(0.0, songDuration);
+    
+    // Reduce the collision threshold
+    bool tooClose = markers.any((m) => ((m['time'] as double) - targetTime).abs() < 0.1);
+    if (tooClose) {
+      logToSupabase("Marker creation aborted: Too close to an existing marker.");
+      return;
     }
-  }
-  
-  targetTime = targetTime.clamp(0.0, songDuration);
 
-  // 2. Reduce the collision threshold
-  bool tooClose = markers.any((m) => ((m['time'] as double) - targetTime).abs() < 0.1);
-  if (tooClose) {
-    logToSupabase("Marker creation aborted: Too close to an existing marker.");
-    return;
-  }
-
-  setState(() {
-    markers = List.from(markers)..add({
-      'id': 'mk_${DateTime.now().millisecondsSinceEpoch}',
-      'time': targetTime,
-      'label': 'Marker ${markers.length + 1}',
+    setState(() {
+      markers = List.from(markers)..add({
+        'id': 'mk_${DateTime.now().millisecondsSinceEpoch}',
+        'time': targetTime,
+        'label': 'Marker ${markers.length + 1}',
+      });
     });
-  });
-}
+  }
 
 
   void setLoopFromMarkers(double start, double end) {
