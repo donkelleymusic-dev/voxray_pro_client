@@ -1183,6 +1183,29 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // GLOBAL BUSY STATE GETTER
   bool get isApiBusy => isLoading || isPreviewing || isExporting || isSynthRendering || isXrayProcessing || isUploading;
 
+  void _fitToScreen() {
+    if (!horizontalScrollController.hasClients || !verticalScrollController.hasClients) return;
+    
+    double viewportWidth = horizontalScrollController.position.viewportDimension;
+    double viewportHeight = verticalScrollController.position.viewportDimension;
+    
+    // Perfect zoomX (pixels per second to fit exactly in viewport)
+    double optimalZoomX = viewportWidth / (songDuration > 0 ? songDuration : 30.0);
+    
+    // Perfect zoomY (pixels per MIDI note to fit all keys exactly in viewport)
+    int totalNotes = maxMidi - minMidi + 1;
+    double optimalZoomY = viewportHeight / totalNotes;
+    
+    setState(() {
+      zoomX = optimalZoomX.clamp(10.0, 500.0);
+      zoomY = optimalZoomY.clamp(4.0, 60.0);
+    });
+    
+    // Snap scroll views instantly to the top-left origin
+    horizontalScrollController.jumpTo(0.0);
+    verticalScrollController.jumpTo(0.0);
+  }
+
   void _showMatchSummaryModal({
     required double offsetSec,
     required double confidence,
@@ -5349,14 +5372,30 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     
                     // ── Horizontal zoom ──────────────────────────────────────────
                     SizedBox(
-                      height: 16,
-                      child: SliderTheme(
-                        data: SliderThemeData(
-                          trackHeight: 2,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                          overlayShape: SliderComponentShape.noOverlay,
-                        ),
-                        child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: setZoomX),
+                      height: 24, // Expanded slightly to fit the icon comfortably
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: SliderTheme(
+                              data: SliderThemeData(
+                                trackHeight: 2,
+                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                overlayShape: SliderComponentShape.noOverlay,
+                              ),
+                              child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: setZoomX),
+                            ),
+                          ),
+                          Tooltip(
+                            message: 'Fit to Screen',
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 40),
+                              icon: const Icon(Icons.fit_screen, size: 16, color: Colors.white54),
+                              onPressed: _fitToScreen,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                       ),
                     ),
                     // THE MACRO MINIMAP ─────────────────────────────────────
