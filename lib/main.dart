@@ -4799,9 +4799,14 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       // ── DYNAMIC CONTEXT STATES ──
       bool isDrumTrack  = ['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(activeEditableStem);
       bool isVocalTrack = activeEditableStem.startsWith('vocal');
+
+      // 1. support imported stems
+      bool hasTrackAudio = generatedStems.contains(activeEditableStem) || 
+                           cachedStemBytes.containsKey(activeEditableStem) || 
+                           cachedStemPaths.containsKey(activeEditableStem);
       
-      // 1. X-Ray State Logic
-      bool canRunXray  = activeEditableStem.isNotEmpty && !isDrumTrack && generatedStems.contains(activeEditableStem);
+      // 1.1 X-Ray State Logic
+      bool canRunXray  = activeEditableStem.isNotEmpty && !isDrumTrack && hasTrackAudio;
       bool hasXrayData = rawNotes.isNotEmpty && rawNotes.any((n) => n is Map && n.containsKey('contour') && n['contour'] != null);
       
       Color xrayColor;
@@ -4924,7 +4929,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                       ],
                     ),
                     onPressed: isApiBusy ? null : () {
-                      if (dualContour1.isNotEmpty && dualContour2.isNotEmpty) {
+                      // Check the continuous traces instead of the old unshifted contours
+                      if (dualContinuous1.isNotEmpty && dualContinuous2.isNotEmpty) {
                         setState(() => isDualContourOverlayActive = !isDualContourOverlayActive);
                       } else if (canRunDualXray) {
                         showDialog(
