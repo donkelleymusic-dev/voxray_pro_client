@@ -36,6 +36,8 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
 
   int? draggingNoteIndex;
   double dragStartY = 0;
+  double? regionDragStartX;
+  double? regionDragCurrentX;
   int initialSemitoneShift = 0;
   int initialCentsShift = 0;
   int lastPlayedMidi = -1;
@@ -116,7 +118,31 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                calculateAudioLevel(uiVuMeterTime, state.rmsEnvelope) * effectiveVol;
         }
         
-        // 6. HORIZONTAL SCROLL
+        // --- APPLY REGION MUTES IN REAL-TIME ---
+        for (var entry in widget.dawState.stemHandles.entries) {
+          if (!SoLoud.instance.getIsValidVoiceHandle(entry.value)) continue;
+          String stemName = entry.key;
+          
+          bool inMuteZone = false;
+          if (widget.dawState.mutedRegions.containsKey(stemName)) {
+            for (var region in widget.dawState.mutedRegions[stemName]!) {
+              if (uiVuMeterTime >= region['start']! && uiVuMeterTime <= region['end']!) {
+                inMuteZone = true;
+                break;
+              }
+            }
+          }
+          
+          // Force volume to 0.0 if inside a mute region, otherwise use the mixer's effective volume
+          double targetVol = inMuteZone ? 0.0 : widget.dawState.getEffectiveVolume(stemName);
+          
+          if (stemName == 'drums') {
+            SoLoud.instance.setVolume(entry.value, 0.0); // Drums master stays muted
+          } else {
+            SoLoud.instance.setVolume(entry.value, targetVol);
+          }
+        }
+        
         // 6. HORIZONTAL SCROLL
         if (!widget.dawState.isUserInteracting && widget.horizontalScrollController.hasClients) {
           double anchorOffset = widget.horizontalScrollController.position.viewportDimension * 0.35;
@@ -478,6 +504,18 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                     child: GestureDetector(
                       onTapDown: (details) {
                         print("Tap registered. Current DragMode: ${widget.dawState.currentDragMode}"); // Check the console
+                        // ✂️ If Cut tool is active, tapping a muted region deletes the cut!
+                        if (widget.dawState.isRegionMuteMode) {
+                          double tTap = details.localPosition.dx / widget.dawState.zoomX;
+                          String stem = widget.dawState.activeEditableStem;
+                          if (widget.dawState.mutedRegions.containsKey(stem)) {
+                            widget.dawState.setState(() {
+                              widget.dawState.mutedRegions[stem]!.removeWhere((r) => tTap >= r['start']! && tTap <= r['end']!);
+                              widget.dawState.hasBeenSaved = false;
+                            });
+                          }
+                          return;
+                        }
                         if (widget.dawState.currentDragMode != DragMode.off) {
                           print("TAP GUARD BLOCKED ACTION");
                           return;
@@ -498,6 +536,15 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                         }
                       },
                       onPanStart: widget.dawState.currentDragMode != DragMode.off ? (details) {
+                        // ✂️ Start drawing the Cut Selection Marquee
+                        if (widget.dawState.isRegionMuteMode) {
+                          widget.dawState.isUserInteracting = true;
+                          setState(() {
+                            regionDragStartX = details.localPosition.dx;
+                            regionDragCurrentX = details.localPosition.dx;
+                          });
+                          return;
+                        }
                         widget.dawState.isUserInteracting = true; // 🛑 ENGAGE CLUTCH FOR NOTE DRAG
                         const double touchSlop = 24.0;
                         for (int i = 0; i < processedNotes.length; i++) {
@@ -522,6 +569,11 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                         }
                       } : null,
                       onPanUpdate: widget.dawState.currentDragMode != DragMode.off ? (details) {
+                        // ✂️ Update Marquee bounds
+                        if (widget.dawState.isRegionMuteMode) {
+                          setState(() => regionDragCurrentX = details.localPosition.dx);
+                          return;
+                        }
                         if (draggingNoteIndex == null) return;
                         double deltaY = details.localPosition.dy - dragStartY;
 
@@ -544,6 +596,30 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                         }
                       } : null,
                       onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { 
+                        // ✂️ Commit the Cut Region to state!
+                        if (widget.dawState.isRegionMuteMode) {
+                          widget.dawState.isUserInteracting = false;
+                          if (regionDragStartX != null && regionDragCurrentX != null) {
+                            double startPx = math.min(regionDragStartX!, regionDragCurrentX!);
+                            double endPx = math.max(regionDragStartX!, regionDragCurrentX!);
+                            
+                            double tStart = startPx / widget.dawState.zoomX;
+                            double tEnd = endPx / widget.dawState.zoomX;
+                            
+                            if (tEnd - tStart > 0.05) { // Prevent accidental micro-cuts
+                              String stem = widget.dawState.activeEditableStem;
+                              widget.dawState.setState(() {
+                                if (!widget.dawState.mutedRegions.containsKey(stem)) {
+                                  widget.dawState.mutedRegions[stem] = [];
+                                }
+                                widget.dawState.mutedRegions[stem]!.add({'start': tStart, 'end': tEnd});
+                                widget.dawState.hasBeenSaved = false;
+                              });
+                            }
+                          }
+                          setState(() { regionDragStartX = null; regionDragCurrentX = null; });
+                          return;
+                        }
                         widget.dawState.isUserInteracting = false; // 🟢 RELEASE CLUTCH
                         setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); 
                       } : null,
@@ -560,6 +636,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                               painter: AdvancedPianoRollPainter(
                                 notes: processedNotes, 
                                 continuousXray: widget.dawState.continuousXray,
+                                mutedRegions: widget.dawState.mutedRegions[widget.dawState.activeEditableStem] ?? [],
+                                selectionStartX: regionDragStartX,
+                                selectionCurrentX: regionDragCurrentX,
                                 currentScrollX: currentScrollX,                 
                                 zoomX: widget.dawState.zoomX, 
                                 zoomY: widget.dawState.zoomY,
@@ -1021,6 +1100,9 @@ class AdvancedPianoRollPainter extends CustomPainter {
   AdvancedPianoRollPainter({
     required this.notes, 
     required this.continuousXray,
+    final List<Map<String, double>> mutedRegions;
+    final double? selectionStartX;
+    final double? selectionCurrentX;
     required this.currentScrollX,
     required this.zoomX, 
     required this.zoomY, 
@@ -1087,6 +1169,30 @@ class AdvancedPianoRollPainter extends CustomPainter {
         lastTime = time;
       }
       canvas.drawPath(continuousPath, xrayPaint);
+    }
+
+    // =========================================================================
+    // LAYER 1.5: DRAW COMMITTED MUTE REGIONS & ACTIVE DRAG MARQUEE
+    // =========================================================================
+    final Paint mutePaint = Paint()..color = Colors.redAccent.withOpacity(0.15)..style = PaintingStyle.fill;
+    final Paint muteBorder = Paint()..color = Colors.redAccent.withOpacity(0.5)..style = PaintingStyle.stroke..strokeWidth = 1.0;
+    
+    for (var region in mutedRegions) {
+       double startX = region['start']! * zoomX;
+       double endX = region['end']! * zoomX;
+       Rect muteRect = Rect.fromLTRB(startX, 0, endX, size.height);
+       canvas.drawRect(muteRect, mutePaint);
+       canvas.drawLine(Offset(startX, 0), Offset(startX, size.height), muteBorder);
+       canvas.drawLine(Offset(endX, 0), Offset(endX, size.height), muteBorder);
+    }
+    
+    // Draw the active dragging selection box
+    if (selectionStartX != null && selectionCurrentX != null) {
+       double left = math.min(selectionStartX!, selectionCurrentX!);
+       double right = math.max(selectionStartX!, selectionCurrentX!);
+       Rect selectionRect = Rect.fromLTRB(left, 0, right, size.height);
+       canvas.drawRect(selectionRect, Paint()..color = Colors.white.withOpacity(0.15)..style = PaintingStyle.fill);
+       canvas.drawRect(selectionRect, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
     }
 
     // =========================================================================
