@@ -4828,7 +4828,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       Color dualTopColor  = isDualContourOverlayActive ? const Color(0xFFFF007F).withOpacity(0.8) : (canRunDualXray ? const Color(0xFFFF007F).withOpacity(0.25) : Colors.transparent);
 
       // 3. AI Detection State Logic
-      bool hasTrackAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
+      //bool hasTrackAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
       bool canRunAi = activeEditableStem.isNotEmpty && hasTrackAudio; // Removed isVocalTrack requirement
       // old, vocal only version:
       //bool hasVocalAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
