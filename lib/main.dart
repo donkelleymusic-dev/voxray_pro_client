@@ -4826,6 +4826,151 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     );
   }
 
+  Widget _buildDockedMixer() {
+    Widget buildChannelStrip(String title, String key, Color highlight, {bool isMaster = false}) {
+      final state       = getChannelState(key);
+      bool isAudible    = activePlaybackSources.contains(key) || (isMaster && activePlaybackSources.isNotEmpty);
+      
+      return Container(
+        width: 68,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: isMaster ? Colors.redAccent.withOpacity(0.1) : Colors.black87,
+          border: Border.all(color: isMaster ? Colors.redAccent : Colors.white24),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 10), overflow: TextOverflow.ellipsis),
+          ),
+          ValueListenableBuilder<double>(
+            valueListenable: channelLevels[key]!,
+            builder: (context, currentLevel, child) {
+              double displayLevel = (isPlaying && isAudible && !state.isMuted) ? currentLevel : 0.0;
+              return ChannelVuMeter(level: displayLevel);
+            },
+          ),
+          const SizedBox(height: 8),
+          buildPluginSlot(key,state.plugin1, highlight, (val) { if (state.plugin1 != val) { setState(() { state.plugin1 = val!; hasBeenSaved = false; }); if (!isMaster) applyStemPlugins(key); else applyMasterPlugins(); } }),
+          buildPluginSlot(key,state.plugin2, highlight, (val) { if (state.plugin2 != val) { setState(() { state.plugin2 = val!; hasBeenSaved = false; }); if (!isMaster) applyStemPlugins(key); else applyMasterPlugins(); } }),
+          buildPluginSlot(key,state.plugin3, highlight, (val) { if (state.plugin3 != val) { setState(() { state.plugin3 = val!; hasBeenSaved = false; }); if (!isMaster) applyStemPlugins(key); else applyMasterPlugins(); } }),
+          buildPluginSlot(key,state.plugin4, highlight, (val) { if (state.plugin4 != val) { setState(() { state.plugin4 = val!; hasBeenSaved = false; }); if (!isMaster) applyStemPlugins(key); else applyMasterPlugins(); } }),
+          const SizedBox(height: 4),
+          if (!isMaster)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () { setState(() { state.isMuted = !state.isMuted; hasBeenSaved = false; }); refreshAllVolumes(); },
+                    child: Padding(padding: const EdgeInsets.all(4.0), child: Icon(state.isMuted ? Icons.volume_off : Icons.volume_up, color: state.isMuted ? Colors.redAccent : highlight, size: 15)),
+                  ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () { setState(() { if (soloedChannels.contains(key)) soloedChannels.remove(key); else soloedChannels.add(key); hasBeenSaved = false; }); refreshAllVolumes(); },
+                    child: Padding(padding: const EdgeInsets.all(4.0), child: Icon(soloedChannels.contains(key) ? Icons.headphones : Icons.headphones_outlined, color: soloedChannels.contains(key) ? Colors.yellowAccent : Colors.white38, size: 15)),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: GestureDetector(
+              onDoubleTap: () { if (key == 'master') SoLoud.instance.setGlobalVolume(1.0); else refreshAllVolumes(); },
+              child: RotatedBox(
+                quarterTurns: 3,
+                child: SliderTheme(
+                  data: SliderThemeData(trackHeight: 4, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7), overlayShape: SliderComponentShape.noOverlay, activeTrackColor: highlight, inactiveTrackColor: Colors.white10),
+                  child: Slider(
+                    value: state.volume, min: 0.0, max: 1.5,
+                    onChanged: (v) { 
+                      setState(() { state.volume = v; hasBeenSaved = false; }); 
+                      if (key == 'master') SoLoud.instance.setGlobalVolume(v); else refreshAllVolumes(); 
+                    }
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('${(state.volume * 100).round()}%', style: const TextStyle(fontSize: 9, color: Colors.white54)),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 16,
+            child: GestureDetector(
+              onDoubleTap: () {
+                setState(() { state.pan = 0.0; hasBeenSaved = false; });
+                if (key == 'master') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0); if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0); for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, 0.0); }
+                else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0); }
+                else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0); }
+                else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, 0.0); }
+              },
+              child: SliderTheme(
+                data: SliderThemeData(trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5), overlayShape: SliderComponentShape.noOverlay, activeTrackColor: highlight, inactiveTrackColor: Colors.white10),
+                child: Slider(
+                  value: state.pan, min: -1.0, max: 1.0,
+                  onChanged: (v) { 
+                    setState(() { state.pan = v; hasBeenSaved = false; });
+                    if (key == 'master') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v); if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v); for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, v); }
+                    else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v); }
+                    else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v); }
+                    else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, v); }
+                  }
+                ),
+              ),
+            ),
+          ),
+          Text(state.pan == 0 ? 'C' : (state.pan < 0 ? 'L ${-(state.pan * 100).round()}' : 'R ${(state.pan * 100).round()}'), style: const TextStyle(fontSize: 8, color: Colors.white54)),
+          const SizedBox(height: 4),
+        ]),
+      );
+    }
+
+    return Container(
+      height: 260, // Fixed height for docked mixer
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        border: const Border(top: BorderSide(color: Colors.black, width: 4)),
+      ),
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('STUDIO MIXER', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              IconButton(
+                  icon: const Icon(Icons.keyboard_arrow_down, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => setState(() => isDockedMixerVisible = false)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            children: [
+              buildChannelStrip('MASTER', 'master', Colors.redAccent, isMaster: true),
+              const SizedBox(width: 12),
+              if (isOriginalMixAvailable) buildChannelStrip('MIX', 'original', Colors.blueGrey),
+              ...targetStemsSelection
+                  .where((stem) => stem != 'instrumental' && !['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(stem))
+                  .map((stem) => buildChannelStrip(stem.toUpperCase(), stem, Colors.tealAccent)),
+              if (targetStemsSelection.any((s) => ['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(s)))
+                DrumSubmixerGroupWidget(dawState: this),
+              const SizedBox(width: 10),
+              buildChannelStrip('SYNTH', 'synth', Colors.purpleAccent),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+  
   // =========================================================================
   // BUILD
   // =========================================================================
@@ -4942,11 +5087,22 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-              icon: const Icon(Icons.tune, color: Colors.orangeAccent, size: 22),
+              icon: Icon(
+                Icons.tune, 
+                color: (MediaQuery.of(context).size.width > 900 && isDockedMixerVisible) ? Colors.white : Colors.orangeAccent, 
+                size: 22
+              ),
               tooltip: 'Studio Mixer',
               constraints: const BoxConstraints(),
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              onPressed: _showStudioMixer),
+              onPressed: () {
+                // If it's a large screen, dock it. If it's a phone, use the popup!
+                if (MediaQuery.of(context).size.width > 900) {
+                  setState(() => isDockedMixerVisible = !isDockedMixerVisible);
+                } else {
+                  _showStudioMixer();
+                }
+              }),
           const SizedBox(width: 4),
           Container(
             height: 32,
@@ -5698,6 +5854,9 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                         ),
                       ]),
                     ),
+                    // 🟢 THE SMART DOCK: Shows up at the bottom only on wide screens!
+                    if (MediaQuery.of(context).size.width > 900 && isDockedMixerVisible)
+                      _buildDockedMixer(),
                   ]), // <--- Closes the main Workspace Column
             ), // <--- Closes the SafeArea
 
