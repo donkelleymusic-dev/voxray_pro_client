@@ -392,7 +392,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
       return <String, dynamic>{...(note as Map<String, dynamic>), "display_midi": effectiveMidi.round()};
     }).toList();
 
-    final ScrollPhysics? scrollPhysics = (widget.dawState.currentDragMode != DragMode.off || draggingNoteIndex != null)
+    final ScrollPhysics? scrollPhysics = (widget.dawState.currentDragMode != DragMode.off || draggingNoteIndex != null || widget.dawState.isRegionMuteMode)
         ? const NeverScrollableScrollPhysics() : null;
 
     return Stack (
