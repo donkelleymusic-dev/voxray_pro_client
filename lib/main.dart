@@ -5152,6 +5152,36 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                             ),
                           ),
                         ),
+                        // Time-Shift Nudge Controls
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                              icon: const Icon(Icons.remove, size: 14, color: Colors.white54),
+                              onPressed: () => setState(() {
+                                double current = stemTimeOffsets[stemName] ?? 0.0;
+                                stemTimeOffsets[stemName] = (current - 0.1).clamp(-10.0, 10.0);
+                                hasBeenSaved = false;
+                              }),
+                            ),
+                            Text(
+                              '${(stemTimeOffsets[stemName] ?? 0.0).toStringAsFixed(1)}s',
+                              style: const TextStyle(color: Colors.tealAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                            IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                              icon: const Icon(Icons.add, size: 14, color: Colors.white54),
+                              onPressed: () => setState(() {
+                                double current = stemTimeOffsets[stemName] ?? 0.0;
+                                stemTimeOffsets[stemName] = (current + 0.1).clamp(-10.0, 10.0);
+                                hasBeenSaved = false;
+                              }),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
