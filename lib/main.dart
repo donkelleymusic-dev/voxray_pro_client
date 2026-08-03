@@ -5410,41 +5410,55 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     Expanded(
                       child: Column(children: [
                         Row(children: [
-                          Container(
-                            width: 46,
-                            height: 45,
-                            color: Colors.grey[900],
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
-                              onPressed: _toggleMasterTransport,
-                            ),
-                          ),
-                          // ✂️ NEW: GLOBAL TRIM BUTTONS
-                          Container(
-                            height: 45,
-                            color: Colors.black26,
+                          // 🟢 1. LOCK RULER CONTROLS TO EXACTLY 190 PIXELS WIDE
+                          SizedBox(
+                            width: 190,
                             child: Row(
                               children: [
-                                Tooltip(
-                                  message: 'Set Mix Start (Trim Left)',
+                                Container(
+                                  width: 46,
+                                  height: 45,
+                                  color: Colors.grey[900],
                                   child: IconButton(
-                                    icon: const Icon(Icons.arrow_right_alt, color: Colors.orangeAccent),
-                                    onPressed: () => setState(() => projectTrimStart = currentPosition),
+                                    padding: EdgeInsets.zero,
+                                    icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
+                                    onPressed: _toggleMasterTransport,
                                   ),
                                 ),
-                                Tooltip(
-                                  message: 'Set Mix End (Trim Right)',
-                                  child: IconButton(
-                                    icon: const Icon(Icons.keyboard_backspace, color: Colors.orangeAccent),
-                                    onPressed: () => setState(() => projectTrimEnd = currentPosition),
-                                  ),
-                                ),
-                                Tooltip(
-                                  message: 'Clear Trims',
-                                  child: IconButton(
-                                    icon: const Icon(Icons.clear_all, color: Colors.white38, size: 18),
-                                    onPressed: () => setState(() { projectTrimStart = 0.0; projectTrimEnd = songDuration; }),
+                                // ✂️ GLOBAL TRIM BUTTONS
+                                Expanded(
+                                  child: Container(
+                                    height: 45,
+                                    color: Colors.black26,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        Tooltip(
+                                          message: 'Set Mix Start (Trim Left)',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                                            icon: const Icon(Icons.arrow_right_alt, color: Colors.orangeAccent),
+                                            onPressed: () => setState(() => projectTrimStart = currentPosition),
+                                          ),
+                                        ),
+                                        Tooltip(
+                                          message: 'Set Mix End (Trim Right)',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                                            icon: const Icon(Icons.keyboard_backspace, color: Colors.orangeAccent),
+                                            onPressed: () => setState(() => projectTrimEnd = currentPosition),
+                                          ),
+                                        ),
+                                        Tooltip(
+                                          message: 'Clear Trims',
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                                            icon: const Icon(Icons.clear_all, color: Colors.white38, size: 18),
+                                            onPressed: () => setState(() { projectTrimStart = 0.0; projectTrimEnd = songDuration; }),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -5463,8 +5477,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8.0),
+                              // 🟢 2. LOCK CANVAS CONTROLS TO 160 PIXELS (+ 30px Piano Keys = 190px Total!)
+                              Container(
+                                width: 160,
+                                alignment: Alignment.center, 
+                                color: Colors.transparent,
                                 child: SizedBox(
                                   width: 24,
                                   child: RotatedBox(
