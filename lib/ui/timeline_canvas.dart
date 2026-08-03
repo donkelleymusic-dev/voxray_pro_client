@@ -505,11 +505,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                     return false;
                   },
 
-                  child: SingleChildScrollView(
-                    controller: widget.horizontalScrollController,
-                    physics: scrollPhysics,
-                    scrollDirection: Axis.horizontal,
-                    child: GestureDetector(
+                  child: GestureDetector(
                       onTapDown: (details) {
                         print("Tap registered. Current DragMode: ${widget.dawState.currentDragMode}"); // Check the console
                         // ✂️ If Cut tool is active, tapping a muted region deletes the cut!
@@ -528,7 +524,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           print("TAP GUARD BLOCKED ACTION");
                           return;
                         }
-                        if (widget.dawState.currentDragMode != DragMode.off) return; 
                         const double touchSlop = 24.0; 
                         for (int i = 0; i < processedNotes.length; i++) {
                           var pNote = processedNotes[i];
@@ -543,7 +538,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           }
                         }
                       },
-                      onPanStart: widget.dawState.currentDragMode != DragMode.off ? (details) {
+                      onPanStart: (widget.dawState.currentDragMode != DragMode.off || widget.dawState.isRegionMuteMode) ? (details) {
                         // ✂️ Start drawing the Cut Selection Marquee
                         if (widget.dawState.isRegionMuteMode) {
                           widget.dawState.isUserInteracting = true;
@@ -576,7 +571,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           }
                         }
                       } : null,
-                      onPanUpdate: widget.dawState.currentDragMode != DragMode.off ? (details) {
+                      onPanUpdate: (widget.dawState.currentDragMode != DragMode.off || widget.dawState.isRegionMuteMode) ? (details) {
                         // ✂️ Update Marquee bounds
                         if (widget.dawState.isRegionMuteMode) {
                           setState(() => regionDragCurrentX = details.localPosition.dx);
@@ -603,7 +598,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                           }
                         }
                       } : null,
-                      onPanEnd: widget.dawState.currentDragMode != DragMode.off ? (details) { 
+                      onPanEnd: (widget.dawState.currentDragMode != DragMode.off || widget.dawState.isRegionMuteMode) ? (details) { 
                         // ✂️ Commit the Cut Region to state!
                         if (widget.dawState.isRegionMuteMode) {
                           widget.dawState.isUserInteracting = false;
@@ -631,7 +626,12 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                         widget.dawState.isUserInteracting = false; // 🟢 RELEASE CLUTCH
                         setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); 
                       } : null,
-                      onPanCancel: widget.dawState.currentDragMode != DragMode.off ? () { 
+                      onPanCancel: (widget.dawState.currentDragMode != DragMode.off || widget.dawState.isRegionMuteMode) ? () { 
+                        if (widget.dawState.isRegionMuteMode) {
+                          widget.dawState.isUserInteracting = false;
+                          setState(() { regionDragStartX = null; regionDragCurrentX = null; });
+                          return;
+                        }
                         widget.dawState.isUserInteracting = false; // 🟢 RELEASE CLUTCH
                         setState(() { draggingNoteIndex = null; lastPlayedMidi = -1; }); 
                       } : null,
