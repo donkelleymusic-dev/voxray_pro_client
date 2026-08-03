@@ -1133,6 +1133,10 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   Set<String> activePlaybackSources = {};
   bool isFetchingStems = false;
 
+  // ── Global Trim Curtains (For Export/Playback) ────────────────────────────
+  double projectTrimStart = 0.0;
+  double projectTrimEnd = 9999.0; // Arbitrarily high until a file is loaded
+
   SynthSettings synthSettings = const SynthSettings();
   bool isSynthRendering = false;
   String synthMessage   = '';
@@ -2186,7 +2190,15 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // =========================================================================
 
   void _toggleMasterTransport() {
-    if (isPlaying) pauseAllPlayers(); else playAllPlayers();
+    if (isPlaying) {
+      pauseAllPlayers();
+    } else {
+      // Snap to Trim Start if we are outside the valid boundaries!
+      if (currentPosition < projectTrimStart || (projectTrimEnd < songDuration && currentPosition >= projectTrimEnd)) {
+        jumpToTimelinePosition(projectTrimStart);
+      }
+      playAllPlayers();
+    }
   }
   
   // =========================================================================
@@ -5268,6 +5280,36 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                               padding: EdgeInsets.zero,
                               icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.tealAccent, size: 28),
                               onPressed: _toggleMasterTransport,
+                            ),
+                          ),
+                          // ✂️ NEW: GLOBAL TRIM BUTTONS
+                          Container(
+                            height: 45,
+                            color: Colors.black26,
+                            child: Row(
+                              children: [
+                                Tooltip(
+                                  message: 'Set Mix Start (Trim Left)',
+                                  child: IconButton(
+                                    icon: const Icon(Icons.arrow_right_alt, color: Colors.orangeAccent),
+                                    onPressed: () => setState(() => projectTrimStart = currentPosition),
+                                  ),
+                                ),
+                                Tooltip(
+                                  message: 'Set Mix End (Trim Right)',
+                                  child: IconButton(
+                                    icon: const Icon(Icons.keyboard_backspace, color: Colors.orangeAccent),
+                                    onPressed: () => setState(() => projectTrimEnd = currentPosition),
+                                  ),
+                                ),
+                                Tooltip(
+                                  message: 'Clear Trims',
+                                  child: IconButton(
+                                    icon: const Icon(Icons.clear_all, color: Colors.white38, size: 18),
+                                    onPressed: () => setState(() { projectTrimStart = 0.0; projectTrimEnd = songDuration; }),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           Expanded(
