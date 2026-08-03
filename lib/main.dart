@@ -1720,6 +1720,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   double dualLegendLeft = 20.0;
   double dualLegendTop = 20.0;
 
+  bool isDockedMixerVisible = true;
   bool isRegionMuteMode = false;
   Map<String, List<Map<String, double>>> mutedRegions = {};
 
