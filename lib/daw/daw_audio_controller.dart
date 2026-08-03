@@ -44,16 +44,31 @@ mixin DawAudioController on VoxrayDAWStateBase {
   // ── Transport ─────────────────────────────────────────────────────────────
 
   void seekAllPlayers(double seconds) {
-    final time = Duration(milliseconds: (seconds * 1000).round());
+    final masterTime = Duration(milliseconds: (seconds * 1000).round());
+    
     if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
-      SoLoud.instance.seek(masterHandle!, time);
+      SoLoud.instance.seek(masterHandle!, masterTime);
     }
     if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) {
-      SoLoud.instance.seek(synthHandle!, time);
+      SoLoud.instance.seek(synthHandle!, masterTime);
     }
-    for (var handle in stemHandles.values) {
+    
+    for (var entry in stemHandles.entries) {
+      final key = entry.key;
+      final handle = entry.value;
       if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
-        SoLoud.instance.seek(handle, time);
+        double offset = stemTimeOffsets[key] ?? 0.0;
+        double effectiveSeconds = seconds - offset;
+
+        if (effectiveSeconds >= 0) {
+          SoLoud.instance.seek(
+            handle, 
+            Duration(milliseconds: (effectiveSeconds * 1000).round()),
+          );
+        } else {
+          // Playhead is behind the stem start offset; park voice at 0.0s
+          SoLoud.instance.seek(handle, Duration.zero);
+        }
       }
     }
   }
@@ -64,16 +79,34 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
     SoundHandle? revive(SoundHandle? handle, AudioSource? source, String key) {
       if (source == null) return handle;
+
+      double offset = stemTimeOffsets[key] ?? 0.0;
+      double effectivePosition = currentPosition - offset;
+
       if (handle != null && SoLoud.instance.getIsValidVoiceHandle(handle)) {
-        SoLoud.instance.setPause(handle, false);
+        // If playhead hasn't reached the stem offset yet, keep voice paused
+        if (effectivePosition >= 0) {
+          SoLoud.instance.setPause(handle, false);
+        } else {
+          SoLoud.instance.setPause(handle, true);
+        }
         return handle;
       } else {
         final newHandle = SoLoud.instance.play(source, paused: true);
         final state = getChannelState(key);
         SoLoud.instance.setVolume(newHandle, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(newHandle, state.pan);
-        SoLoud.instance.seek(newHandle, Duration(milliseconds: (currentPosition * 1000).round()));
-        SoLoud.instance.setPause(newHandle, false);
+
+        if (effectivePosition >= 0) {
+          SoLoud.instance.seek(
+            newHandle, 
+            Duration(milliseconds: (effectivePosition * 1000).round()),
+          );
+          SoLoud.instance.setPause(newHandle, false);
+        } else {
+          SoLoud.instance.seek(newHandle, Duration.zero);
+          SoLoud.instance.setPause(newHandle, true);
+        }
         return newHandle;
       }
     }
