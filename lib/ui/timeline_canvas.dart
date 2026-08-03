@@ -748,7 +748,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                       ),
                     ),
                   ),
-                ),
+                
               ),
             ],
           ),
