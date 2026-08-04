@@ -1604,12 +1604,36 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   }
 
   void refreshAllVolumes() {
-    if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
+    // 🟢 REVIVE MIX CHANNEL IF DEAD
+    if (originalAudioBytes != null && !getChannelState('original').isMuted) {
+      activePlaybackSources.add('original'); // Ensure VU meters light up!
+      if (masterHandle == null || !SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
+        
+        // 🟢 Extract the true extension so the C++ engine knows how to decode MP3/M4A!
+        String ext = originalFileName.contains('.') ? originalFileName.split('.').last : 'wav';
+        
+        SoLoud.instance.loadMem('master_revived.$ext', originalAudioBytes!).then((source) {
+          masterSource = source;
+          SoLoud.instance.play(source, paused: !isPlaying).then((handle) {
+            masterHandle = handle;
+            SoLoud.instance.seek(handle, Duration(milliseconds: (currentPosition * 1000).toInt()));
+            SoLoud.instance.setVolume(handle, getEffectiveVolume('original'));
+            SoLoud.instance.setPan(handle, getChannelState('original').pan);
+          });
+        });
+      } else {
+        SoLoud.instance.setVolume(masterHandle!, getEffectiveVolume('original'));
+      }
+    } else if (masterHandle != null && SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
       SoLoud.instance.setVolume(masterHandle!, getEffectiveVolume('original'));
     }
+
+    // Process Synth
     if (synthHandle != null && SoLoud.instance.getIsValidVoiceHandle(synthHandle!)) {
       SoLoud.instance.setVolume(synthHandle!, getEffectiveVolume('synth'));
     }
+    
+    // Process Stems
     for (var entry in stemHandles.entries) {
       if (!SoLoud.instance.getIsValidVoiceHandle(entry.value)) continue;
       
