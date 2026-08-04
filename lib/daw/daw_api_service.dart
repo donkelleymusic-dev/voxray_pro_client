@@ -1822,16 +1822,19 @@ mixin DawApiService on VoxrayDAWStateBase {
   Future<void> saveVoxrayProjectAs() async {
     final bytes = await packageProjectBytes();
     
-    String defaultSaveName = originalFileName.contains('.')
-        ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
-        : (originalFileName.isNotEmpty ? originalFileName : projectName);
+    // 🟢 Prefer the active project name if it was already saved/renamed, otherwise fallback to the original file
+    String defaultSaveName = projectName;
+    if ((projectName == 'Voxray_Session' || projectName.isEmpty) && originalFileName != 'Unknown File') {
+      defaultSaveName = originalFileName.contains('.')
+          ? originalFileName.substring(0, originalFileName.lastIndexOf('.'))
+          : originalFileName;
+    }
 
     await Future.delayed(const Duration(milliseconds: 50));
     
     try {
       // 1. WEB: Handle web-specific download
       if (kIsWeb) {
-        // (Keep your existing web logic here, e.g., AnchorElement or FileSaver.web)
         await FileSaver.instance.saveAs(
           name: defaultSaveName, 
           bytes: bytes, 
@@ -1839,6 +1842,12 @@ mixin DawApiService on VoxrayDAWStateBase {
           mimeType: MimeType.custom, 
           customMimeType: 'application/octet-stream'
         );
+        // Web doesn't explicitly return the saved path, so we assume the default name was used
+        setState(() {
+          projectName = defaultSaveName;
+          hasBeenSaved = true;
+          dirtyStems.clear();
+        });
         showSaveConfirmation('Project saved via browser download.');
       } 
       
@@ -1858,8 +1867,13 @@ mixin DawApiService on VoxrayDAWStateBase {
           final file = File(path);
           await file.writeAsBytes(bytes);
           
+          // 🟢 Extract the final chosen filename to become the new internal project name
+          String newName = path.split(Platform.pathSeparator).last;
+          if (newName.endsWith('.vxp')) newName = newName.substring(0, newName.length - 4);
+          
           setState(() {
             currentProjectPath = path;
+            projectName = newName; // 🟢 Update internal project name!
             hasBeenSaved = true;
             dirtyStems.clear();
           });
@@ -1878,8 +1892,13 @@ mixin DawApiService on VoxrayDAWStateBase {
         );
   
         if (path != null && path.isNotEmpty) {
+          // 🟢 Extract filename safely on mobile
+          String newName = path.split(Platform.pathSeparator).last;
+          if (newName.endsWith('.vxp')) newName = newName.substring(0, newName.length - 4);
+          
           setState(() {
             currentProjectPath = path;
+            projectName = newName; // 🟢 Update internal project name!
             hasBeenSaved = true;
             dirtyStems.clear();
           });
