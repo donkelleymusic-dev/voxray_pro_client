@@ -1243,11 +1243,11 @@ mixin DawApiService on VoxrayDAWStateBase {
         
         Uint8List previewBytes = dlRes.bodyBytes;
 
-        // 🟢 NEW: NON-DESTRUCTIVE CACHING
+        // 🟢 NON-DESTRUCTIVE CACHING
         // Save the rendered result as a distinct file, keeping the original pristine!
         cachedStemBytes['${activeStem}_rendered'] = previewBytes;
         if (!kIsWeb) {
-          final dir = await getTemporaryDirectory();
+          final dir = await getApplicationDocumentsDirectory(); // 🟢 Save previews to persistent storage!
           final path = '${dir.path}/${currentTaskId}_${activeStem}_rendered.ogg';
           await File(path).writeAsBytes(previewBytes);
           cachedStemPaths['${activeStem}_rendered'] = path;
