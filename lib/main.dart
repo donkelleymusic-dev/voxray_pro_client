@@ -1759,6 +1759,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
 
   // ── UI toggles ────────────────────────────────────────────────────────────
   bool isScrubMode = true;
+  bool showNudgeControls = false; // 🟢 Global toggle for time-shift nudges
   DragMode currentDragMode = DragMode.off;
 
   String projectName = 'Voxray_Session';
@@ -4610,6 +4611,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
           child: ListTile(
               leading: Icon(Icons.piano, color: Colors.purpleAccent),
               title: Text('Synth Audio Settings'))),
+      // 🟢 NEW: Nudge Control Toggle
+      PopupMenuItem(
+          value: 'toggle_nudge',
+          child: ListTile(
+              leading: Icon(Icons.compare_arrows, color: showNudgeControls ? Colors.amberAccent : Colors.white54),
+              title: Text(showNudgeControls ? 'Hide Track Nudge Controls' : 'Show Track Nudge Controls'))),
       PopupMenuItem(
           value: 'scrub_toggle',
           child: ListTile(
@@ -4741,6 +4748,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'restore_stems':     _showRestoreStemsDialog(); break;
       case 'export_stems':    exportStemsAsZip(); break;
       case 'scrub_toggle':    setState(() => isScrubMode = !isScrubMode); break;
+      case 'toggle_nudge':    setState(() => showNudgeControls = !showNudgeControls); break;
       case 'processing_mode':
         setState(() => processingMode = processingMode == 'classic' ? 'advanced' : 'classic');
         break;
@@ -5343,38 +5351,39 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                           ),
                         ),
                         // Time-Shift Nudge Controls
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // 🟢 Replaced IconButton with a tight GestureDetector
-                            GestureDetector(
-                              onTap: () => setState(() {
-                                double current = stemTimeOffsets[stemName] ?? 0.0;
-                                stemTimeOffsets[stemName] = (current - 0.1).clamp(-10.0, 10.0);
-                                hasBeenSaved = false;
-                              }),
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-                                child: Icon(Icons.remove, size: 14, color: Colors.white54),
+                        if (showNudgeControls) // 🟢 Hide by default to save space & prevent accidental taps!
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // 🟢 Replaced IconButton with a tight GestureDetector
+                              GestureDetector(
+                                onTap: () => setState(() {
+                                  double current = stemTimeOffsets[stemName] ?? 0.0;
+                                  stemTimeOffsets[stemName] = (current - 0.1).clamp(-10.0, 10.0);
+                                  hasBeenSaved = false;
+                                }),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+                                  child: Icon(Icons.remove, size: 14, color: Colors.white54),
+                                ),
                               ),
-                            ),
-                            Text(
-                              '${(stemTimeOffsets[stemName] ?? 0.0).toStringAsFixed(1)}s',
-                              style: const TextStyle(color: Colors.tealAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                            GestureDetector(
-                              onTap: () => setState(() {
-                                double current = stemTimeOffsets[stemName] ?? 0.0;
-                                stemTimeOffsets[stemName] = (current + 0.1).clamp(-10.0, 10.0);
-                                hasBeenSaved = false;
-                              }),
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-                                child: Icon(Icons.add, size: 14, color: Colors.white54),
+                              Text(
+                                '${(stemTimeOffsets[stemName] ?? 0.0).toStringAsFixed(1)}s',
+                                style: const TextStyle(color: Colors.tealAccent, fontSize: 10, fontWeight: FontWeight.bold),
                               ),
-                            ),
-                          ],
-                        ),
+                              GestureDetector(
+                                onTap: () => setState(() {
+                                  double current = stemTimeOffsets[stemName] ?? 0.0;
+                                  stemTimeOffsets[stemName] = (current + 0.1).clamp(-10.0, 10.0);
+                                  hasBeenSaved = false;
+                                }),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+                                  child: Icon(Icons.add, size: 14, color: Colors.white54),
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
