@@ -1730,6 +1730,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // ── File info ─────────────────────────────────────────────────────────────
   String originalFileName = 'Unknown File';
   String originalFilePath = '';
+  String originalMixLocalPath = ''; // 🟢 Tracks the persistent local copy of the original mix!
 
   // ── Timeline & playback ───────────────────────────────────────────────────
   double songDuration    = 30.0;
