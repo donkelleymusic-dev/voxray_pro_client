@@ -1609,17 +1609,17 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
       activePlaybackSources.add('original'); // Ensure VU meters light up!
       if (masterHandle == null || !SoLoud.instance.getIsValidVoiceHandle(masterHandle!)) {
         
-        // 🟢 Extract the true extension so the C++ engine knows how to decode MP3/M4A!
+        // Extract the true extension so the C++ engine knows how to decode MP3/M4A!
         String ext = originalFileName.contains('.') ? originalFileName.split('.').last : 'wav';
         
         SoLoud.instance.loadMem('master_revived.$ext', originalAudioBytes!).then((source) {
           masterSource = source;
-          SoLoud.instance.play(source, paused: !isPlaying).then((handle) {
-            masterHandle = handle;
-            SoLoud.instance.seek(handle, Duration(milliseconds: (currentPosition * 1000).toInt()));
-            SoLoud.instance.setVolume(handle, getEffectiveVolume('original'));
-            SoLoud.instance.setPan(handle, getChannelState('original').pan);
-          });
+          
+          // 🟢 play() is synchronous! Assign it instantly, no .then() needed.
+          masterHandle = SoLoud.instance.play(source, paused: !isPlaying);
+          SoLoud.instance.seek(masterHandle!, Duration(milliseconds: (currentPosition * 1000).toInt()));
+          SoLoud.instance.setVolume(masterHandle!, getEffectiveVolume('original'));
+          SoLoud.instance.setPan(masterHandle!, getChannelState('original').pan);
         });
       } else {
         SoLoud.instance.setVolume(masterHandle!, getEffectiveVolume('original'));
