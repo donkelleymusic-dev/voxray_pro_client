@@ -2350,14 +2350,6 @@ mixin DawApiService on VoxrayDAWStateBase {
         // WAKE UP THE MENUS
         hasBeenSaved = false; 
         isProjectLoaded = true;
-        
-        // 🟢 RELOAD ORIGINAL MIX FROM DEVICE DISK INTO RAM
-        if (originalMixLocalPath.isNotEmpty) {
-          final mixFile = File(originalMixLocalPath);
-          if (await mixFile.exists()) {
-            originalAudioBytes = await mixFile.readAsBytes();
-          }
-        }
 
         if (data['markers'] != null) {
           markers.clear();
@@ -2390,7 +2382,19 @@ mixin DawApiService on VoxrayDAWStateBase {
         // Assign our repaired paths so the audio engine can actually find the files
         cachedStemPaths.clear();
         cachedStemPaths.addAll(repairedPaths);
-      });
+      }); // <--- This closes the synchronous setState!
+
+      // 🟢 RELOAD ORIGINAL MIX FROM DEVICE DISK INTO RAM (Safely async!)
+      if (originalMixLocalPath.isNotEmpty) {
+        try {
+          final mixFile = File(originalMixLocalPath);
+          if (await mixFile.exists()) {
+            originalAudioBytes = await mixFile.readAsBytes();
+          }
+        } catch (e) {
+          logToSupabase('Failed to load local mix cache: $e');
+        }
+      }
 
       // 2. LOAD AUDIO AND SYNC DSP MIXER
       for (String stem in generatedStems) {
