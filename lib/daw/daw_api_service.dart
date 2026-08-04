@@ -403,6 +403,14 @@ mixin DawApiService on VoxrayDAWStateBase {
     } else if (result.files.single.path != null) {
       audioBytes = await File(result.files.single.path!).readAsBytes();
     } else return;
+    
+    // 🟢 CRITICAL FIX: Save the raw original mix persistently to the device immediately!
+    if (!kIsWeb) {
+      final dir = await getApplicationDocumentsDirectory();
+      final localPath = '${dir.path}/cached_original_mix.dat';
+      await File(localPath).writeAsBytes(audioBytes);
+      originalMixLocalPath = localPath;
+    }
 
     // --- TEMPORARY INJECTION ---
     //await testUploadSpeed(audioBytes, result.files.single.name);
@@ -2184,6 +2192,14 @@ mixin DawApiService on VoxrayDAWStateBase {
       if (rawNotes.isNotEmpty && rawNotes.first.containsKey('contour')) isXrayMode = true;
     });
 
+    // 🟢 CACHE EXTRACTED PROJECT MIX TO LOCAL DEVICE DISK
+    if (originalAudioBytes != null && !kIsWeb) {
+      final dir = await getApplicationDocumentsDirectory();
+      final localPath = '${dir.path}/cached_original_mix.dat';
+      await File(localPath).writeAsBytes(originalAudioBytes!);
+      originalMixLocalPath = localPath;
+    }
+
     if (originalAudioBytes != null && isOriginalMixAvailable) {
       activePlaybackSources.add('original');
       try {
@@ -2266,6 +2282,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         'timestamp': DateTime.now().toIso8601String(),
         'task_id': currentTaskId, 'job_id': currentJobId,
         'project_name': projectName, 'original_file': originalFileName,
+        'original_mix_local_path': originalMixLocalPath, // 🟢 Save local mix path
         'song_duration': songDuration,
         'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
         'target_stems_selection': targetStemsSelection.toList(),
@@ -2324,6 +2341,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         currentJobId       = data['job_id'];
         projectName        = data['project_name'] ?? 'Recovered Session';
         originalFileName   = data['original_file'] ?? 'Recovered Audio';
+        originalMixLocalPath = data['original_mix_local_path'] ?? ''; // 🟢 Restore local mix path
         
         songDuration       = data['song_duration'];
         zoomX              = data['zoom_x'] ?? 50.0;
@@ -2332,6 +2350,14 @@ mixin DawApiService on VoxrayDAWStateBase {
         // WAKE UP THE MENUS
         hasBeenSaved = false; 
         isProjectLoaded = true;
+        
+        // 🟢 RELOAD ORIGINAL MIX FROM DEVICE DISK INTO RAM
+        if (originalMixLocalPath.isNotEmpty) {
+          final mixFile = File(originalMixLocalPath);
+          if (await mixFile.exists()) {
+            originalAudioBytes = await mixFile.readAsBytes();
+          }
+        }
 
         if (data['markers'] != null) {
           markers.clear();
