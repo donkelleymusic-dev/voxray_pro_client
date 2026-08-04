@@ -2127,24 +2127,39 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
 
     // 2. Unpack the archive
-    for (ArchiveFile file in archive) {
-      if (file.name == 'project.json') {
-        projectData = json.decode(utf8.decode(file.content as List<int>));
-      } else if (file.name == 'original_audio.dat') {
-        originalAudioBytes = file.content as Uint8List;
-      } else if (file.name.endsWith('.ogg')) {
-        String stemName = file.name.replaceAll('.ogg', '');
-        
-        // WEB & MOBILE: Always load into RAM for instant playback
-        cachedStemBytes[stemName] = file.content as Uint8List;
-        
-        // MOBILE ONLY: Write to disk to save RAM
-        if (!kIsWeb && tempDirPath != null) {
-          String extractPath = '$tempDirPath/imported_$stemName.ogg';
-          await File(extractPath).writeAsBytes(file.content as List<int>);
-          cachedStemPaths[stemName] = extractPath;
+    try { // 🟢 Wrap the entire extraction process in a failsafe!
+      for (ArchiveFile file in archive) {
+        if (file.name == 'project.json') {
+          projectData = json.decode(utf8.decode(file.content as List<int>));
+        } else if (file.name == 'original_audio.dat') {
+          // 🟢 SAFE CAST: ZipDecoder returns List<int>, we must manually convert it!
+          originalAudioBytes = file.content is Uint8List 
+              ? file.content as Uint8List 
+              : Uint8List.fromList(file.content as List<int>);
+              
+        } else if (file.name.endsWith('.ogg')) {
+          String stemName = file.name.replaceAll('.ogg', '');
+          
+          // WEB & MOBILE: Always load into RAM for instant playback
+          // 🟢 SAFE CAST here too!
+          cachedStemBytes[stemName] = file.content is Uint8List 
+              ? file.content as Uint8List 
+              : Uint8List.fromList(file.content as List<int>);
+          
+          // MOBILE ONLY: Write to disk to save RAM
+          if (!kIsWeb && tempDirPath != null) {
+            String extractPath = '$tempDirPath/imported_$stemName.ogg';
+            // Use our safely casted bytes variable to write to disk
+            await File(extractPath).writeAsBytes(cachedStemBytes[stemName]!); 
+            cachedStemPaths[stemName] = extractPath;
+          }
         }
       }
+    } catch (e) {
+      logToSupabase('Failed to unpack .vxp archive: $e');
+      setState(() { isLoading = false; processingMessage = ''; });
+      showSaveConfirmation('Failed to read project files: $e');
+      return; // 🟢 Abort loading safely without crashing the app!
     }
 
     if (projectData.isEmpty) {
