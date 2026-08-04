@@ -2176,9 +2176,9 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       // ── ADD THESE LINES TO RESTORE DUAL X-RAY STATE ─────────────────────
       isDualContourOverlayActive = projectData['is_dual_contour_active'] ?? false;
-      dualContour1 = projectData['dual_contour_1'] ?? [];
-      dualContour2 = projectData['dual_contour_2'] ?? [];
-      identicalMatchRegions = projectData['identical_match_regions'] ?? [];
+      dualContour1 = List<dynamic>.from(projectData['dual_contour_1'] ?? []);
+      dualContour2 = List<dynamic>.from(projectData['dual_contour_2'] ?? []);
+      identicalMatchRegions = List<dynamic>.from(projectData['identical_match_regions'] ?? []);
       dualLabel1 = projectData['dual_label_1'] ?? '';
       dualLabel2 = projectData['dual_label_2'] ?? '';
       // ───────────────────────────────────────────────────────────────────
@@ -2198,23 +2198,21 @@ mixin DawApiService on VoxrayDAWStateBase {
         songDuration = maxTime;
       }
 
-      // 1. Load the markers from the file first! (Fixed variable name)
+      // 1. Load the markers from the file first!
       if (projectData['markers'] != null) {
         markers.clear();
-        // Safely cast the JSON list back into your Dart List<Map> structure
         markers.addAll(List<Map<String, dynamic>>.from(
-            projectData['markers'].map((m) => Map<String, dynamic>.from(m))
+            (projectData['markers'] as List).map((m) => Map<String, dynamic>.from(m ?? {}))
         ));
       }
 
       // 2. Now adjust the loop boundary based on the loaded markers/duration
-      // --- FIX: Pull loop boundary back 50ms so SoLoud doesn't destroy the handle ---
       loopEndBoundary = math.max(0.1, songDuration - 0.05);
       int endIdx = markers.indexWhere((m) => m['id'] == 'mk_end');
       if (endIdx != -1) markers[endIdx]['time'] = loopEndBoundary;
       
       if (projectData['mixer_state'] != null) {
-        Map<String, dynamic> ms = projectData['mixer_state'];
+        final ms = projectData['mixer_state'] as Map<String, dynamic>;
         mixerState
           ..clear()
           ..addAll(ms.map((k, v) => MapEntry(k, ChannelState.fromJson(v))));
@@ -2222,7 +2220,7 @@ mixin DawApiService on VoxrayDAWStateBase {
 
       // --- RESTORE MINIMAP NAVIGATION DATA ---
       if (projectData['stem_rms_data'] != null) {
-        Map<String, dynamic> rmsMap = projectData['stem_rms_data'];
+        final rmsMap = projectData['stem_rms_data'] as Map<String, dynamic>;
         rmsMap.forEach((k, v) {
           getChannelState(k).rmsEnvelope = (v as List).map((e) => (e as num).toDouble()).toList();
         });
@@ -2239,25 +2237,38 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..clear()
           ..addAll(Set<String>.from(projectData['generated_stems']));
       }
+      
+      // 🟢 FIX: Safe Map casting to prevent TypeError on JSON maps!
       if (projectData['all_stems_notes'] != null) {
-        allStemsNotes = Map<String, List<dynamic>>.from(projectData['all_stems_notes']);
+        final Map<String, dynamic> notesMap = projectData['all_stems_notes'];
+        allStemsNotes = notesMap.map((k, v) => MapEntry(k, List<dynamic>.from(v ?? [])));
         for (var k in allStemsNotes.keys) {
           baselinePitchStates[k] = json.encode(allStemsNotes[k]);
         }
       }
+      
+      // 🟢 FIX: Safe Map casting for X-Ray
       if (projectData['all_stems_continuous_xray'] != null) {
-        allStemsContinuousXray = Map<String, List<dynamic>>.from(projectData['all_stems_continuous_xray']);
+        final Map<String, dynamic> xrayMap = projectData['all_stems_continuous_xray'];
+        allStemsContinuousXray = xrayMap.map((k, v) => MapEntry(k, List<dynamic>.from(v ?? [])));
       }
+      
       activeEditableStem = projectData['active_editable_stem'] ?? '';
 
+      // 🟢 FIX: Fallback empty arrays in case older projects are missing history layers
       if (projectData['history'] != null) {
-        undoStack           = List<String>.from(projectData['history']['undo_stack']);
-        redoStack           = List<String>.from(projectData['history']['redo_stack']);
-        undoStackContinuous = List<String>.from(projectData['history']['undo_stack_continuous'] ?? []);
-        redoStackContinuous = List<String>.from(projectData['history']['redo_stack_continuous'] ?? []);
+        final history = projectData['history'] as Map<String, dynamic>;
+        undoStack           = List<String>.from(history['undo_stack'] ?? []);
+        redoStack           = List<String>.from(history['redo_stack'] ?? []);
+        undoStackContinuous = List<String>.from(history['undo_stack_continuous'] ?? []);
+        redoStackContinuous = List<String>.from(history['redo_stack_continuous'] ?? []);
       }
-      if (rawNotes.isNotEmpty && rawNotes.first.containsKey('contour')) isXrayMode = true;
-    });
+      
+      // 🟢 FIX: Safe checking if the list is actually populated with maps
+      if (rawNotes.isNotEmpty && rawNotes.first is Map && (rawNotes.first as Map).containsKey('contour')) {
+        isXrayMode = true;
+      }
+    }); // <--- End of setState
 
     // 🟢 CACHE EXTRACTED PROJECT MIX TO LOCAL DEVICE DISK
     if (originalAudioBytes != null && !kIsWeb) {
