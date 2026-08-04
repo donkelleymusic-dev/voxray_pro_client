@@ -2473,9 +2473,21 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..clear()
           ..addAll(Set<String>.from(data['generated_stems']));
           
-        allStemsNotes           = Map<String, List<dynamic>>.from(data['all_stems_notes']);
-        allStemsContinuousXray  = Map<String, List<dynamic>>.from(data['all_stems_continuous_xray']);
-        activeEditableStem      = data['active_editable_stem'];
+        if (data['all_stems_notes'] != null) {
+          final Map<String, dynamic> notesMap = data['all_stems_notes'];
+          allStemsNotes = notesMap.map((k, v) => MapEntry(k, List<dynamic>.from(v ?? [])));
+        } else {
+          allStemsNotes.clear();
+        }
+
+        if (data['all_stems_continuous_xray'] != null) {
+          final Map<String, dynamic> xrayMap = data['all_stems_continuous_xray'];
+          allStemsContinuousXray = xrayMap.map((k, v) => MapEntry(k, List<dynamic>.from(v ?? [])));
+        } else {
+          allStemsContinuousXray.clear();
+        }
+        
+        activeEditableStem = data['active_editable_stem'] ?? '';
 
         // Assign our repaired paths so the audio engine can actually find the files
         cachedStemPaths.clear();
