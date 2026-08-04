@@ -2346,7 +2346,8 @@ mixin DawApiService on VoxrayDAWStateBase {
       final data      = jsonDecode(await file.readAsString());
       final savedTime = DateTime.parse(data['timestamp']);
       if (DateTime.now().difference(savedTime).inHours > 24) {
-        await file.delete();
+        // 🟢 If the session expired, nuke the JSON AND all the heavy audio files!
+        await wipePersistentCache();
         setState(() => isRestoringState = false);
         return;
       }
