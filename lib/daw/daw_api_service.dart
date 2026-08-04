@@ -2388,6 +2388,21 @@ mixin DawApiService on VoxrayDAWStateBase {
         repairedPaths[key] = '${tempDir.path}/$fileName';
       });
 
+      // 🟢 DO THE ASYNC DISK READ OUTSIDE OF SETSTATE
+      String mixPathToLoad = data['original_mix_local_path'] ?? '';
+      Uint8List? loadedMixBytes;
+      if (mixPathToLoad.isNotEmpty) {
+        try {
+          final mixFile = File(mixPathToLoad);
+          if (await mixFile.exists()) {
+            loadedMixBytes = await mixFile.readAsBytes();
+          }
+        } catch (e) {
+          logToSupabase('Failed to load local mix cache: $e');
+        }
+      }
+
+      // 🟢 NOW DO THE SYNCHRONOUS SETSTATE
       setState(() {
         isLoading          = true;
         processingMessage  = 'Restoring previous session...';
@@ -2397,7 +2412,8 @@ mixin DawApiService on VoxrayDAWStateBase {
         currentJobId       = data['job_id'];
         projectName        = data['project_name'] ?? 'Recovered Session';
         originalFileName   = data['original_file'] ?? 'Recovered Audio';
-        originalMixLocalPath = data['original_mix_local_path'] ?? ''; // 🟢 Restore local mix path
+        originalMixLocalPath = mixPathToLoad; 
+        originalAudioBytes = loadedMixBytes; // 🟢 Apply the loaded bytes here!
         
         songDuration       = data['song_duration'];
         zoomX              = data['zoom_x'] ?? 50.0;
@@ -2439,18 +2455,6 @@ mixin DawApiService on VoxrayDAWStateBase {
         cachedStemPaths.clear();
         cachedStemPaths.addAll(repairedPaths);
       }); // <--- This closes the synchronous setState!
-
-      // 🟢 RELOAD ORIGINAL MIX FROM DEVICE DISK INTO RAM (Safely async!)
-      if (originalMixLocalPath.isNotEmpty) {
-        try {
-          final mixFile = File(originalMixLocalPath);
-          if (await mixFile.exists()) {
-            originalAudioBytes = await mixFile.readAsBytes();
-          }
-        } catch (e) {
-          logToSupabase('Failed to load local mix cache: $e');
-        }
-      }
 
       // 2. LOAD AUDIO AND SYNC DSP MIXER
       for (String stem in generatedStems) {
