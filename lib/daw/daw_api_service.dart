@@ -87,6 +87,36 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   // =========================================================================
+  // STORAGE MANAGEMENT & GARBAGE COLLECTION
+  // =========================================================================
+
+  Future<void> wipePersistentCache() async {
+    if (kIsWeb) return;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final List<FileSystemEntity> entities = await dir.list().toList();
+      
+      for (var entity in entities) {
+        if (entity is File) {
+          final String name = entity.path.split('/').last;
+          
+          // 🟢 Only target our specific cache files so we don't accidentally 
+          // delete user-exported files or settings!
+          if (name == 'voxray_autosave.json' || 
+              name == 'cached_original_mix.dat' ||
+              name.endsWith('_rendered.ogg') ||
+              name.startsWith('imported_')) {
+            await entity.delete();
+            logToSupabase('Garbage Collector: Deleted orphaned cache file -> $name');
+          }
+        }
+      }
+    } catch (e) {
+      logToSupabase('Garbage Collector Failed: $e');
+    }
+  }
+
+  // =========================================================================
   // UPLOAD & ANALYSIS
   // =========================================================================
 
