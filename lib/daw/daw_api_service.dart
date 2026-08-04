@@ -2395,28 +2395,42 @@ mixin DawApiService on VoxrayDAWStateBase {
       // 2. LOAD AUDIO AND SYNC DSP MIXER
       for (String stem in generatedStems) {
         if (cachedStemPaths.containsKey(stem)) {
-          activePlaybackSources.add(stem);
-          
-          // Wait for the track to load into memory...
-          await loadStemPlayerSource(stem, apiBase, currentTaskId ?? '');
-          
-          // --- FIX THE MIXER BUG ---
-          // Now that it is loaded, instantly force the C++ engine to turn the Reverb/Comp back on!
-          applyStemPlugins(stem); 
+          try {
+            activePlaybackSources.add(stem);
+            
+            // Wait for the track to load into memory...
+            await loadStemPlayerSource(stem, apiBase, currentTaskId ?? '');
+            
+            // --- FIX THE MIXER BUG ---
+            // Now that it is loaded, instantly force the C++ engine to turn the Reverb/Comp back on!
+            applyStemPlugins(stem); 
+          } catch (e) {
+            // 🟢 SAFELY CATCH MISSING FILES: If the OS deleted the temp file while asleep, 
+            // log it and skip it instead of crashing the whole restore process!
+            logToSupabase('Failed to reload audio for $stem on startup: $e');
+            activePlaybackSources.remove(stem);
+          }
         }
       }
 
       if (currentJobId != null && activeEditableStem.isNotEmpty) {
         pollForStemData(currentJobId!, activeEditableStem);
       } else {
-        setState(() { isLoading = false; processingMessage = ''; });
+        if (mounted) setState(() { isLoading = false; processingMessage = ''; });
       }
 
       showSaveConfirmation('Recovered previous unsaved session.');
     } catch (e) {
       logToSupabase('Failed to restore autosave: $e');
+      // Always clear the loading lock if the restore violently crashes!
+      if (mounted) setState(() { isLoading = false; processingMessage = ''; });
     } finally {
-      setState(() => isRestoringState = false);
+      if (mounted) {
+        setState(() { 
+          isRestoringState = false; 
+          isLoading = false; // Guarantee the UI unlocks and the play button works!
+        });
+      }
     }
   }
 
