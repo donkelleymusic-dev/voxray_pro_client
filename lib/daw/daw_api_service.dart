@@ -512,7 +512,10 @@ mixin DawApiService on VoxrayDAWStateBase {
     if (masterHandle != null) SoLoud.instance.stop(masterHandle!);
 
     try {
-      masterSource = await SoLoud.instance.loadMem('master', originalAudioBytes!);
+      // 🟢 Extract the true extension so the C++ engine knows how to decode MP3/M4A!
+      String ext = originalFileName.contains('.') ? originalFileName.split('.').last : 'wav';
+      masterSource = await SoLoud.instance.loadMem('master.$ext', originalAudioBytes!);
+      
       masterHandle = SoLoud.instance.play(masterSource!, paused: true);
       SoLoud.instance.setPause(masterHandle!, true);
       final origState = getChannelState('original');
@@ -2252,7 +2255,10 @@ mixin DawApiService on VoxrayDAWStateBase {
     if (originalAudioBytes != null && isOriginalMixAvailable) {
       activePlaybackSources.add('original');
       try {
-        masterSource = await SoLoud.instance.loadMem('master', originalAudioBytes!);
+        // 🟢 Pass the extension here too!
+        String ext = originalFileName.contains('.') ? originalFileName.split('.').last : 'wav';
+        masterSource = await SoLoud.instance.loadMem('master.$ext', originalAudioBytes!);
+        
         masterHandle = SoLoud.instance.play(masterSource!, paused: true);
         final origState = getChannelState('original');
         SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
