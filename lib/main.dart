@@ -3056,11 +3056,10 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
     resetAiDetectorState();
 
-    final dir  = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/voxray_autosave.json');
-    if (await file.exists()) await file.delete();
+    // 🟢 Fire the Garbage Collector to free up gigabytes of phone storage!
+    await wipePersistentCache();
 
-    _showSaveConfirmation('New empty project loaded.');
+    _showSaveConfirmation('New empty project loaded. Workspace storage cleared.');
   }
 
   // =========================================================================
