@@ -2070,7 +2070,7 @@ mixin DawApiService on VoxrayDAWStateBase {
     // 1. Safely grab the temp directory path ONLY if we are not on the web.
     String? tempDirPath;
     if (!kIsWeb) {
-      final tDir = await getTemporaryDirectory();
+      final tDir = await getApplicationDocumentsDirectory(); // 🟢 Extract to persistent storage!
       tempDirPath = tDir.path;
     }
 
@@ -2322,7 +2322,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       }
 
       // 1. RECONSTRUCT DYNAMIC PATHS (Fixes the OS Sandbox Bug)
-      final tempDir = await getTemporaryDirectory();
+      final tempDir = await getApplicationDocumentsDirectory(); // 🟢 Look in persistent storage!
       Map<String, String> repairedPaths = {};
       
       (data['cached_stem_paths'] as Map<String, dynamic>? ?? {}).forEach((key, val) {
