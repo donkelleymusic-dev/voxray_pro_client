@@ -2021,11 +2021,10 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> loadVoxrayProject(BuildContext context) async {
-    //FilePickerResult? result = await FilePicker.pickFiles(
-    //  type: FileType.custom, allowedExtensions: ['vxp'], withData: true);
+    // 🟢 1. PREVENT OOM CRASH: Do NOT force files into RAM unless we are on Web!
     FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.any, 
-      withData: true,
+      withData: kIsWeb, 
     );
     if (result == null) return;
 
@@ -2036,14 +2035,6 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
 
     pauseAllPlayers();
-
-    Uint8List vxpBytes;
-    if (result.files.single.bytes != null) {
-      vxpBytes = result.files.single.bytes!;
-    } else if (result.files.single.path != null) {
-      vxpBytes          = await File(result.files.single.path!).readAsBytes();
-      currentProjectPath = result.files.single.path;
-    } else return;
 
     setState(() {
       isProjectLoaded = true;
@@ -2108,50 +2099,66 @@ mixin DawApiService on VoxrayDAWStateBase {
       resetAiDetectorState();
     });
 
-    Archive archive;
-    try {
-      archive = ZipDecoder().decodeBytes(vxpBytes);
-    } catch (e) {
-      setState(() { isLoading = false; processingMessage = ''; });
-      showSaveConfirmation('Failed to parse .vxp archive.');
-      return;
-    }
-
     Map<String, dynamic> projectData = {};
-
-    // 1. Safely grab the temp directory path ONLY if we are not on the web.
     String? tempDirPath;
+    
     if (!kIsWeb) {
-      final tDir = await getApplicationDocumentsDirectory(); // 🟢 Extract to persistent storage!
+      final tDir = await getApplicationDocumentsDirectory(); 
       tempDirPath = tDir.path;
     }
 
-    // 2. Unpack the archive
-    try { // 🟢 Wrap the entire extraction process in a failsafe!
-      for (ArchiveFile file in archive) {
-        if (file.name == 'project.json') {
-          projectData = json.decode(utf8.decode(file.content as List<int>));
-        } else if (file.name == 'original_audio.dat') {
-          // 🟢 SAFE CAST: ZipDecoder returns List<int>, we must manually convert it!
-          originalAudioBytes = file.content is Uint8List 
-              ? file.content as Uint8List 
-              : Uint8List.fromList(file.content as List<int>);
+    try {
+      if (!kIsWeb && result.files.single.path != null) {
+        // 🟢 MOBILE/DESKTOP: Stream decompression directly from disk to disk (Bypasses RAM limits entirely)
+        currentProjectPath = result.files.single.path;
+        final inputStream = InputFileStream(currentProjectPath!);
+        final archive = ZipDecoder().decodeBuffer(inputStream);
+
+        for (ArchiveFile file in archive) {
+          if (file.name == 'project.json') {
+            final data = file.content as List<int>;
+            projectData = json.decode(utf8.decode(data));
+          } else if (file.name == 'original_audio.dat') {
+            if (tempDirPath != null) {
+              final outPath = '$tempDirPath/cached_original_mix.dat';
+              final outputStream = OutputFileStream(outPath);
+              file.writeContent(outputStream);
+              await outputStream.close();
               
-        } else if (file.name.endsWith('.ogg')) {
-          String stemName = file.name.replaceAll('.ogg', '');
-          
-          // WEB & MOBILE: Always load into RAM for instant playback
-          // 🟢 SAFE CAST here too!
-          cachedStemBytes[stemName] = file.content is Uint8List 
-              ? file.content as Uint8List 
-              : Uint8List.fromList(file.content as List<int>);
-          
-          // MOBILE ONLY: Write to disk to save RAM
-          if (!kIsWeb && tempDirPath != null) {
-            String extractPath = '$tempDirPath/imported_$stemName.ogg';
-            // Use our safely casted bytes variable to write to disk
-            await File(extractPath).writeAsBytes(cachedStemBytes[stemName]!); 
-            cachedStemPaths[stemName] = extractPath;
+              originalMixLocalPath = outPath;
+              originalAudioBytes = await File(outPath).readAsBytes(); // Safe to load into RAM sequentially
+            }
+          } else if (file.name.endsWith('.ogg')) {
+            String stemName = file.name.replaceAll('.ogg', '');
+            if (tempDirPath != null) {
+              String extractPath = '$tempDirPath/imported_$stemName.ogg';
+              final outputStream = OutputFileStream(extractPath);
+              file.writeContent(outputStream);
+              await outputStream.close();
+              
+              cachedStemPaths[stemName] = extractPath;
+              cachedStemBytes[stemName] = await File(extractPath).readAsBytes();
+            }
+          }
+        }
+        await inputStream.close();
+      } else {
+        // 🟢 WEB FALLBACK: Fallback to RAM extraction because browsers don't have file paths
+        Uint8List vxpBytes = result.files.single.bytes!;
+        final archive = ZipDecoder().decodeBytes(vxpBytes);
+
+        for (ArchiveFile file in archive) {
+          if (file.name == 'project.json') {
+            projectData = json.decode(utf8.decode(file.content as List<int>));
+          } else if (file.name == 'original_audio.dat') {
+            originalAudioBytes = file.content is Uint8List 
+                ? file.content as Uint8List 
+                : Uint8List.fromList(file.content as List<int>);
+          } else if (file.name.endsWith('.ogg')) {
+            String stemName = file.name.replaceAll('.ogg', '');
+            cachedStemBytes[stemName] = file.content is Uint8List 
+                ? file.content as Uint8List 
+                : Uint8List.fromList(file.content as List<int>);
           }
         }
       }
@@ -2159,7 +2166,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       logToSupabase('Failed to unpack .vxp archive: $e');
       setState(() { isLoading = false; processingMessage = ''; });
       showSaveConfirmation('Failed to read project files: $e');
-      return; // 🟢 Abort loading safely without crashing the app!
+      return; 
     }
 
     if (projectData.isEmpty) {
