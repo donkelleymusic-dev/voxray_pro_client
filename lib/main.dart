@@ -5322,12 +5322,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             bool isSuggested = suggestedStems.contains(stemName);
             bool isMuted = getChannelState(stemName).isMuted;
             bool isGenerated = generatedStems.contains(stemName);
-  
+
             return GestureDetector(
               onTap: () {
                 setState(() {
                   activeEditableStem = stemName;
-                  isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
+                  isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n is Map && n.containsKey('contour') && n['contour'] != null);
                 });
                 if (!isGenerated && originalAudioBytes != null && currentTaskId != null && !isLoading) {
                   generateStemOnDemand(stemName);
@@ -5408,7 +5408,6 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                // 🟢 Replaced IconButton with a tight GestureDetector
                                 GestureDetector(
                                   onTap: () => setState(() {
                                     double current = stemTimeOffsets[stemName] ?? 0.0;
@@ -5481,8 +5480,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                 ),
               ),
             );
-          );
-        },
+          },
+        ),
       );
     }
 
