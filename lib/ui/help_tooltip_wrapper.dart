@@ -84,20 +84,20 @@ class VoxrayHelpTarget extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!isHelpModeActive) return child;
 
-    return Stack(
-      children: [
-        child,
-        Positioned.fill(
-          child: Material(
-            color: Colors.amberAccent.withOpacity(0.12),
-            child: InkWell(
-              highlightColor: Colors.amberAccent.withOpacity(0.25),
-              splashColor: Colors.amberAccent.withOpacity(0.4),
-              onTap: () => _showHelpModal(context),
-            ),
-          ),
+    // 🟢 THE FIX: Use a transparent GestureDetector to catch Long-Presses and Right-Clicks,
+    // while letting normal single-taps pass completely through to the app!
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onLongPress: () => _showHelpModal(context),
+      onSecondaryTap: () => _showHelpModal(context), // Adds Right-Click support for desktop/web
+      child: Container(
+        // Draws a subtle amber outline over the widget so the user knows what they can inspect
+        foregroundDecoration: BoxDecoration(
+          border: Border.all(color: Colors.amberAccent.withOpacity(0.4), width: 1.5),
+          borderRadius: BorderRadius.circular(6),
         ),
-      ],
+        child: child,
+      ),
     );
   }
 }
