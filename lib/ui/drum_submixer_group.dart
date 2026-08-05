@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import '../main.dart'; 
+import 'help_tooltip_wrapper.dart'; // 🟢 Added
+import 'voxray_help_topics.dart';
 
 class DrumSubmixerGroupWidget extends StatefulWidget {
   final VoxrayDAWState dawState;
@@ -49,25 +51,30 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
       ),
       child: Column(
         children: [
+          // 🟢 Wrapped Title/Icon row in Help Target
           Padding(
             padding: const EdgeInsets.only(top: 4.0, bottom: 2.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (isMaster)
-                  GestureDetector(
-                    onTap: () => setState(() => isExpanded = !isExpanded),
-                    child: Icon(isExpanded ? Icons.unfold_less : Icons.unfold_more, color: color, size: 14),
-                  )
-                else
-                  Icon(icon, color: color, size: 10),
-                const SizedBox(width: 4),
-                Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 9)),
-              ],
+            child: VoxrayHelpTarget(
+              topic: isMaster ? VoxrayHelpTopics.drumBusVca : VoxrayHelpTopics.mixerFaderPan,
+              isHelpModeActive: widget.dawState.isHelpModeActive,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (isMaster)
+                    GestureDetector(
+                      onTap: () => setState(() => isExpanded = !isExpanded),
+                      child: Icon(isExpanded ? Icons.unfold_less : Icons.unfold_more, color: color, size: 14),
+                    )
+                  else
+                    Icon(icon, color: color, size: 10),
+                  const SizedBox(width: 4),
+                  Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 9)),
+                ],
+              ),
             ),
           ),
 
-          // VU Meter (Driven by the backend stem_rms_data)
+          // VU Meter 
           ValueListenableBuilder<double>(
             valueListenable: widget.dawState.channelLevels[key] ?? ValueNotifier(0.0),
             builder: (context, currentLevel, child) {
@@ -77,184 +84,184 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
           ),
           const SizedBox(height: 8),
 
-          // 🎛️ PLUGIN SLOTS (Only for individual stems, not the master bus)
+          // 🎛️ PLUGIN SLOTS
           if (!isMaster) ...[
-            widget.dawState.buildPluginSlot(key, state.plugin1, color, (val) {
-              setState(() => state.plugin1 = val!);
-              widget.dawState.dirtyStems.add(key);
-              widget.dawState.applyStemPlugins(key);
-            }),
-            widget.dawState.buildPluginSlot(key, state.plugin2, color, (val) {
-              setState(() => state.plugin2 = val!);
-              widget.dawState.dirtyStems.add(key);
-              widget.dawState.applyStemPlugins(key);
-            }),
-            widget.dawState.buildPluginSlot(key, state.plugin3, color, (val) {
-              setState(() => state.plugin3 = val!);
-              widget.dawState.dirtyStems.add(key);
-              widget.dawState.applyStemPlugins(key);
-            }),
-            widget.dawState.buildPluginSlot(key, state.plugin4, color, (val) {
-              setState(() => state.plugin4 = val!);
-              widget.dawState.dirtyStems.add(key);
-              widget.dawState.applyStemPlugins(key);
-            }),
+            VoxrayHelpTarget(
+              topic: VoxrayHelpTopics.mixerPluginRack,
+              isHelpModeActive: widget.dawState.isHelpModeActive,
+              child: Column(
+                children: [
+                  widget.dawState.buildPluginSlot(key, state.plugin1, color, (val) {
+                    setState(() => state.plugin1 = val!);
+                    widget.dawState.dirtyStems.add(key);
+                    widget.dawState.applyStemPlugins(key);
+                  }),
+                  widget.dawState.buildPluginSlot(key, state.plugin2, color, (val) {
+                    setState(() => state.plugin2 = val!);
+                    widget.dawState.dirtyStems.add(key);
+                    widget.dawState.applyStemPlugins(key);
+                  }),
+                  widget.dawState.buildPluginSlot(key, state.plugin3, color, (val) {
+                    setState(() => state.plugin3 = val!);
+                    widget.dawState.dirtyStems.add(key);
+                    widget.dawState.applyStemPlugins(key);
+                  }),
+                  widget.dawState.buildPluginSlot(key, state.plugin4, color, (val) {
+                    setState(() => state.plugin4 = val!);
+                    widget.dawState.dirtyStems.add(key);
+                    widget.dawState.applyStemPlugins(key);
+                  }),
+                ],
+              ),
+            ),
             const SizedBox(height: 4),
           ] else ...[
-            // Spacer for Master Bus to keep vertical alignment
             const SizedBox(height: 100), 
           ],
 
           // MUTE AND SOLO BUTTONS
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                // MUTE
-                InkWell(
-                  borderRadius: BorderRadius.circular(4),
-                  onTap: () {
-                    setState(() {
-                      state.isMuted = !state.isMuted;
-                      widget.dawState.dirtyStems.add(key);
-                      widget.dawState.hasBeenSaved = false;
-                    });
-                    
-                    // Route the volume update
-                    if (isMaster) {
-                      _updateDrumVolumes();
-                    } else {
-                      widget.dawState.updateStemVolume(key);
-                    }
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(4.0),
-                    child: Icon(
-                      state.isMuted ? Icons.volume_off : Icons.volume_up,
-                      color: state.isMuted ? Colors.redAccent : color,
-                      size: 15,
+          VoxrayHelpTarget(
+            topic: VoxrayHelpTopics.mixerMuteSolo,
+            isHelpModeActive: widget.dawState.isHelpModeActive,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () {
+                      setState(() {
+                        state.isMuted = !state.isMuted;
+                        widget.dawState.dirtyStems.add(key);
+                        widget.dawState.hasBeenSaved = false;
+                      });
+                      if (isMaster) _updateDrumVolumes();
+                      else widget.dawState.updateStemVolume(key);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Icon(
+                        state.isMuted ? Icons.volume_off : Icons.volume_up,
+                        color: state.isMuted ? Colors.redAccent : color,
+                        size: 15,
+                      ),
                     ),
                   ),
-                ),
-                // SOLO
-                InkWell(
-                  borderRadius: BorderRadius.circular(4),
-                  onTap: () {
-                    setState(() {
-                      if (widget.dawState.soloedChannels.contains(key)) {
-                        widget.dawState.soloedChannels.remove(key);
-                      } else {
-                        widget.dawState.soloedChannels.add(key);
-                      }
-                      widget.dawState.hasBeenSaved = false;
-                    });
-                    // Tell the main DAW controller to recalculate who should be silenced
-                    widget.dawState.refreshAllVolumes();
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(4.0),
-                    child: Icon(
-                      widget.dawState.soloedChannels.contains(key)
-                          ? Icons.headphones
-                          : Icons.headphones_outlined,
-                      color: widget.dawState.soloedChannels.contains(key)
-                          ? Colors.yellowAccent
-                          : Colors.white38,
-                      size: 15,
+                  InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () {
+                      setState(() {
+                        if (widget.dawState.soloedChannels.contains(key)) {
+                          widget.dawState.soloedChannels.remove(key);
+                        } else {
+                          widget.dawState.soloedChannels.add(key);
+                        }
+                        widget.dawState.hasBeenSaved = false;
+                      });
+                      widget.dawState.refreshAllVolumes();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Icon(
+                        widget.dawState.soloedChannels.contains(key)
+                            ? Icons.headphones
+                            : Icons.headphones_outlined,
+                        color: widget.dawState.soloedChannels.contains(key)
+                            ? Colors.yellowAccent
+                            : Colors.white38,
+                        size: 15,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 4),
 
           // Volume Fader
           Expanded(
-            child: GestureDetector(
-              onDoubleTap: () {
-                setState(() {
-                  state.volume = 1.0;
-                  widget.dawState.dirtyStems.add(key);
-                });
-                
-                // THE FIX: Route the update
-                if (isMaster) {
-                  _updateDrumVolumes();
-                } else {
-                  widget.dawState.updateStemVolume(key);
-                }
-              },
-              child: RotatedBox(
-                quarterTurns: 3,
-                child: SliderTheme(
-                  data: SliderThemeData(
-                    trackHeight: 4,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                    overlayShape: SliderComponentShape.noOverlay,
-                    activeTrackColor: color,
-                    inactiveTrackColor: Colors.white10,
-                  ),
-                  child: Slider(
-                    value: state.volume,
-                    min: 0.0, max: 1.5,
-                    onChanged: (v) { 
-                      setState(() {
-                        state.volume = v;
-                        widget.dawState.dirtyStems.add(key);
-                      });
-                      
-                      // THE FIX: Route the update
-                      if (isMaster) {
-                        _updateDrumVolumes();
-                      } else {
-                        widget.dawState.updateStemVolume(key);
+            child: VoxrayHelpTarget(
+              topic: VoxrayHelpTopics.mixerFaderPan,
+              isHelpModeActive: widget.dawState.isHelpModeActive,
+              child: GestureDetector(
+                onDoubleTap: () {
+                  setState(() {
+                    state.volume = 1.0;
+                    widget.dawState.dirtyStems.add(key);
+                  });
+                  if (isMaster) _updateDrumVolumes();
+                  else widget.dawState.updateStemVolume(key);
+                },
+                child: RotatedBox(
+                  quarterTurns: 3,
+                  child: SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 4,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                      overlayShape: SliderComponentShape.noOverlay,
+                      activeTrackColor: color,
+                      inactiveTrackColor: Colors.white10,
+                    ),
+                    child: Slider(
+                      value: state.volume,
+                      min: 0.0, max: 1.5,
+                      onChanged: (v) { 
+                        setState(() {
+                          state.volume = v;
+                          widget.dawState.dirtyStems.add(key);
+                        });
+                        if (isMaster) _updateDrumVolumes();
+                        else widget.dawState.updateStemVolume(key);
                       }
-                    }
+                    ),
                   ),
                 ),
               ),
             ),
           ),
           const SizedBox(height: 4),
-          Text('${(state.volume * 100).round()}%',
-              style: const TextStyle(fontSize: 9, color: Colors.white54)),
+          Text('${(state.volume * 100).round()}%', style: const TextStyle(fontSize: 9, color: Colors.white54)),
           
-          // Pan slider (Only for individual stems)
+          // Pan slider
           if (!isMaster) ...[
             const SizedBox(height: 4),
-            SizedBox(
-              height: 16,
-              child: GestureDetector(
-                onDoubleTap: () {
-                  setState(() {
-                    state.pan = 0.0;
-                    widget.dawState.dirtyStems.add(key);
-                  });
-                  if (widget.dawState.stemHandles.containsKey(key)) {
-                     SoLoud.instance.setPan(widget.dawState.stemHandles[key]!, 0.0);
-                  }
-                },
-                child: SliderTheme(
-                  data: SliderThemeData(
-                    trackHeight: 2,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                    overlayShape: SliderComponentShape.noOverlay,
-                    activeTrackColor: color,
-                    inactiveTrackColor: Colors.white10,
-                  ),
-                  child: Slider(
-                    value: state.pan, min: -1.0, max: 1.0,
-                    onChanged: (v) { 
-                      setState(() {
-                        state.pan = v;
-                        widget.dawState.dirtyStems.add(key);
-                      });
-                      if (widget.dawState.stemHandles.containsKey(key)) {
-                         SoLoud.instance.setPan(widget.dawState.stemHandles[key]!, v);
-                      }
+            VoxrayHelpTarget(
+              topic: VoxrayHelpTopics.mixerFaderPan,
+              isHelpModeActive: widget.dawState.isHelpModeActive,
+              child: SizedBox(
+                height: 16,
+                child: GestureDetector(
+                  onDoubleTap: () {
+                    setState(() {
+                      state.pan = 0.0;
+                      widget.dawState.dirtyStems.add(key);
+                    });
+                    if (widget.dawState.stemHandles.containsKey(key)) {
+                       SoLoud.instance.setPan(widget.dawState.stemHandles[key]!, 0.0);
                     }
+                  },
+                  child: SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                      overlayShape: SliderComponentShape.noOverlay,
+                      activeTrackColor: color,
+                      inactiveTrackColor: Colors.white10,
+                    ),
+                    child: Slider(
+                      value: state.pan, min: -1.0, max: 1.0,
+                      onChanged: (v) { 
+                        setState(() {
+                          state.pan = v;
+                          widget.dawState.dirtyStems.add(key);
+                        });
+                        if (widget.dawState.stemHandles.containsKey(key)) {
+                           SoLoud.instance.setPan(widget.dawState.stemHandles[key]!, v);
+                        }
+                      }
+                    ),
                   ),
                 ),
               ),
@@ -264,7 +271,7 @@ class _DrumSubmixerGroupWidgetState extends State<DrumSubmixerGroupWidget> {
               style: const TextStyle(fontSize: 8, color: Colors.white54),
             ),
           ] else ...[
-            const SizedBox(height: 20), // Alignment spacer
+            const SizedBox(height: 20),
           ],
           
           const SizedBox(height: 12),
