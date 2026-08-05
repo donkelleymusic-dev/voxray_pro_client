@@ -3240,7 +3240,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               if (isPlaying && isAudible) {
                 simulatedMeterValue = (0.3 + (math.Random().nextDouble() * 0.6)) * state.volume;
               }
-
+        
               return Container(
                 width: 68,
                 margin: const EdgeInsets.symmetric(horizontal: 2),
@@ -3256,8 +3256,8 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                         style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 10),
                         overflow: TextOverflow.ellipsis),
                   ),
-
-                  // 🎚️ NEW REACTIVE VU METER
+        
+                  // 🎚️ REACTIVE VU METER
                   ValueListenableBuilder<double>(
                     valueListenable: channelLevels[key]!,
                     builder: (context, currentLevel, child) {
@@ -3266,128 +3266,120 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     },
                   ),
                   const SizedBox(height: 8),
-
-                  // 🎛️ PLUGIN SLOTS 
-                  buildPluginSlot(key,state.plugin1, highlight, (val) {
-                    if (state.plugin1 != val) {
-                      setMixerState(() => state.plugin1 = val!);
-                      this.setState(() { hasBeenSaved = false; });
-                      //this.setState(() { dirtyStems.add(key); hasBeenSaved = false; });
-                      if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
-                    }
-                  }),
-                  buildPluginSlot(key,state.plugin2, highlight, (val) {
-                    if (state.plugin2 != val) {
-                      setMixerState(() => state.plugin2 = val!);
-                      this.setState(() { hasBeenSaved = false; });
-                      if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
-                    }
-                  }),
-                  buildPluginSlot(key,state.plugin3, highlight, (val) {
-                    if (state.plugin3 != val) {
-                      setMixerState(() => state.plugin3 = val!);
-                      this.setState(() { hasBeenSaved = false; });
-                      if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
-                    }
-                  }),
-                  buildPluginSlot(key,state.plugin4, highlight, (val) {
-                    if (state.plugin4 != val) {
-                      setMixerState(() => state.plugin4 = val!);
-                      this.setState(() { hasBeenSaved = false; });
-                      if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
-                    }
-                  }),
+        
+                  // 🎛️ PLUGIN SLOTS (Wrapped in Help Target)
+                  VoxrayHelpTarget(
+                    topic: VoxrayHelpTopics.mixerPluginRack,
+                    isHelpModeActive: isHelpModeActive,
+                    child: Column(
+                      children: [
+                        buildPluginSlot(key,state.plugin1, highlight, (val) {
+                          if (state.plugin1 != val) {
+                            setState(() { state.plugin1 = val!; hasBeenSaved = false; });
+                            if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
+                          }
+                        }),
+                        buildPluginSlot(key,state.plugin2, highlight, (val) {
+                          if (state.plugin2 != val) {
+                            setState(() { state.plugin2 = val!; hasBeenSaved = false; });
+                            if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
+                          }
+                        }),
+                        buildPluginSlot(key,state.plugin3, highlight, (val) {
+                          if (state.plugin3 != val) {
+                            setState(() { state.plugin3 = val!; hasBeenSaved = false; });
+                            if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
+                          }
+                        }),
+                        buildPluginSlot(key,state.plugin4, highlight, (val) {
+                          if (state.plugin4 != val) {
+                            setState(() { state.plugin4 = val!; hasBeenSaved = false; });
+                            if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
+                          }
+                        }),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 4),
-
+        
+                  // MUTE / SOLO (Wrapped in Help Target)
                   if (!isMaster)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          // MUTE
-                          InkWell(
-                            borderRadius: BorderRadius.circular(4),
-                            onTap: () {
-                              setMixerState(() => state.isMuted = !state.isMuted);
-                              this.setState(() { hasBeenSaved = false; });
-                              refreshAllVolumes();
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(4.0),
-                              child: Icon(
-                                state.isMuted ? Icons.volume_off : Icons.volume_up,
-                                color: state.isMuted ? Colors.redAccent : highlight,
-                                size: 15,
+                    VoxrayHelpTarget(
+                      topic: VoxrayHelpTopics.mixerMuteSolo,
+                      isHelpModeActive: isHelpModeActive,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () {
+                                setState(() { state.isMuted = !state.isMuted; hasBeenSaved = false; });
+                                refreshAllVolumes();
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(4.0),
+                                child: Icon(
+                                  state.isMuted ? Icons.volume_off : Icons.volume_up,
+                                  color: state.isMuted ? Colors.redAccent : highlight,
+                                  size: 15,
+                                ),
                               ),
                             ),
-                          ),
-                          // SOLO
-                          InkWell(
-                            borderRadius: BorderRadius.circular(4),
-                            onTap: () {
-                              setMixerState(() {
-                                if (soloedChannels.contains(key)) {
-                                  soloedChannels.remove(key);
-                                } else {
-                                  soloedChannels.add(key);
-                                }
-                              });
-                              this.setState(() { hasBeenSaved = false; });
-                              refreshAllVolumes();
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(4.0),
-                              child: Icon(
-                                soloedChannels.contains(key)
-                                    ? Icons.headphones
-                                    : Icons.headphones_outlined,
-                                color: soloedChannels.contains(key)
-                                    ? Colors.yellowAccent
-                                    : Colors.white38,
-                                size: 15,
+                            InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () {
+                                setState(() {
+                                  if (soloedChannels.contains(key)) soloedChannels.remove(key);
+                                  else soloedChannels.add(key);
+                                  hasBeenSaved = false;
+                                });
+                                refreshAllVolumes();
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(4.0),
+                                child: Icon(
+                                  soloedChannels.contains(key) ? Icons.headphones : Icons.headphones_outlined,
+                                  color: soloedChannels.contains(key) ? Colors.yellowAccent : Colors.white38,
+                                  size: 15,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-
-                  // Volume fader
+        
+                  // Volume fader (Wrapped safely inside the Expanded widget)
                   Expanded(
-                    child: GestureDetector(
-                      onDoubleTap: () {
-                        if (key == 'master') {
-                          SoLoud.instance.setGlobalVolume(1.0);
-                        } else {
-                          refreshAllVolumes();
-                        }
-                      },
-                      child: RotatedBox(
-                        quarterTurns: 3,
-                        child: SliderTheme(
-                          data: SliderThemeData(
-                            trackHeight: 4,
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                            overlayShape: SliderComponentShape.noOverlay,
-                            activeTrackColor: highlight,
-                            inactiveTrackColor: Colors.white10,
-                          ),
-                          child: Slider(
-                            value: state.volume,
-                            min: 0.0, max: 1.5,
-                            onChanged: (v) { 
-                              // 1. UPDATE THE UI STATE FIRST
-                              setMixerState(() => state.volume = v);
-                              this.setState(() { hasBeenSaved = false; });
-                              
-                              // 2. THEN TELL THE AUDIO ENGINE
-                              if (key == 'master') {
-                                SoLoud.instance.setGlobalVolume(v);
-                              } else {
-                                refreshAllVolumes();
+                    child: VoxrayHelpTarget(
+                      topic: VoxrayHelpTopics.mixerFaderPan,
+                      isHelpModeActive: isHelpModeActive,
+                      child: GestureDetector(
+                        onDoubleTap: () {
+                          if (key == 'master') SoLoud.instance.setGlobalVolume(1.0); 
+                          else refreshAllVolumes();
+                        },
+                        child: RotatedBox(
+                          quarterTurns: 3,
+                          child: SliderTheme(
+                            data: SliderThemeData(
+                              trackHeight: 4,
+                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                              overlayShape: SliderComponentShape.noOverlay,
+                              activeTrackColor: highlight,
+                              inactiveTrackColor: Colors.white10,
+                            ),
+                            child: Slider(
+                              value: state.volume,
+                              min: 0.0, max: 1.5,
+                              onChanged: (v) { 
+                                setState(() { state.volume = v; hasBeenSaved = false; });
+                                if (key == 'master') SoLoud.instance.setGlobalVolume(v); 
+                                else refreshAllVolumes();
                               }
-                            }
+                            ),
                           ),
                         ),
                       ),
@@ -3397,43 +3389,45 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                   Text('${(state.volume * 100).round()}%',
                       style: const TextStyle(fontSize: 9, color: Colors.white54)),
                   const SizedBox(height: 4),
-
+        
                   // Pan slider
-                  SizedBox(
-                    height: 16,
-                    child: GestureDetector(
-                      onDoubleTap: () {
-                        setMixerState(() => state.pan = 0.0);
-                        this.setState(() { hasBeenSaved = false; });
-                        if (key == 'master') {
-                          if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
-                          if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
-                          for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, 0.0);
-                        } else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
-                        } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
-                        } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, 0.0); }
-                      },
-                      child: SliderTheme(
-                        data: SliderThemeData(
-                          trackHeight: 2,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                          overlayShape: SliderComponentShape.noOverlay,
-                          activeTrackColor: highlight,
-                          inactiveTrackColor: Colors.white10,
-                        ),
-                        child: Slider(
-                          value: state.pan, min: -1.0, max: 1.0,
-                          onChanged: (v) { 
-                            setMixerState(() => state.pan = v);
-                            this.setState(() { hasBeenSaved = false; });
-                            if (key == 'master') {
-                              if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
-                              if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
-                              for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, v);
-                            } else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
-                            } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
-                            } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, v); }
-                          }
+                  VoxrayHelpTarget(
+                    topic: VoxrayHelpTopics.mixerFaderPan,
+                    isHelpModeActive: isHelpModeActive,
+                    child: SizedBox(
+                      height: 16,
+                      child: GestureDetector(
+                        onDoubleTap: () {
+                          setState(() { state.pan = 0.0; hasBeenSaved = false; });
+                          if (key == 'master') {
+                            if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
+                            if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
+                            for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, 0.0);
+                          } else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
+                          } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
+                          } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, 0.0); }
+                        },
+                        child: SliderTheme(
+                          data: SliderThemeData(
+                            trackHeight: 2,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                            overlayShape: SliderComponentShape.noOverlay,
+                            activeTrackColor: highlight,
+                            inactiveTrackColor: Colors.white10,
+                          ),
+                          child: Slider(
+                            value: state.pan, min: -1.0, max: 1.0,
+                            onChanged: (v) { 
+                              setState(() { state.pan = v; hasBeenSaved = false; });
+                              if (key == 'master') {
+                                if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
+                                if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
+                                for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, v);
+                              } else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
+                              } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
+                              } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, v); }
+                            }
+                          ),
                         ),
                       ),
                     ),
@@ -4883,7 +4877,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     Widget buildChannelStrip(String title, String key, Color highlight, {bool isMaster = false}) {
       final state       = getChannelState(key);
       bool isAudible    = activePlaybackSources.contains(key) || (isMaster && activePlaybackSources.isNotEmpty);
-      
+      double simulatedMeterValue = 0.0;
+      if (isPlaying && isAudible) {
+        simulatedMeterValue = (0.3 + (math.Random().nextDouble() * 0.6)) * state.volume;
+      }
+
       return Container(
         width: 68,
         margin: const EdgeInsets.symmetric(horizontal: 2),
@@ -4895,8 +4893,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.all(4.0),
-            child: Text(title, style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 10), overflow: TextOverflow.ellipsis),
+            child: Text(title,
+                style: TextStyle(color: highlight, fontWeight: FontWeight.bold, fontSize: 10),
+                overflow: TextOverflow.ellipsis),
           ),
+
+          // 🎚️ REACTIVE VU METER
           ValueListenableBuilder<double>(
             valueListenable: channelLevels[key]!,
             builder: (context, currentLevel, child) {
@@ -4905,77 +4907,180 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             },
           ),
           const SizedBox(height: 8),
-          buildPluginSlot(key,state.plugin1, highlight, (val) { if (state.plugin1 != val) { setState(() { state.plugin1 = val!; hasBeenSaved = false; }); if (!isMaster) applyStemPlugins(key); else applyMasterPlugins(); } }),
-          buildPluginSlot(key,state.plugin2, highlight, (val) { if (state.plugin2 != val) { setState(() { state.plugin2 = val!; hasBeenSaved = false; }); if (!isMaster) applyStemPlugins(key); else applyMasterPlugins(); } }),
-          buildPluginSlot(key,state.plugin3, highlight, (val) { if (state.plugin3 != val) { setState(() { state.plugin3 = val!; hasBeenSaved = false; }); if (!isMaster) applyStemPlugins(key); else applyMasterPlugins(); } }),
-          buildPluginSlot(key,state.plugin4, highlight, (val) { if (state.plugin4 != val) { setState(() { state.plugin4 = val!; hasBeenSaved = false; }); if (!isMaster) applyStemPlugins(key); else applyMasterPlugins(); } }),
+
+          // 🎛️ PLUGIN SLOTS (Wrapped in Help Target)
+          VoxrayHelpTarget(
+            topic: VoxrayHelpTopics.mixerPluginRack,
+            isHelpModeActive: isHelpModeActive,
+            child: Column(
+              children: [
+                buildPluginSlot(key,state.plugin1, highlight, (val) {
+                  if (state.plugin1 != val) {
+                    setState(() { state.plugin1 = val!; hasBeenSaved = false; });
+                    if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
+                  }
+                }),
+                buildPluginSlot(key,state.plugin2, highlight, (val) {
+                  if (state.plugin2 != val) {
+                    setState(() { state.plugin2 = val!; hasBeenSaved = false; });
+                    if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
+                  }
+                }),
+                buildPluginSlot(key,state.plugin3, highlight, (val) {
+                  if (state.plugin3 != val) {
+                    setState(() { state.plugin3 = val!; hasBeenSaved = false; });
+                    if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
+                  }
+                }),
+                buildPluginSlot(key,state.plugin4, highlight, (val) {
+                  if (state.plugin4 != val) {
+                    setState(() { state.plugin4 = val!; hasBeenSaved = false; });
+                    if (!isMaster) applyStemPlugins(key); else applyMasterPlugins();
+                  }
+                }),
+              ],
+            ),
+          ),
           const SizedBox(height: 4),
+
+          // MUTE / SOLO (Wrapped in Help Target)
           if (!isMaster)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  InkWell(
-                    borderRadius: BorderRadius.circular(4),
-                    onTap: () { setState(() { state.isMuted = !state.isMuted; hasBeenSaved = false; }); refreshAllVolumes(); },
-                    child: Padding(padding: const EdgeInsets.all(4.0), child: Icon(state.isMuted ? Icons.volume_off : Icons.volume_up, color: state.isMuted ? Colors.redAccent : highlight, size: 15)),
-                  ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(4),
-                    onTap: () { setState(() { if (soloedChannels.contains(key)) soloedChannels.remove(key); else soloedChannels.add(key); hasBeenSaved = false; }); refreshAllVolumes(); },
-                    child: Padding(padding: const EdgeInsets.all(4.0), child: Icon(soloedChannels.contains(key) ? Icons.headphones : Icons.headphones_outlined, color: soloedChannels.contains(key) ? Colors.yellowAccent : Colors.white38, size: 15)),
-                  ),
-                ],
+            VoxrayHelpTarget(
+              topic: VoxrayHelpTopics.mixerMuteSolo,
+              isHelpModeActive: isHelpModeActive,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () {
+                        setState(() { state.isMuted = !state.isMuted; hasBeenSaved = false; });
+                        refreshAllVolumes();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Icon(
+                          state.isMuted ? Icons.volume_off : Icons.volume_up,
+                          color: state.isMuted ? Colors.redAccent : highlight,
+                          size: 15,
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () {
+                        setState(() {
+                          if (soloedChannels.contains(key)) soloedChannels.remove(key);
+                          else soloedChannels.add(key);
+                          hasBeenSaved = false;
+                        });
+                        refreshAllVolumes();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Icon(
+                          soloedChannels.contains(key) ? Icons.headphones : Icons.headphones_outlined,
+                          color: soloedChannels.contains(key) ? Colors.yellowAccent : Colors.white38,
+                          size: 15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+
+          // Volume fader (Wrapped safely inside the Expanded widget)
           Expanded(
-            child: GestureDetector(
-              onDoubleTap: () { if (key == 'master') SoLoud.instance.setGlobalVolume(1.0); else refreshAllVolumes(); },
-              child: RotatedBox(
-                quarterTurns: 3,
+            child: VoxrayHelpTarget(
+              topic: VoxrayHelpTopics.mixerFaderPan,
+              isHelpModeActive: isHelpModeActive,
+              child: GestureDetector(
+                onDoubleTap: () {
+                  if (key == 'master') SoLoud.instance.setGlobalVolume(1.0); 
+                  else refreshAllVolumes();
+                },
+                child: RotatedBox(
+                  quarterTurns: 3,
+                  child: SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 4,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                      overlayShape: SliderComponentShape.noOverlay,
+                      activeTrackColor: highlight,
+                      inactiveTrackColor: Colors.white10,
+                    ),
+                    child: Slider(
+                      value: state.volume,
+                      min: 0.0, max: 1.5,
+                      onChanged: (v) { 
+                        setState(() { state.volume = v; hasBeenSaved = false; });
+                        if (key == 'master') SoLoud.instance.setGlobalVolume(v); 
+                        else refreshAllVolumes();
+                      }
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('${(state.volume * 100).round()}%',
+              style: const TextStyle(fontSize: 9, color: Colors.white54)),
+          const SizedBox(height: 4),
+
+          // Pan slider
+          VoxrayHelpTarget(
+            topic: VoxrayHelpTopics.mixerFaderPan,
+            isHelpModeActive: isHelpModeActive,
+            child: SizedBox(
+              height: 16,
+              child: GestureDetector(
+                onDoubleTap: () {
+                  setState(() { state.pan = 0.0; hasBeenSaved = false; });
+                  if (key == 'master') {
+                    if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
+                    if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
+                    for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, 0.0);
+                  } else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0);
+                  } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0);
+                  } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, 0.0); }
+                },
                 child: SliderTheme(
-                  data: SliderThemeData(trackHeight: 4, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7), overlayShape: SliderComponentShape.noOverlay, activeTrackColor: highlight, inactiveTrackColor: Colors.white10),
+                  data: SliderThemeData(
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    overlayShape: SliderComponentShape.noOverlay,
+                    activeTrackColor: highlight,
+                    inactiveTrackColor: Colors.white10,
+                  ),
                   child: Slider(
-                    value: state.volume, min: 0.0, max: 1.5,
+                    value: state.pan, min: -1.0, max: 1.0,
                     onChanged: (v) { 
-                      setState(() { state.volume = v; hasBeenSaved = false; }); 
-                      if (key == 'master') SoLoud.instance.setGlobalVolume(v); else refreshAllVolumes(); 
+                      setState(() { state.pan = v; hasBeenSaved = false; });
+                      if (key == 'master') {
+                        if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
+                        if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
+                        for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, v);
+                      } else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
+                      } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
+                      } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, v); }
                     }
                   ),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          Text('${(state.volume * 100).round()}%', style: const TextStyle(fontSize: 9, color: Colors.white54)),
-          const SizedBox(height: 4),
-          SizedBox(
-            height: 16,
-            child: GestureDetector(
-              onDoubleTap: () {
-                setState(() { state.pan = 0.0; hasBeenSaved = false; });
-                if (key == 'master') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0); if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0); for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, 0.0); }
-                else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, 0.0); }
-                else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, 0.0); }
-                else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, 0.0); }
-              },
-              child: SliderTheme(
-                data: SliderThemeData(trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5), overlayShape: SliderComponentShape.noOverlay, activeTrackColor: highlight, inactiveTrackColor: Colors.white10),
-                child: Slider(
-                  value: state.pan, min: -1.0, max: 1.0,
-                  onChanged: (v) { 
-                    setState(() { state.pan = v; hasBeenSaved = false; });
-                    if (key == 'master') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v); if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v); for (var h in stemHandles.values) if (SoLoud.instance.getIsValidVoiceHandle(h)) SoLoud.instance.setPan(h, v); }
-                    else if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v); }
-                    else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v); }
-                    else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, v); }
-                  }
-                ),
-              ),
-            ),
+          Text(
+            state.pan == 0
+                ? 'C'
+                : (state.pan < 0
+                    ? 'L ${-(state.pan * 100).round()}'
+                    : 'R ${(state.pan * 100).round()}'),
+            style: const TextStyle(fontSize: 8, color: Colors.white54),
           ),
-          Text(state.pan == 0 ? 'C' : (state.pan < 0 ? 'L ${-(state.pan * 100).round()}' : 'R ${(state.pan * 100).round()}'), style: const TextStyle(fontSize: 8, color: Colors.white54)),
           const SizedBox(height: 4),
         ]),
       );
