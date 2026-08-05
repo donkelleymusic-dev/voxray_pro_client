@@ -1855,46 +1855,53 @@ mixin DawApiService on VoxrayDAWStateBase {
     };
 
     final dir = await getApplicationDocumentsDirectory();
-    
-    // 1. Write JSON to a temp file on disk
-    final jsonFile = File('${dir.path}/temp_project.json');
-    await jsonFile.writeAsString(json.encode(projectData));
 
-    // 2. Stream directly into the Zip file on disk (ZERO RAM SPIKE!)
-    final encoder = ZipFileEncoder();
-    encoder.create(targetPath);
-    encoder.addFile(jsonFile, 'project.json');
+    // 🟢 1. Open a direct stream to the target zip file on disk
+    final outStream = OutputFileStream(targetPath);
+    final encoder = ZipEncoder();
+    encoder.startEncode(outStream);
 
-    // 3. Add Original Audio
+    // 2. Add the JSON config
+    final jsonBytes = utf8.encode(json.encode(projectData));
+    encoder.addFile(ArchiveFile('project.json', jsonBytes.length, jsonBytes));
+
+    // 🟢 3. Helper to inject massive files directly from disk-to-disk without RAM
+    void appendFileStream(File file, String zipName) {
+      final stream = InputFileStream(file.path);
+      final archiveFile = ArchiveFile.stream(zipName, file.lengthSync(), stream);
+      archiveFile.compress = false; // 🛑 Disable Deflate to prevent LMK CPU/RAM spikes!
+      encoder.addFile(archiveFile);
+    }
+
+    // 4. Stream Original Audio
     if (originalMixLocalPath.isNotEmpty && await File(originalMixLocalPath).exists()) {
-        encoder.addFile(File(originalMixLocalPath), 'original_audio.dat');
+        appendFileStream(File(originalMixLocalPath), 'original_audio.dat');
     } else if (originalAudioBytes != null) {
         final origFile = File('${dir.path}/temp_orig.dat');
         await origFile.writeAsBytes(originalAudioBytes!);
-        encoder.addFile(origFile, 'original_audio.dat');
+        appendFileStream(origFile, 'original_audio.dat');
     }
 
-    // 4. Add Stems Disk-to-Disk
+    // 5. Stream Stems
     for (var entry in cachedStemPaths.entries) {
         if (await File(entry.value).exists()) {
             String ext = entry.value.split('.').last;
-            encoder.addFile(File(entry.value), '${entry.key}.$ext');
+            appendFileStream(File(entry.value), '${entry.key}.$ext');
         }
     }
 
-    // 5. Catch any RAM-only stems (like edited preview bytes)
+    // 6. Catch RAM-only stems
     for (var entry in cachedStemBytes.entries) {
         if (!cachedStemPaths.containsKey(entry.key)) {
             final stemFile = File('${dir.path}/temp_${entry.key}.ogg');
             await stemFile.writeAsBytes(entry.value);
-            encoder.addFile(stemFile, '${entry.key}.ogg');
+            appendFileStream(stemFile, '${entry.key}.ogg');
         }
     }
 
-    encoder.close();
-    
-    // Cleanup Temp JSON
-    if (await jsonFile.exists()) await jsonFile.delete();
+    // 🟢 7. Close everything
+    encoder.endEncode();
+    await outStream.close();
   }
 
   Future<void> saveVoxrayProjectAs() async {
