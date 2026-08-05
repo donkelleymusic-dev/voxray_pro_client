@@ -1937,7 +1937,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
         // 🟢 FIX: Use FilePicker.platform.saveFile to trigger the native OS Save dialog.
         // The OS will automatically warn the user if they select an existing file!
-        String? path = await FilePicker.platform.saveFile(
+        String? path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
           fileName: '$defaultSaveName.vxp',
           type: FileType.any,
