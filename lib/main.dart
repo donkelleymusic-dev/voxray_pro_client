@@ -3183,7 +3183,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       duration: Duration(seconds: isPreview ? 6 : 4),
       action: isPreview
           ? SnackBarAction(
-              label: 'Play',
+              label: 'Ok',
               textColor: Colors.deepPurpleAccent,
               onPressed: playAllPlayers)
           : null,
