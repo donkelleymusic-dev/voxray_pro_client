@@ -5087,198 +5087,204 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
     // 3. Extract the Tool Group (Mixer + Pan + Preview + Analysis)
     Widget buildToolGroup() {
-      
-      // ── DYNAMIC CONTEXT STATES ──
       bool isDrumTrack  = ['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(activeEditableStem);
       bool isVocalTrack = activeEditableStem.startsWith('vocal');
-
-      // 1. support imported stems
+    
       bool hasTrackAudio = generatedStems.contains(activeEditableStem) || 
                            cachedStemBytes.containsKey(activeEditableStem) || 
                            cachedStemPaths.containsKey(activeEditableStem);
       
-      // 1.1 X-Ray State Logic
       bool canRunXray  = activeEditableStem.isNotEmpty && !isDrumTrack && hasTrackAudio;
       bool hasXrayData = rawNotes.isNotEmpty && rawNotes.any((n) => n is Map && n.containsKey('contour') && n['contour'] != null);
       
       Color xrayColor;
       if (!canRunXray) {
-        xrayColor = Colors.white24; // Disabled (e.g., Drums or not generated)
+        xrayColor = Colors.white24;
       } else if (isXrayMode) {
-        xrayColor = Colors.amberAccent; // Generated & Active
+        xrayColor = Colors.amberAccent;
       } else if (hasXrayData) {
-        xrayColor = Colors.amberAccent.withOpacity(0.6); // Generated but toggled off
+        xrayColor = Colors.amberAccent.withOpacity(0.6);
       } else {
-        xrayColor = Colors.amberAccent.withOpacity(0.25); // Available but not run
+        xrayColor = Colors.amberAccent.withOpacity(0.25);
       }
-
-      // 2. Dual X-Ray State Logic
-      // Available whenever there are at least 2 non-drum tracks in the project
+    
       bool canRunDualXray = activeChannels.where((c) => !['drums', 'kick', 'snare', 'hihat', 'toms', 'cymbals'].contains(c.stemKey)).length >= 2;
       
       Color dualBaseColor = isDualContourOverlayActive ? const Color(0xFF00E5FF) : (canRunDualXray ? const Color(0xFF00E5FF).withOpacity(0.25) : Colors.white24);
       Color dualTopColor  = isDualContourOverlayActive ? const Color(0xFFFF007F).withOpacity(0.8) : (canRunDualXray ? const Color(0xFFFF007F).withOpacity(0.25) : Colors.transparent);
-
-      // 3. AI Detection State Logic
-      //bool hasTrackAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
-      bool canRunAi = activeEditableStem.isNotEmpty && hasTrackAudio; // Removed isVocalTrack requirement
-      // old, vocal only version:
-      //bool hasVocalAudio = generatedStems.contains(activeEditableStem) || cachedStemBytes.containsKey(activeEditableStem) || cachedStemPaths.containsKey(activeEditableStem);
-      //bool canRunAi = isVocalTrack && hasVocalAudio;
+    
+      bool canRunAi = activeEditableStem.isNotEmpty && hasTrackAudio;
       
       Color aiColor;
       if (!canRunAi) {
-        aiColor = Colors.white24; // Disabled (Non-vocal track)
+        aiColor = Colors.white24;
       } else if (aiResult != null) {
-        aiColor = Colors.cyanAccent; // Generated & Active (Results exist)
+        aiColor = Colors.cyanAccent;
       } else {
-        aiColor = Colors.cyanAccent.withOpacity(0.25); // Available but not run
+        aiColor = Colors.cyanAccent.withOpacity(0.25);
       }
-      // ────────────────────────────
-
+    
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-              icon: Icon(
-                Icons.tune, 
-                color: (MediaQuery.of(context).size.width > 900 && isDockedMixerVisible) ? Colors.white : Colors.orangeAccent, 
-                size: 22
-              ),
-              tooltip: 'Studio Mixer',
-              constraints: const BoxConstraints(),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              onPressed: () {
-                // If it's a large screen, dock it. If it's a phone, use the popup!
-                if (MediaQuery.of(context).size.width > 900) {
-                  setState(() => isDockedMixerVisible = !isDockedMixerVisible);
-                } else {
-                  _showStudioMixer();
-                }
-              }),
+          VoxrayHelpTarget(
+            topic: VoxrayHelpTopics.studioMixerButton,
+            isHelpModeActive: isHelpModeActive,
+            child: IconButton(
+                icon: Icon(
+                  Icons.tune, 
+                  color: (MediaQuery.of(context).size.width > 900 && isDockedMixerVisible) ? Colors.white : Colors.orangeAccent, 
+                  size: 22
+                ),
+                tooltip: 'Studio Mixer',
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                onPressed: () {
+                  if (MediaQuery.of(context).size.width > 900) {
+                    setState(() => isDockedMixerVisible = !isDockedMixerVisible);
+                  } else {
+                    _showStudioMixer();
+                  }
+                }),
+          ),
           const SizedBox(width: 4),
           Container(
             height: 32,
             decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
             child: Row(
               children: [
-                // ✂️ NEW: Mute Region Tool
-                Tooltip(
-                  message: 'Cut / Mute Region (Tap to delete cut)',
-                  child: IconButton(
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.regionCutTool,
+                  isHelpModeActive: isHelpModeActive,
+                  child: Tooltip(
+                    message: 'Cut / Mute Region (Tap to delete cut)',
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32),
+                      icon: Icon(Icons.content_cut, size: 18, color: isRegionMuteMode ? Colors.redAccent : Colors.white38),
+                      onPressed: () => setState(() {
+                        isRegionMuteMode = !isRegionMuteMode;
+                        if (isRegionMuteMode) currentDragMode = DragMode.off;
+                      }),
+                    ),
+                  ),
+                ),
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.dragPitchMode,
+                  isHelpModeActive: isHelpModeActive,
+                  child: PopupMenuButton<DragMode>(
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32),
-                    icon: Icon(Icons.content_cut, size: 18, color: isRegionMuteMode ? Colors.redAccent : Colors.white38),
-                    onPressed: () => setState(() {
-                      isRegionMuteMode = !isRegionMuteMode;
-                      if (isRegionMuteMode) currentDragMode = DragMode.off; // Disable pitch drag when cutting
-                    }),
-                  ),
-                ),
-                PopupMenuButton<DragMode>(
-                  padding: EdgeInsets.zero,
-                  icon: Icon(
-                    Icons.pan_tool, 
-                    size: 18, 
-                    color: currentDragMode == DragMode.semitone 
-                        ? Colors.orangeAccent 
-                        : (currentDragMode == DragMode.microTuning 
-                            ? Colors.yellowAccent 
-                            : Colors.greenAccent),
-                  ),
-                  tooltip: 'Drag Pitch Mode',
-                  onSelected: (val) => setState(() => currentDragMode = val),
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
-                    PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
-                    PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
-                  ],
-                ),
-                Tooltip(
-                  message: 'Preview pitch/DSP edits',
-                  child: IconButton(
                     icon: Icon(
-                      Icons.hearing, 
-                      size: 20,
-                      color: dirtyStems.contains(activeEditableStem) ? Colors.redAccent : Colors.white38,
-                      shadows: dirtyStems.contains(activeEditableStem)
-                          ? [const Shadow(color: Colors.red, blurRadius: 10.0)]
+                      Icons.pan_tool, 
+                      size: 18, 
+                      color: currentDragMode == DragMode.semitone 
+                          ? Colors.orangeAccent 
+                          : (currentDragMode == DragMode.microTuning 
+                              ? Colors.yellowAccent 
+                              : Colors.greenAccent),
+                    ),
+                    tooltip: 'Drag Pitch Mode',
+                    onSelected: (val) => setState(() => currentDragMode = val),
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: DragMode.off, child: Text('Normal (Off)')),
+                      PopupMenuItem(value: DragMode.semitone, child: Text('Semitone Drag')),
+                      PopupMenuItem(value: DragMode.microTuning, child: Text('Micro-Tuning Drag')),
+                    ],
+                  ),
+                ),
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.renderEarIcon,
+                  isHelpModeActive: isHelpModeActive,
+                  child: Tooltip(
+                    message: 'Preview pitch/DSP edits',
+                    child: IconButton(
+                      icon: Icon(
+                        Icons.hearing, 
+                        size: 20,
+                        color: dirtyStems.contains(activeEditableStem) ? Colors.redAccent : Colors.white38,
+                        shadows: dirtyStems.contains(activeEditableStem)
+                            ? [const Shadow(color: Colors.red, blurRadius: 10.0)]
+                            : null,
+                      ),
+                      onPressed: (!isApiBusy && rawNotes.isNotEmpty && dirtyStems.contains(activeEditableStem))
+                          ? () => renderStemEdits(activeEditableStem)
                           : null,
                     ),
-                    // 🟢 FIX: Removed the strict originalAudioBytes requirement!
-                    onPressed: (!isApiBusy && rawNotes.isNotEmpty && dirtyStems.contains(activeEditableStem))
-                        ? () => renderStemEdits(activeEditableStem)
-                        : null,
                   ),
                 ),
                 const VerticalDivider(color: Colors.white24, width: 16, indent: 6, endIndent: 6),
-                
-                // 1. X-Ray Toggle
-                Tooltip(
-                  message: 'Toggle X-Ray',
-                  child: isXrayProcessing
-                      ? const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0), 
-                          child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent))
-                        )
-                      : IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
-                        icon: Icon(Icons.fingerprint, size: 20, color: xrayColor),
-                        onPressed: (!isApiBusy && canRunXray) ? toggleXrayMode : null,
-                      ),
-                ),
-                
-                // 2. Dual X-Ray Toggle
-                Tooltip(
-                  message: 'Dual X-Ray Comparison',
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
-                    icon: Stack(
-                      children: [
-                        Icon(Icons.fingerprint, size: 20, color: dualBaseColor),
-                        Positioned(
-                          left: 3, top: 3,
-                          child: Icon(Icons.fingerprint, size: 20, color: dualTopColor),
-                        ),
-                      ],
-                    ),
-                    onPressed: isApiBusy ? null : () {
-                      // Check the continuous traces instead of the old unshifted contours
-                      if (dualContinuous1.isNotEmpty && dualContinuous2.isNotEmpty) {
-                        setState(() => isDualContourOverlayActive = !isDualContourOverlayActive);
-                      } else if (canRunDualXray) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => DualXRayComparatorDialog(
-                            availableChannels: activeChannels,
-                            onRunComparison: (source, target) => _runAnyToAnyForensicAlign(source, target),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ),
-
-                // 3. AI Detection Tool
-                Tooltip(
-                  message: 'Detect AI Synthetic Vocals (experimental)',
-                  child: isAnalyzingAiVocal
-                      ? const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                          child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent)),
-                        )
-                      : IconButton(
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.xrayToggle,
+                  isHelpModeActive: isHelpModeActive,
+                  child: Tooltip(
+                    message: 'Toggle X-Ray',
+                    child: isXrayProcessing
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0), 
+                            child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amberAccent))
+                          )
+                        : IconButton(
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
-                          icon: Icon(
-                            Icons.psychology_outlined,
-                            size: 20,
-                            color: aiColor,
-                          ),
-                          onPressed: (!isApiBusy && canRunAi) ? _runAiVocalInspection : null,
+                          icon: Icon(Icons.fingerprint, size: 20, color: xrayColor),
+                          onPressed: (!isApiBusy && canRunXray) ? toggleXrayMode : null,
                         ),
+                  ),
+                ),
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.dualXrayToggle,
+                  isHelpModeActive: isHelpModeActive,
+                  child: Tooltip(
+                    message: 'Dual X-Ray Comparison',
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
+                      icon: Stack(
+                        children: [
+                          Icon(Icons.fingerprint, size: 20, color: dualBaseColor),
+                          Positioned(
+                            left: 3, top: 3,
+                            child: Icon(Icons.fingerprint, size: 20, color: dualTopColor),
+                          ),
+                        ],
+                      ),
+                      onPressed: isApiBusy ? null : () {
+                        if (dualContinuous1.isNotEmpty && dualContinuous2.isNotEmpty) {
+                          setState(() => isDualContourOverlayActive = !isDualContourOverlayActive);
+                        } else if (canRunDualXray) {
+                          showDialog(
+                            context: context,
+                            builder: (context) => DualXRayComparatorDialog(
+                              availableChannels: activeChannels,
+                              onRunComparison: (source, target) => _runAnyToAnyForensicAlign(source, target),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.aiDetectionTool,
+                  isHelpModeActive: isHelpModeActive,
+                  child: Tooltip(
+                    message: 'Detect AI Synthetic Vocals (experimental)',
+                    child: isAnalyzingAiVocal
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8.0),
+                            child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent)),
+                          )
+                        : IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minHeight: 32, minWidth: 32),
+                            icon: Icon(
+                              Icons.psychology_outlined,
+                              size: 20,
+                              color: aiColor,
+                            ),
+                            onPressed: (!isApiBusy && canRunAi) ? _runAiVocalInspection : null,
+                          ),
+                  ),
                 ),
               ],
             ),
@@ -5303,174 +5309,178 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
         return a.compareTo(b);
       });
 
-      return ListView.builder(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: sortedStems.length,
-        itemBuilder: (context, index) {
-          String stemName = sortedStems[index];
-          bool isSelected = activeEditableStem == stemName;
-          bool isSuggested = suggestedStems.contains(stemName);
-          bool isMuted = getChannelState(stemName).isMuted;
-          bool isGenerated = generatedStems.contains(stemName);
-
-          return GestureDetector(
-            onTap: () {
-              setState(() {
-                activeEditableStem = stemName;
-                isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
-              });
-              if (!isGenerated && originalAudioBytes != null && currentTaskId != null && !isLoading) {
-                generateStemOnDemand(stemName);
-              }
-            },
-            // Long press a stem strip to non-destructively hide/delete it!
-            onLongPress: () {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: Colors.grey[900],
-                  title: Text('Hide "${stemName.toUpperCase()}"?', style: const TextStyle(color: Colors.white)),
-                  content: const Text('This will hide the track and mute it. You can restore it anytime from the main menu under "Restore Hidden Stems".', style: TextStyle(color: Colors.white54)),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        deleteChannel(stemName);
-                        _showSaveConfirmation('Hidden ${stemName.toUpperCase()}. Moved to Trash Bin.');
-                      },
-                      child: const Text('Hide Track', style: TextStyle(color: Colors.white)),
-                    ),
-                  ],
+      return VoxrayHelpTarget(
+        topic: VoxrayHelpTopics.meterBridge,
+        isHelpModeActive: isHelpModeActive,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemCount: sortedStems.length,
+          itemBuilder: (context, index) {
+            String stemName = sortedStems[index];
+            bool isSelected = activeEditableStem == stemName;
+            bool isSuggested = suggestedStems.contains(stemName);
+            bool isMuted = getChannelState(stemName).isMuted;
+            bool isGenerated = generatedStems.contains(stemName);
+  
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  activeEditableStem = stemName;
+                  isXrayMode = rawNotes.isNotEmpty && rawNotes.any((n) => n.containsKey('contour') && n['contour'] != null);
+                });
+                if (!isGenerated && originalAudioBytes != null && currentTaskId != null && !isLoading) {
+                  generateStemOnDemand(stemName);
+                }
+              },
+              // Long press a stem strip to non-destructively hide/delete it!
+              onLongPress: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: Colors.grey[900],
+                    title: Text('Hide "${stemName.toUpperCase()}"?', style: const TextStyle(color: Colors.white)),
+                    content: const Text('This will hide the track and mute it. You can restore it anytime from the main menu under "Restore Hidden Stems".', style: TextStyle(color: Colors.white54)),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          deleteChannel(stemName);
+                          _showSaveConfirmation('Hidden ${stemName.toUpperCase()}. Moved to Trash Bin.');
+                        },
+                        child: const Text('Hide Track', style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              child: Container(
+                width: 96,
+                margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.blueGrey[800] : Colors.black45,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: isSelected ? Colors.blueAccent : Colors.transparent, width: 1.5),
                 ),
-              );
-            },
-            child: Container(
-              width: 96,
-              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.blueGrey[800] : Colors.black45,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: isSelected ? Colors.blueAccent : Colors.transparent, width: 1.5),
-              ),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (!isGenerated) const Icon(Icons.hourglass_empty, size: 10, color: Colors.white38),
-                            if (isSuggested && !isMuted) const Icon(Icons.star, size: 10, color: Colors.yellowAccent),
-                            const SizedBox(width: 2),
-                            Text(
-                              stemName.toUpperCase(),
-                              style: TextStyle(
-                                color: isMuted ? Colors.white38 : (isSelected ? Colors.white : Colors.grey[400]),
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                          child: SizedBox(
-                            height: 6,
-                            child: ValueListenableBuilder<double>(
-                              valueListenable: channelLevels[stemName] ?? ValueNotifier(0.0),
-                              builder: (context, level, child) {
-                                return CustomPaint(
-                                  size: const Size(double.infinity, 6),
-                                  painter: _HorizontalVuMeterPainter(level: level),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                        // Time-Shift Nudge Controls
-                        if (showNudgeControls) // 🟢 Hide by default to save space & prevent accidental taps!
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // 🟢 Replaced IconButton with a tight GestureDetector
-                              GestureDetector(
-                                onTap: () => setState(() {
-                                  double current = stemTimeOffsets[stemName] ?? 0.0;
-                                  stemTimeOffsets[stemName] = (current - 0.1).clamp(-10.0, 10.0);
-                                  hasBeenSaved = false;
-                                }),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-                                  child: Icon(Icons.remove, size: 14, color: Colors.white54),
-                                ),
-                              ),
+                              if (!isGenerated) const Icon(Icons.hourglass_empty, size: 10, color: Colors.white38),
+                              if (isSuggested && !isMuted) const Icon(Icons.star, size: 10, color: Colors.yellowAccent),
+                              const SizedBox(width: 2),
                               Text(
-                                '${(stemTimeOffsets[stemName] ?? 0.0).toStringAsFixed(1)}s',
-                                style: const TextStyle(color: Colors.tealAccent, fontSize: 10, fontWeight: FontWeight.bold),
-                              ),
-                              GestureDetector(
-                                onTap: () => setState(() {
-                                  double current = stemTimeOffsets[stemName] ?? 0.0;
-                                  stemTimeOffsets[stemName] = (current + 0.1).clamp(-10.0, 10.0);
-                                  hasBeenSaved = false;
-                                }),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-                                  child: Icon(Icons.add, size: 14, color: Colors.white54),
+                                stemName.toUpperCase(),
+                                style: TextStyle(
+                                  color: isMuted ? Colors.white38 : (isSelected ? Colors.white : Colors.grey[400]),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  fontStyle: isMuted ? FontStyle.italic : FontStyle.normal,
                                 ),
                               ),
                             ],
                           ),
-                      ],
+                          const SizedBox(height: 4),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                            child: SizedBox(
+                              height: 6,
+                              child: ValueListenableBuilder<double>(
+                                valueListenable: channelLevels[stemName] ?? ValueNotifier(0.0),
+                                builder: (context, level, child) {
+                                  return CustomPaint(
+                                    size: const Size(double.infinity, 6),
+                                    painter: _HorizontalVuMeterPainter(level: level),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                          // Time-Shift Nudge Controls
+                          if (showNudgeControls) // 🟢 Hide by default to save space & prevent accidental taps!
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // 🟢 Replaced IconButton with a tight GestureDetector
+                                GestureDetector(
+                                  onTap: () => setState(() {
+                                    double current = stemTimeOffsets[stemName] ?? 0.0;
+                                    stemTimeOffsets[stemName] = (current - 0.1).clamp(-10.0, 10.0);
+                                    hasBeenSaved = false;
+                                  }),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+                                    child: Icon(Icons.remove, size: 14, color: Colors.white54),
+                                  ),
+                                ),
+                                Text(
+                                  '${(stemTimeOffsets[stemName] ?? 0.0).toStringAsFixed(1)}s',
+                                  style: const TextStyle(color: Colors.tealAccent, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                                GestureDetector(
+                                  onTap: () => setState(() {
+                                    double current = stemTimeOffsets[stemName] ?? 0.0;
+                                    stemTimeOffsets[stemName] = (current + 0.1).clamp(-10.0, 10.0);
+                                    hasBeenSaved = false;
+                                  }),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
+                                    child: Icon(Icons.add, size: 14, color: Colors.white54),
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  // MUTE BUTTON OVERLAY (Top Left)
-                  Positioned(
-                    top: 2, left: 4,
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          getChannelState(stemName).isMuted = !getChannelState(stemName).isMuted;
-                          hasBeenSaved = false;
-                        });
-                        refreshAllVolumes();
-                      },
-                      child: Icon(
-                        getChannelState(stemName).isMuted ? Icons.volume_off : Icons.volume_up,
-                        size: 13,
-                        color: getChannelState(stemName).isMuted ? Colors.redAccent : Colors.white38,
+                    // MUTE BUTTON OVERLAY (Top Left)
+                    Positioned(
+                      top: 2, left: 4,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            getChannelState(stemName).isMuted = !getChannelState(stemName).isMuted;
+                            hasBeenSaved = false;
+                          });
+                          refreshAllVolumes();
+                        },
+                        child: Icon(
+                          getChannelState(stemName).isMuted ? Icons.volume_off : Icons.volume_up,
+                          size: 13,
+                          color: getChannelState(stemName).isMuted ? Colors.redAccent : Colors.white38,
+                        )
                       )
-                    )
-                  ),
-                  // SOLO BUTTON OVERLAY (Top Right)
-                  Positioned(
-                    top: 2, right: 4,
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          if (soloedChannels.contains(stemName)) soloedChannels.remove(stemName);
-                          else soloedChannels.add(stemName);
-                          hasBeenSaved = false;
-                        });
-                        refreshAllVolumes();
-                      },
-                      child: Icon(
-                        soloedChannels.contains(stemName) ? Icons.headphones : Icons.headphones_outlined,
-                        size: 13,
-                        color: soloedChannels.contains(stemName) ? Colors.yellowAccent : Colors.white38,
+                    ),
+                    // SOLO BUTTON OVERLAY (Top Right)
+                    Positioned(
+                      top: 2, right: 4,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            if (soloedChannels.contains(stemName)) soloedChannels.remove(stemName);
+                            else soloedChannels.add(stemName);
+                            hasBeenSaved = false;
+                          });
+                          refreshAllVolumes();
+                        },
+                        child: Icon(
+                          soloedChannels.contains(stemName) ? Icons.headphones : Icons.headphones_outlined,
+                          size: 13,
+                          color: soloedChannels.contains(stemName) ? Colors.yellowAccent : Colors.white38,
+                        )
                       )
-                    )
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
+            );
           );
         },
       );
@@ -5484,56 +5494,59 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                /*const Text('voXRay ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Colors.white)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)),
-                  child: const Text('PRO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.white)),
-                ),*/
-                // ✅ TRANSPARENT LOGO REPLACEMENT
-                Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: GestureDetector(
-                    onLongPress: () {
-                      // Secret God Mode Trigger
-                      final email = BackendService.supabase.auth.currentUser?.email;
-                      if (email == 'donkelleymusic@gmail.com') {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const GodModeDashboard()));
-                      }
-                    },
-                    child: Image.asset(
-                      'assets/images/voXRay_logo_transparent_crop.png', 
-                      height: isLandscape ? 22 : 30,    
-                      fit: BoxFit.contain,
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.mainLogo,
+                  isHelpModeActive: isHelpModeActive,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: GestureDetector(
+                      onLongPress: () {
+                        final email = BackendService.supabase.auth.currentUser?.email;
+                        if (email == 'donkelleymusic@gmail.com') {
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const GodModeDashboard()));
+                        }
+                      },
+                      child: Image.asset(
+                        'assets/images/voXRay_logo_transparent_crop.png', 
+                        height: isLandscape ? 22 : 30,    
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 4),
-                if (!isLandscape) // Hide subtitle in landscape to save horizontal space
+                if (!isLandscape)
                   const Text('Forensic Daw', style: TextStyle(fontWeight: FontWeight.w300, fontSize: 14, color: Colors.white70)),
-                IconButton(
-                  icon: Icon(Icons.memory, size: 20, color: Colors.greenAccent[400]), // Glowing money green DSP chip
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen())),
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.dspWallet,
+                  isHelpModeActive: isHelpModeActive,
+                  child: IconButton(
+                    icon: Icon(Icons.memory, size: 20, color: Colors.greenAccent[400]),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen())),
+                  ),
                 ),
               ],
             ),
             actions: [
-              // 5. In Landscape, inject the Status Text right into the AppBar
               if (isLandscape)
                 Container(
-                  width: MediaQuery.of(context).size.width * 0.35, // Cap width so it doesn't overflow
+                  width: MediaQuery.of(context).size.width * 0.35,
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 8.0),
                   child: buildStatusContent(true),
                 ),
               if (!isLiveModeActive)
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  tooltip: 'Main Menu',
-                  onSelected: _handleMenuSelection,
-                  itemBuilder: (context) => _buildMainMenu(),
+                VoxrayHelpTarget(
+                  topic: VoxrayHelpTopics.mainMenu,
+                  isHelpModeActive: isHelpModeActive,
+                  child: PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    tooltip: 'Main Menu',
+                    onSelected: _handleMenuSelection,
+                    itemBuilder: (context) => _buildMainMenu(),
+                  ),
                 ),
             ],
           ),
@@ -5608,13 +5621,17 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                               child: Slider(value: zoomX, min: 20.0, max: 500.0, onChanged: setZoomX),
                             ),
                           ),
-                          Tooltip(
-                            message: 'Fit to Screen',
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 40),
-                              icon: const Icon(Icons.fit_screen, size: 16, color: Colors.white54),
-                              onPressed: _fitToScreen,
+                          VoxrayHelpTarget(
+                            topic: VoxrayHelpTopics.fitToScreen,
+                            isHelpModeActive: isHelpModeActive,
+                            child: Tooltip(
+                              message: 'Fit to Screen',
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 40),
+                                icon: const Icon(Icons.fit_screen, size: 16, color: Colors.white54),
+                                onPressed: _fitToScreen,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -5622,40 +5639,49 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                       ),
                     ),
                     // THE MACRO MINIMAP ─────────────────────────────────────
-                    Container(
-                      width: double.infinity,
-                      decoration: const BoxDecoration(
-                        border: Border(bottom: BorderSide(color: Colors.white24, width: 1)),
+                    VoxrayHelpTarget(
+                      topic: VoxrayHelpTopics.macroMinimap,
+                      isHelpModeActive: isHelpModeActive,
+                      child: Container(
+                        width: double.infinity,
+                        decoration: const BoxDecoration(
+                          border: Border(bottom: BorderSide(color: Colors.white24, width: 1)),
+                        ),
+                        child: MacroMinimapWidget(dawState: this),
                       ),
-                      child: MacroMinimapWidget(dawState: this),
                     ),
                     // ── Workspace: Timeline + Sidebar ─────────────────────────────────────────────
                     Expanded(
                       child: Column(children: [
                         Row(children: [
-                          Container(
-                            width: 46,
-                            height: 45,
-                            color: Colors.grey[900],
-                            child: IconButton(
-                              padding: EdgeInsets.zero,
-                              icon: Icon(
-                                isPlaying ? Icons.pause : Icons.play_arrow, 
-                                // 🟢 Dim the icon if the API/Engine is busy
-                                color: isApiBusy ? Colors.white24 : Colors.tealAccent, 
-                                size: 28
+                          VoxrayHelpTarget(
+                            topic: VoxrayHelpTopics.transportPlayPause,
+                            isHelpModeActive: isHelpModeActive,
+                            child: Container(
+                              width: 46,
+                              height: 45,
+                              color: Colors.grey[900],
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                icon: Icon(
+                                  isPlaying ? Icons.pause : Icons.play_arrow, 
+                                  color: isApiBusy ? Colors.white24 : Colors.tealAccent, 
+                                  size: 28
+                                ),
+                                onPressed: isApiBusy ? null : _toggleMasterTransport,
                               ),
-                              // 🟢 Disable the tap entirely if busy
-                              onPressed: isApiBusy ? null : _toggleMasterTransport,
                             ),
                           ),
-                          // 🟢 1. PERFECT RULER ALIGNMENT (46 + 16 = 62px)
                           const SizedBox(width: 16),
                           Expanded(
-                            child: SingleChildScrollView(
-                              controller: rulerScrollController,
-                              scrollDirection: Axis.horizontal,
-                              child: TimelineRulerWidget(dawState: this),
+                            child: VoxrayHelpTarget(
+                              topic: VoxrayHelpTopics.timelineRuler,
+                              isHelpModeActive: isHelpModeActive,
+                              child: SingleChildScrollView(
+                                controller: rulerScrollController,
+                                scrollDirection: Axis.horizontal,
+                                child: TimelineRulerWidget(dawState: this),
+                              ),
                             ),
                           ),
                           SizedBox(width: isLandscape ? 100 : 50),
@@ -5664,21 +5690,23 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // 🟢 2. RESTORE CANVAS SLIDER COMPACT WIDTH (8 + 24 = 32px)
-                              // (32px + 30px Piano Keys = 62px total, matching the Ruler perfectly!)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8.0),
-                                child: SizedBox(
-                                  width: 24,
-                                  child: RotatedBox(
-                                    quarterTurns: 3,
-                                    child: SliderTheme(
-                                      data: SliderThemeData(
-                                        trackHeight: 2,
-                                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                        overlayShape: SliderComponentShape.noOverlay,
+                              VoxrayHelpTarget(
+                                topic: VoxrayHelpTopics.pianoKeysScale,
+                                isHelpModeActive: isHelpModeActive,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 8.0),
+                                  child: SizedBox(
+                                    width: 24,
+                                    child: RotatedBox(
+                                      quarterTurns: 3,
+                                      child: SliderTheme(
+                                        data: SliderThemeData(
+                                          trackHeight: 2,
+                                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                          overlayShape: SliderComponentShape.noOverlay,
+                                        ),
+                                        child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: setZoomY),
                                       ),
-                                      child: Slider(value: zoomY, min: 8.0, max: 60.0, onChanged: setZoomY),
                                     ),
                                   ),
                                 ),
@@ -5705,200 +5733,191 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                           ],
                                         ),
                                       )
-                                    : Stack(
-                                        children: [
-                                          Positioned.fill(
-                                            child: TimelineCanvasWidget(
-                                              dawState: this,
-                                              horizontalScrollController: horizontalScrollController,
-                                              verticalScrollController: verticalScrollController,
-                                            ),
-                                          ),
-                                          // ── EXISTING DUAL X-RAY LEGEND OVERLAY ──
-                                          if (isDualContourOverlayActive)
-                                            Positioned(
-                                              bottom: 30, // Moved to the bottom
-                                              left: 20,   // Moved to the left
-                                              child: IgnorePointer( // <--- Allows clicks/drags to pass through to the canvas underneath!
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    const Text(
-                                                      'DUAL X-RAY KEY', 
-                                                      style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 4)])
-                                                    ),
-                                                    const SizedBox(height: 6),
-                                                    Row(children: [
-                                                      Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
-                                                      const SizedBox(width: 6),
-                                                      Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
-                                                    ]),
-                                                    const SizedBox(height: 4),
-                                                    Row(children: [
-                                                      Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
-                                                      const SizedBox(width: 6),
-                                                      Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
-                                                    ]),
-                                                    const SizedBox(height: 4),
-                                                    Row(children: [
-                                                      Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.8)),
-                                                      const SizedBox(width: 6),
-                                                      const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
-                                                    ]),
-                                                  ],
-                                                ),
+                                    : VoxrayHelpTarget(
+                                        topic: VoxrayHelpTopics.timelineCanvas,
+                                        isHelpModeActive: isHelpModeActive,
+                                        child: Stack(
+                                          children: [
+                                            Positioned.fill(
+                                              child: TimelineCanvasWidget(
+                                                dawState: this,
+                                                horizontalScrollController: horizontalScrollController,
+                                                verticalScrollController: verticalScrollController,
                                               ),
                                             ),
-                                        ],
+                                            if (isDualContourOverlayActive)
+                                              Positioned(
+                                                bottom: 30,
+                                                left: 20,
+                                                child: IgnorePointer(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      const Text(
+                                                        'DUAL X-RAY KEY', 
+                                                        style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 4)])
+                                                      ),
+                                                      const SizedBox(height: 6),
+                                                      Row(children: [
+                                                        Container(width: 10, height: 10, color: const Color(0xFF00E5FF)),
+                                                        const SizedBox(width: 6),
+                                                        Text(dualLabel1, style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                      ]),
+                                                      const SizedBox(height: 4),
+                                                      Row(children: [
+                                                        Container(width: 10, height: 10, color: const Color(0xFFFF007F)),
+                                                        const SizedBox(width: 6),
+                                                        Text(dualLabel2, style: const TextStyle(color: Color(0xFFFF007F), fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                      ]),
+                                                      const SizedBox(height: 4),
+                                                      Row(children: [
+                                                        Container(width: 10, height: 14, color: Colors.greenAccent.withOpacity(0.8)),
+                                                        const SizedBox(width: 6),
+                                                        const Text('Identical Match Region', style: TextStyle(color: Colors.greenAccent, fontSize: 11, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                                      ]),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
                                       ),
                               ),
-                              // Right: The Fully Restored Marker & Tool Sidebar
-                              Container(
-                                width: isLandscape ? 100 : 50,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[900],
-                                  border: const Border(left: BorderSide(color: Colors.black, width: 2)),
-                                ),
-                                child: SingleChildScrollView(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                    child: Wrap(
-                                      alignment: WrapAlignment.center,
-                                      spacing: 4.0, // Horizontal space between icons in landscape
-                                      runSpacing: 8.0, // Vertical space between rows
-                                      children: [
-                                        
-                                        // 1. Add Marker
-                                        Tooltip(
-                                          message: 'Add Marker',
-                                          child: GestureDetector(
-                                            onTapDown: (_) => addMarkerAtCurrentPlayhead(), // Instantly fires on touch!
-                                            child: Container(
-                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                              color: Colors.transparent, // Required to capture taps in an empty container
-                                              child: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent),
+                              VoxrayHelpTarget(
+                                topic: VoxrayHelpTopics.sidebarMarkerTools,
+                                isHelpModeActive: isHelpModeActive,
+                                child: Container(
+                                  width: isLandscape ? 100 : 50,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[900],
+                                    border: const Border(left: BorderSide(color: Colors.black, width: 2)),
+                                  ),
+                                  child: SingleChildScrollView(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                      child: Wrap(
+                                        alignment: WrapAlignment.center,
+                                        spacing: 4.0,
+                                        runSpacing: 8.0,
+                                        children: [
+                                          Tooltip(
+                                            message: 'Add Marker',
+                                            child: GestureDetector(
+                                              onTapDown: (_) => addMarkerAtCurrentPlayhead(),
+                                              child: Container(
+                                                constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                                color: Colors.transparent,
+                                                child: const Icon(Icons.add_location_alt, size: 20, color: Colors.amberAccent),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                
-                                        // 2. Go To Marker (Dropdown)
-                                        if (markers.isNotEmpty)
-                                          PopupMenuButton<double>(
-                                            icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
-                                            padding: EdgeInsets.zero,
-                                            tooltip: 'Go to Marker',
-                                            itemBuilder: (context) => markers.map((marker) {
-                                              int totalSeconds = (marker['time'] as double).round();
-                                              String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
-                                              return PopupMenuItem<double>(
-                                                value: marker['time'],
-                                                child: Row(children: [
-                                                  const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
-                                                  const SizedBox(width: 4),
-                                                  Text('${marker['label']}  '),
-                                                  Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                                                ]),
-                                              );
-                                            }).toList(),
-                                            onSelected: (time) => jumpToTimelinePosition(time),
-                                          ),
-                                
-                                        // 3. Set Loop Region Dropdown
-                                        if (markers.length >= 2)
-                                          PopupMenuButton<String>(
-                                            icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
-                                            padding: EdgeInsets.zero,
-                                            tooltip: 'Set Loop Region',
-                                            itemBuilder: (context) {
-                                              List<PopupMenuItem<String>> items = [];
-                                              for (int i = 0; i < markers.length; i++) {
-                                                for (int j = i + 1; j < markers.length; j++) {
-                                                  items.add(PopupMenuItem(
-                                                    value: '${markers[i]['time']}_${markers[j]['time']}',
-                                                    child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
-                                                  ));
+                                          if (markers.isNotEmpty)
+                                            PopupMenuButton<double>(
+                                              icon: const Icon(Icons.location_on, color: Colors.amberAccent, size: 20),
+                                              padding: EdgeInsets.zero,
+                                              tooltip: 'Go to Marker',
+                                              itemBuilder: (context) => markers.map((marker) {
+                                                int totalSeconds = (marker['time'] as double).round();
+                                                String timestamp = '${(totalSeconds ~/ 60).toString().padLeft(2, '0')}:${(totalSeconds % 60).toString().padLeft(2, '0')}';
+                                                return PopupMenuItem<double>(
+                                                  value: marker['time'],
+                                                  child: Row(children: [
+                                                    const Icon(Icons.location_on, color: Colors.amberAccent, size: 16),
+                                                    const SizedBox(width: 4),
+                                                    Text('${marker['label']}  '),
+                                                    Text(timestamp, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                                                  ]),
+                                                );
+                                              }).toList(),
+                                              onSelected: (time) => jumpToTimelinePosition(time),
+                                            ),
+                                          if (markers.length >= 2)
+                                            PopupMenuButton<String>(
+                                              icon: const Icon(Icons.settings_overscan, size: 18, color: Colors.blueAccent),
+                                              padding: EdgeInsets.zero,
+                                              tooltip: 'Set Loop Region',
+                                              itemBuilder: (context) {
+                                                List<PopupMenuItem<String>> items = [];
+                                                for (int i = 0; i < markers.length; i++) {
+                                                  for (int j = i + 1; j < markers.length; j++) {
+                                                    items.add(PopupMenuItem(
+                                                      value: '${markers[i]['time']}_${markers[j]['time']}',
+                                                      child: Text('${markers[i]['label']} → ${markers[j]['label']}', style: const TextStyle(fontSize: 12)),
+                                                    ));
+                                                  }
                                                 }
-                                              }
-                                              return items;
-                                            },
-                                            onSelected: (val) {
-                                              final parts = val.split('_');
-                                              setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
-                                            },
+                                                return items;
+                                              },
+                                              onSelected: (val) {
+                                                final parts = val.split('_');
+                                                setLoopFromMarkers(double.parse(parts[0]), double.parse(parts[1]));
+                                              },
+                                            ),
+                                          Tooltip(
+                                            message: 'Toggle Loop Playback',
+                                            child: IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              icon: Icon(Icons.loop, size: 20, color: isLoopModeActive ? Colors.tealAccent : Colors.white38),
+                                              onPressed: () {
+                                                setState(() {
+                                                  isLoopModeActive = !isLoopModeActive;
+                                                });
+                                              },
+                                            ),
                                           ),
-                                
-                                        // 4. Loop On / Off Toggle
-                                        Tooltip(
-                                          message: 'Toggle Loop Playback',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: Icon(Icons.loop, size: 20, color: isLoopModeActive ? Colors.tealAccent : Colors.white38),
-                                            onPressed: () {
-                                              setState(() {
-                                                isLoopModeActive = !isLoopModeActive;
-                                              });
-                                            },
+                                          Tooltip(
+                                            message: 'Set Mix Start (Trim Left)',
+                                            child: IconButton(
+                                              padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              icon: const Icon(Icons.arrow_right_alt, color: Colors.orangeAccent, size: 20),
+                                              onPressed: () => setState(() => projectTrimStart = currentPosition),
+                                            ),
                                           ),
-                                        ),
-                                        // 🟢 3. MOVED GLOBAL TRIM BUTTONS HERE
-                                        Tooltip(
-                                          message: 'Set Mix Start (Trim Left)',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: const Icon(Icons.arrow_right_alt, color: Colors.orangeAccent, size: 20),
-                                            onPressed: () => setState(() => projectTrimStart = currentPosition),
+                                          Tooltip(
+                                            message: 'Set Mix End (Trim Right)',
+                                            child: IconButton(
+                                              padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              icon: const Icon(Icons.keyboard_backspace, color: Colors.orangeAccent, size: 20),
+                                              onPressed: () => setState(() => projectTrimEnd = currentPosition),
+                                            ),
                                           ),
-                                        ),
-                                        Tooltip(
-                                          message: 'Set Mix End (Trim Right)',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: const Icon(Icons.keyboard_backspace, color: Colors.orangeAccent, size: 20),
-                                            onPressed: () => setState(() => projectTrimEnd = currentPosition),
+                                          Tooltip(
+                                            message: 'Clear Trims',
+                                            child: IconButton(
+                                              padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              icon: const Icon(Icons.clear_all, color: Colors.white38, size: 18),
+                                              onPressed: () => setState(() { projectTrimStart = 0.0; projectTrimEnd = songDuration; }),
+                                            ),
                                           ),
-                                        ),
-                                        Tooltip(
-                                          message: 'Clear Trims',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero, constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: const Icon(Icons.clear_all, color: Colors.white38, size: 18),
-                                            onPressed: () => setState(() { projectTrimStart = 0.0; projectTrimEnd = songDuration; }),
+                                          Container(
+                                            width: isLandscape ? 100 : 50,
+                                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                            child: Divider(color: Colors.grey[800], thickness: 1.5),
                                           ),
-                                        ),
-                                
-                                        // Divider for Undo/Redo grouping
-                                        Container(
-                                          width: isLandscape ? 100 : 50,
-                                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                          child: Divider(color: Colors.grey[800], thickness: 1.5),
-                                        ),
-                                
-                                        // 6. Undo
-                                        Tooltip(
-                                          message: 'Undo',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: const Icon(Icons.undo, size: 20),
-                                            color: undoStack.isNotEmpty ? Colors.white : Colors.white24,
-                                            onPressed: (!isApiBusy && undoStack.isNotEmpty) ? _undo : null,
+                                          Tooltip(
+                                            message: 'Undo',
+                                            child: IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              icon: const Icon(Icons.undo, size: 20),
+                                              color: undoStack.isNotEmpty ? Colors.white : Colors.white24,
+                                              onPressed: (!isApiBusy && undoStack.isNotEmpty) ? _undo : null,
+                                            ),
                                           ),
-                                        ),
-                                        
-                                        // 7. Redo
-                                        Tooltip(
-                                          message: 'Redo',
-                                          child: IconButton(
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
-                                            icon: const Icon(Icons.redo, size: 20),
-                                            color: redoStack.isNotEmpty ? Colors.white : Colors.white24,
-                                            onPressed: (!isApiBusy && redoStack.isNotEmpty) ? _redo : null,
+                                          Tooltip(
+                                            message: 'Redo',
+                                            child: IconButton(
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+                                              icon: const Icon(Icons.redo, size: 20),
+                                              color: redoStack.isNotEmpty ? Colors.white : Colors.white24,
+                                              onPressed: (!isApiBusy && redoStack.isNotEmpty) ? _redo : null,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
