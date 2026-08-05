@@ -1935,7 +1935,9 @@ mixin DawApiService on VoxrayDAWStateBase {
       
       // 2. DESKTOP (Windows/Mac/Linux): Stream directly to chosen path
       else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-        String? path = await FilePicker.saveFile(
+        // 🟢 FIX: Use FilePicker.platform.saveFile to trigger the native OS Save dialog.
+        // The OS will automatically warn the user if they select an existing file!
+        String? path = await FilePicker.platform.saveFile(
           dialogTitle: 'Save VoxRay Project',
           fileName: '$defaultSaveName.vxp',
           type: FileType.any,
@@ -1945,7 +1947,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           if (path.endsWith('.zip')) path = path.substring(0, path.length - 4);
           if (!path.endsWith('.vxp')) path = '$path.vxp';
   
-          // 🟢 STREAM IT!
+          // Stream directly to the path chosen by the OS
           await packageProjectToPath(path);
           
           String newName = path.split(Platform.pathSeparator).last;
@@ -1961,12 +1963,10 @@ mixin DawApiService on VoxrayDAWStateBase {
         }
       } 
       
-      // 3. MOBILE (Android/iOS): Direct streaming bypass WITH "Save As" renaming!
+      // 3. MOBILE (Android/iOS): Direct streaming bypass WITH manual overwrite check
       else if (Platform.isAndroid || Platform.isIOS) {
-        
         TextEditingController nameController = TextEditingController(text: defaultSaveName);
 
-        // 🟢 Return a String from the dialog instead of a bool
         String? chosenName = await showDialog<String>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -2015,7 +2015,6 @@ mixin DawApiService on VoxrayDAWStateBase {
           ),
         );
 
-        // 🟢 Handle the user cancellation gracefully
         if (chosenName == null) {
           showSaveConfirmation('Save cancelled.');
           return;
@@ -2023,22 +2022,47 @@ mixin DawApiService on VoxrayDAWStateBase {
 
         String targetPath;
         if (Platform.isAndroid) {
-          // Android: Save directly to the public Downloads folder
           final dir = Directory('/storage/emulated/0/Download');
           if (!await dir.exists()) await dir.create(recursive: true);
           targetPath = '${dir.path}/$chosenName.vxp';
         } else {
-          // iOS: Save directly to the App's Documents folder
           final dir = await getApplicationDocumentsDirectory();
           targetPath = '${dir.path}/$chosenName.vxp';
         }
         
-        // 🟢 STREAM DIRECTLY TO THE FINAL DESTINATION!
+        // 🟢 FIX: Manual Overwrite Check for Mobile
+        if (await File(targetPath).exists()) {
+          bool? overwrite = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: Colors.grey[900],
+              title: const Text('File Already Exists', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              content: Text('A project named "$chosenName.vxp" already exists. Do you want to overwrite it?', style: const TextStyle(color: Colors.white70)),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white54))
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Overwrite', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+
+          if (overwrite != true) {
+            // Restart the flow so they can pick a new name
+            return saveVoxrayProjectAs();
+          }
+        }
+
         await packageProjectToPath(targetPath);
         
         setState(() {
           currentProjectPath = targetPath;
-          projectName = chosenName; // 🟢 Update the app's internal project name!
+          projectName = chosenName; 
           hasBeenSaved = true;
           dirtyStems.clear();
         });
@@ -2052,11 +2076,11 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   Future<void> saveVoxrayProject() async {
+    // 🟢 FIX: If the user hits Cmd/Ctrl+S on a new project, bounce them to Save As!
     if (currentProjectPath == null || kIsWeb || currentProjectPath!.startsWith('content://')) {
-      return; 
+      return saveVoxrayProjectAs(); 
     }
     try {
-      // 🟢 STREAM IT!
       await packageProjectToPath(currentProjectPath!);
       setState(() { hasBeenSaved = true; dirtyStems.clear(); });
       showSaveConfirmation('Project file successfully overwritten on disk.');
