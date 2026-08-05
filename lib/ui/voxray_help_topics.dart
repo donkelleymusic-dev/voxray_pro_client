@@ -1,3 +1,5 @@
+import 'help_tooltip_wrapper.dart';
+
 class VoxrayHelpTopics {
   static const mainLogo = HelpTopic(
     title: 'voXRay Logo & Brand Bar',
