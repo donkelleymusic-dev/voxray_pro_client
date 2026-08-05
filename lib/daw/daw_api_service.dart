@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:math' as math; 
 import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart';
