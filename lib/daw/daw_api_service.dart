@@ -1823,10 +1823,81 @@ mixin DawApiService on VoxrayDAWStateBase {
     return Uint8List.fromList(ZipEncoder().encode(archive)!);
   }
 
-  Future<void> saveVoxrayProjectAs() async {
-    final bytes = await packageProjectBytes();
+  Future<void> packageProjectToPath(String targetPath) async {
+    // minimap nav data
+    Map<String, List<double>> rmsDataToSave = {};
+    for (var key in mixerState.keys) {
+      if (mixerState[key]!.rmsEnvelope.isNotEmpty) {
+        rmsDataToSave[key] = mixerState[key]!.rmsEnvelope;
+      }
+    }
+    Map<String, dynamic> projectData = {
+      'voxray_version': '1.5.0',
+      'project_name': projectName,
+      'original_file': originalFileName,
+      'original_file_path': originalFilePath,
+      'song_duration': songDuration,
+      'is_original_mix_available': isOriginalMixAvailable,
+      'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
+      'target_stems_selection': targetStemsSelection.toList(),
+      'generated_stems': generatedStems.toList(),
+      'all_stems_notes': allStemsNotes,
+      'all_stems_continuous_xray': allStemsContinuousXray,
+      'active_editable_stem': activeEditableStem,
+      'history': {'undo_stack': undoStack, 'redo_stack': redoStack},
+      'markers': markers,
+      'is_dual_contour_active': isDualContourOverlayActive,
+      'dual_contour_1': dualContour1,
+      'dual_contour_2': dualContour2,
+      'identical_match_regions': identicalMatchRegions,
+      'dual_label_1': dualLabel1,
+      'dual_label_2': dualLabel2,
+    };
+
+    final dir = await getApplicationDocumentsDirectory();
     
-    // 🟢 Prefer the active project name if it was already saved/renamed, otherwise fallback to the original file
+    // 1. Write JSON to a temp file on disk
+    final jsonFile = File('${dir.path}/temp_project.json');
+    await jsonFile.writeAsString(json.encode(projectData));
+
+    // 2. Stream directly into the Zip file on disk (ZERO RAM SPIKE!)
+    final encoder = ZipFileEncoder();
+    encoder.create(targetPath);
+    encoder.addFile(jsonFile, 'project.json');
+
+    // 3. Add Original Audio
+    if (originalMixLocalPath.isNotEmpty && await File(originalMixLocalPath).exists()) {
+        encoder.addFile(File(originalMixLocalPath), 'original_audio.dat');
+    } else if (originalAudioBytes != null) {
+        final origFile = File('${dir.path}/temp_orig.dat');
+        await origFile.writeAsBytes(originalAudioBytes!);
+        encoder.addFile(origFile, 'original_audio.dat');
+    }
+
+    // 4. Add Stems Disk-to-Disk
+    for (var entry in cachedStemPaths.entries) {
+        if (await File(entry.value).exists()) {
+            String ext = entry.value.split('.').last;
+            encoder.addFile(File(entry.value), '${entry.key}.$ext');
+        }
+    }
+
+    // 5. Catch any RAM-only stems (like edited preview bytes)
+    for (var entry in cachedStemBytes.entries) {
+        if (!cachedStemPaths.containsKey(entry.key)) {
+            final stemFile = File('${dir.path}/temp_${entry.key}.ogg');
+            await stemFile.writeAsBytes(entry.value);
+            encoder.addFile(stemFile, '${entry.key}.ogg');
+        }
+    }
+
+    encoder.close();
+    
+    // Cleanup Temp JSON
+    if (await jsonFile.exists()) await jsonFile.delete();
+  }
+
+  Future<void> saveVoxrayProjectAs() async {
     String defaultSaveName = projectName;
     if ((projectName == 'Voxray_Session' || projectName.isEmpty) && originalFileName != 'Unknown File') {
       defaultSaveName = originalFileName.contains('.')
@@ -1837,8 +1908,9 @@ mixin DawApiService on VoxrayDAWStateBase {
     await Future.delayed(const Duration(milliseconds: 50));
     
     try {
-      // 1. WEB: Handle web-specific download
+      // 1. WEB: Handle web-specific download (Web uses RAM natively)
       if (kIsWeb) {
+        final bytes = await packageProjectBytes(); 
         await FileSaver.instance.saveAs(
           name: defaultSaveName, 
           bytes: bytes, 
@@ -1846,7 +1918,6 @@ mixin DawApiService on VoxrayDAWStateBase {
           mimeType: MimeType.custom, 
           customMimeType: 'application/octet-stream'
         );
-        // Web doesn't explicitly return the saved path, so we assume the default name was used
         setState(() {
           projectName = defaultSaveName;
           hasBeenSaved = true;
@@ -1855,7 +1926,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         showSaveConfirmation('Project saved via browser download.');
       } 
       
-      // 2. DESKTOP (Windows/Mac/Linux): Use FilePicker + Manual Write
+      // 2. DESKTOP (Windows/Mac/Linux): Stream directly to chosen path
       else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
         String? path = await FilePicker.saveFile(
           dialogTitle: 'Save VoxRay Project',
@@ -1864,20 +1935,18 @@ mixin DawApiService on VoxrayDAWStateBase {
         );
   
         if (path != null) {
-          // Ensure extension is correct
           if (path.endsWith('.zip')) path = path.substring(0, path.length - 4);
           if (!path.endsWith('.vxp')) path = '$path.vxp';
   
-          final file = File(path);
-          await file.writeAsBytes(bytes);
+          // 🟢 STREAM IT!
+          await packageProjectToPath(path);
           
-          // 🟢 Extract the final chosen filename to become the new internal project name
           String newName = path.split(Platform.pathSeparator).last;
           if (newName.endsWith('.vxp')) newName = newName.substring(0, newName.length - 4);
           
           setState(() {
             currentProjectPath = path;
-            projectName = newName; // 🟢 Update internal project name!
+            projectName = newName; 
             hasBeenSaved = true;
             dirtyStems.clear();
           });
@@ -1885,24 +1954,29 @@ mixin DawApiService on VoxrayDAWStateBase {
         }
       } 
       
-      // 3. MOBILE (Android/iOS): Use the OLD Working FileSaver Method
+      // 3. MOBILE (Android/iOS): Stream to Temp, then let OS copy the file
       else if (Platform.isAndroid || Platform.isIOS) {
+        final dir = await getApplicationDocumentsDirectory();
+        final tempZipPath = '${dir.path}/temp_mobile_export.vxp';
+        
+        // 🟢 STREAM IT!
+        await packageProjectToPath(tempZipPath);
+        
         String? path = await FileSaver.instance.saveAs(
           name: defaultSaveName, 
-          bytes: bytes, 
+          file: File(tempZipPath), // 🟢 PASS THE FILE, AVOID THE BYTES
           fileExtension: 'vxp',
           mimeType: MimeType.custom, 
           customMimeType: 'application/octet-stream'
         );
   
         if (path != null && path.isNotEmpty) {
-          // 🟢 Extract filename safely on mobile
           String newName = path.split(Platform.pathSeparator).last;
           if (newName.endsWith('.vxp')) newName = newName.substring(0, newName.length - 4);
           
           setState(() {
             currentProjectPath = path;
-            projectName = newName; // 🟢 Update internal project name!
+            projectName = newName; 
             hasBeenSaved = true;
             dirtyStems.clear();
           });
@@ -1916,108 +1990,17 @@ mixin DawApiService on VoxrayDAWStateBase {
     }
   }
 
-  
   Future<void> saveVoxrayProject() async {
-    logToSupabase('client saveVoxrayProject()');
     if (currentProjectPath == null || kIsWeb || currentProjectPath!.startsWith('content://')) {
-      
-      logToSupabase('client saveVoxrayProject - currentProjectPath: ${currentProjectPath}, kIsWeb: ${kIsWeb}, currentProjectPath-startWith"content://" = ${currentProjectPath?.startsWith("content://")}');
-      return; // Bails out safely on mobile cached URIs
+      return; 
     }
-    final bytes = await packageProjectBytes();
     try {
-      logToSupabase('client saveVoxrayProject - try(await File(path.writeAsBytes({$bytes}))');
-      
-      await File(currentProjectPath!).writeAsBytes(bytes);
+      // 🟢 STREAM IT!
+      await packageProjectToPath(currentProjectPath!);
       setState(() { hasBeenSaved = true; dirtyStems.clear(); });
       showSaveConfirmation('Project file successfully overwritten on disk.');
     } catch (e) {
-      
-      logToSupabase('client saveVoxrayProject - Overwrite failed: $e');
       showSaveConfirmation('Overwrite failed: $e');
-    }
-  }
-
-  Future<void> saveVoxrayProjectAs_reallybad() async {
-    final bytes = await packageProjectBytes();
-  
-    // 1. Clean base name (strip any existing .zip or .vxp extensions)
-    String baseName = originalFileName;
-    if (baseName.endsWith('.zip')) {
-      baseName = baseName.substring(0, baseName.length - 4);
-    }
-    if (baseName.endsWith('.vxp')) {
-      baseName = baseName.substring(0, baseName.length - 4);
-    }
-    if (baseName.contains('.')) {
-      baseName = baseName.substring(0, baseName.lastIndexOf('.'));
-    }
-    if (baseName.isEmpty) {
-      baseName = projectName.isNotEmpty ? projectName : 'UntitledProject';
-    }
-  
-    final String targetFileName = '$baseName.vxp';
-  
-    try {
-      String? path;
-  
-      // 2. MOBILE & WEB
-      if (kIsWeb || Platform.isAndroid || Platform.isIOS) {
-        path = await FilePicker.saveFile(
-          dialogTitle: 'Save VoxRay Project',
-          fileName: targetFileName,
-          type: FileType.any, // FileType.any prevents OS/browser from enforcing application/zip extension
-          bytes: bytes,
-        );
-  
-        if (path != null || kIsWeb) {
-          setState(() {
-            if (path != null) {
-              // Guarantee .zip is removed if the OS appended it
-              currentProjectPath = path.endsWith('.zip')
-                  ? path.substring(0, path.length - 4)
-                  : path;
-            }
-            hasBeenSaved = true;
-            dirtyStems.clear();
-          });
-          showSaveConfirmation('Project saved successfully.');
-        } else {
-          showSaveConfirmation('Save cancelled.');
-        }
-      } 
-      // 3. DESKTOP (Windows/Mac/Linux)
-      else {
-        path = await FilePicker.saveFile(
-          dialogTitle: 'Save VoxRay Project',
-          fileName: targetFileName,
-          type: FileType.any, // Prevents OS dialog from forcing MIME extensions
-        );
-  
-        if (path != null && path.isNotEmpty) {
-          // Strip trailing .zip if added by OS file dialog
-          if (path.endsWith('.zip')) {
-            path = path.substring(0, path.length - 4);
-          }
-          if (!path.endsWith('.vxp')) {
-            path = '$path.vxp';
-          }
-  
-          final file = File(path);
-          await file.writeAsBytes(bytes);
-  
-          setState(() {
-            currentProjectPath = path;
-            hasBeenSaved = true;
-            dirtyStems.clear();
-          });
-          showSaveConfirmation('Project saved successfully as offline .vxp archive.');
-        } else {
-          showSaveConfirmation('Save cancelled.');
-        }
-      }
-    } catch (e) {
-      showSaveConfirmation('Save failed: $e');
     }
   }
 
