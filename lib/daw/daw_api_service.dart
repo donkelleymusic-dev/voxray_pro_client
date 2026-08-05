@@ -1961,36 +1961,90 @@ mixin DawApiService on VoxrayDAWStateBase {
         }
       } 
       
-      // 3. MOBILE (Android/iOS): Stream to Temp, then let OS copy the file
+      // 3. MOBILE (Android/iOS): Direct streaming bypass WITH "Save As" renaming!
       else if (Platform.isAndroid || Platform.isIOS) {
-        final dir = await getApplicationDocumentsDirectory();
-        final tempZipPath = '${dir.path}/temp_mobile_export.vxp';
         
-        // 🟢 STREAM IT!
-        await packageProjectToPath(tempZipPath);
-        
-        String? path = await FileSaver.instance.saveAs(
-          name: defaultSaveName, 
-          file: File(tempZipPath), // 🟢 PASS THE FILE, AVOID THE BYTES
-          fileExtension: 'vxp',
-          mimeType: MimeType.custom, 
-          customMimeType: 'application/octet-stream'
+        TextEditingController nameController = TextEditingController(text: defaultSaveName);
+
+        // 🟢 Return a String from the dialog instead of a bool
+        String? chosenName = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Text('Save Project As...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  Platform.isAndroid 
+                    ? 'Choose a name to save to your public Downloads folder:' 
+                    : 'Choose a name to save to your isolated Files app directory:',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13)
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Project Name',
+                    labelStyle: TextStyle(color: Colors.tealAccent),
+                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.tealAccent)),
+                    suffixText: '.vxp',
+                    suffixStyle: TextStyle(color: Colors.white54),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white54))
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent),
+                onPressed: () {
+                  String finalName = nameController.text.trim();
+                  if (finalName.isEmpty) finalName = 'Untitled_Project';
+                  Navigator.pop(ctx, finalName);
+                },
+                child: const Text('Save', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
         );
-  
-        if (path != null && path.isNotEmpty) {
-          String newName = path.split(Platform.pathSeparator).last;
-          if (newName.endsWith('.vxp')) newName = newName.substring(0, newName.length - 4);
-          
-          setState(() {
-            currentProjectPath = path;
-            projectName = newName; 
-            hasBeenSaved = true;
-            dirtyStems.clear();
-          });
-          showSaveConfirmation('Project saved successfully as offline .vxp archive.');
-        } else {
+
+        // 🟢 Handle the user cancellation gracefully
+        if (chosenName == null) {
           showSaveConfirmation('Save cancelled.');
+          return;
         }
+
+        String targetPath;
+        if (Platform.isAndroid) {
+          // Android: Save directly to the public Downloads folder
+          final dir = Directory('/storage/emulated/0/Download');
+          if (!await dir.exists()) await dir.create(recursive: true);
+          targetPath = '${dir.path}/$chosenName.vxp';
+        } else {
+          // iOS: Save directly to the App's Documents folder
+          final dir = await getApplicationDocumentsDirectory();
+          targetPath = '${dir.path}/$chosenName.vxp';
+        }
+        
+        // 🟢 STREAM DIRECTLY TO THE FINAL DESTINATION!
+        await packageProjectToPath(targetPath);
+        
+        setState(() {
+          currentProjectPath = targetPath;
+          projectName = chosenName; // 🟢 Update the app's internal project name!
+          hasBeenSaved = true;
+          dirtyStems.clear();
+        });
+        
+        String platformFolder = Platform.isAndroid ? "Downloads folder" : "Files app";
+        showSaveConfirmation('Project saved successfully to your $platformFolder!');
       }
     } catch (e) {
       showSaveConfirmation('Save failed: $e');
