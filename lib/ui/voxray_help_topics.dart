@@ -3,9 +3,9 @@ import 'help_tooltip_wrapper.dart';
 class VoxrayHelpTopics {
   static const mainLogo = HelpTopic(
     title: 'voXRay Logo & Brand Bar',
-    whatItIs: 'Displays app branding and build profile. Long-pressing triggers owner diagnostics.',
-    onTapAction: 'Long-press opens the God Mode AutoML & Engine Dashboard (Admin access only).',
-    relatedFeatures: 'Linked to Supabase authentication and user session verification.',
+    whatItIs: 'Displays app branding and build profile.',
+    onTapAction: '',
+    relatedFeatures: '',
   );
 
   static const dspWallet = HelpTopic(
