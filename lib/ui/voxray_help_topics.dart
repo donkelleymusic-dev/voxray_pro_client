@@ -161,4 +161,33 @@ class VoxrayHelpTopics {
     onTapAction: 'Tap the expand/collapse icon to reveal the individual drum stems. Moving this master fader mathematically scales all sub-drums simultaneously.',
     relatedFeatures: 'The VU meter sums the energy of the entire drum kit to help you monitor headroom.',
   );
+
+
+  static const mixerPluginRack = HelpTopic(
+    title: 'DSP Plugin Rack',
+    whatItIs: 'Real-time audio processing slots. \n• Compressor: Tames dynamics with auto-makeup gain.\n• EQ: Low-pass filter to sweep out harsh highs.\n• Overdrive: Harmonic saturation and soft-clipping.\n• Reverb: Freeverb space generator.',
+    onTapAction: 'Tap the dropdown to select an effect. Tap the gear icon to adjust its parameters in real-time.',
+    relatedFeatures: 'These DSP effects are mathematically applied during playback and burned into Master Mix exports.',
+  );
+
+  static const mixerMuteSolo = HelpTopic(
+    title: 'Mute & Solo Controls',
+    whatItIs: 'Isolates or silences the specific track during playback.',
+    onTapAction: 'Tap the Speaker to Mute. Tap the Headphones to Solo (you can solo multiple tracks simultaneously).',
+    relatedFeatures: 'Muted tracks are completely excluded from the final master mix audio export.',
+  );
+
+  static const mixerFaderPan = HelpTopic(
+    title: 'Volume & Pan Faders',
+    whatItIs: 'Controls the audio level and stereo field placement (Left/Right) of the track.',
+    onTapAction: 'Drag to adjust. Double-tap the slider to instantly snap it back to the default/center value.',
+    relatedFeatures: 'These levels directly affect the master VU meter and the final exported mix.',
+  );
+
+  static const drumBusVca = HelpTopic(
+    title: 'Drum Bus (VCA Master)',
+    whatItIs: 'A master control group for individual drum components (Kick, Snare, Hats, etc.).',
+    onTapAction: 'Tap the expand icon to reveal individual drum stems. Moving the master fader mathematically scales all sub-drums simultaneously.',
+    relatedFeatures: 'The master VU meter sums the acoustic energy of the entire kit to help you monitor headroom.',
+  );
 }
