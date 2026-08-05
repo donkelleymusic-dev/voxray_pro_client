@@ -141,26 +141,11 @@ class VoxrayHelpTopics {
     relatedFeatures: 'DSP effects are rendered into the audio when you export the master mix.',
   );
 
-  static const mixerMuteSolo = HelpTopic(
-    title: 'Mute & Solo Controls',
-    whatItIs: 'Isolates or silences the specific track during playback.',
-    onTapAction: 'Tap the Speaker to Mute. Tap the Headphones to Solo (you can solo multiple tracks).',
-    relatedFeatures: 'Muted tracks are excluded from the final master mix export.',
-  );
+  
 
-  static const mixerFaderPan = HelpTopic(
-    title: 'Volume & Pan Faders',
-    whatItIs: 'Controls the audio level and stereo field placement (Left/Right) of the track.',
-    onTapAction: 'Drag to adjust. Double-tap the slider to instantly snap back to the default/center value.',
-    relatedFeatures: 'These levels directly affect the master VU meter and the final exported mix.',
-  );
 
-  static const drumBusVca = HelpTopic(
-    title: 'Drum Bus (VCA Master)',
-    whatItIs: 'A master control group for individual drum components (Kick, Snare, Hats, etc.).',
-    onTapAction: 'Tap the expand/collapse icon to reveal the individual drum stems. Moving this master fader mathematically scales all sub-drums simultaneously.',
-    relatedFeatures: 'The VU meter sums the energy of the entire drum kit to help you monitor headroom.',
-  );
+
+
 
 
   static const mixerPluginRack = HelpTopic(
