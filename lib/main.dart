@@ -4632,11 +4632,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       
       const PopupMenuDivider(),
       
-      const PopupMenuItem(
+      /*const PopupMenuItem(
           value: 'run_nuclear_piano',
           child: ListTile(
               leading: Icon(Icons.piano, color: Colors.purpleAccent),
-              title: Text('Generate HQ Piano'))),
+              title: Text('Generate HQ Piano'))),*/
       const PopupMenuItem(
           value: 'synth_settings',
           child: ListTile(
