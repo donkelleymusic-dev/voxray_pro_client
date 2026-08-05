@@ -70,6 +70,10 @@ import 'ui/drum_submixer_group.dart';
 import 'ui/bouncing_eq_indicator.dart';
 import 'ui/performance_scorecard.dart';
 import 'ui/macro_minimap.dart';
+
+import 'ui/help_tooltip_wrapper.dart';
+import 'ui/voxray_help_topics.dart';
+
 //import 'screens/god_mode_dashboard.dart'
 
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -5940,3 +5944,20 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     ); // <--- Closes the Stack itself
   } // <--- Closes the build() method
 } // <--- Closes the VoxrayDAWState class
+
+
+/*
+How to Use help_mode in Your UI (main.dart / Widgets)
+
+Once placed, wrap any UI component with VoxrayHelpTarget and pass the corresponding topic key from Step 2:
+Dart
+
+VoxrayHelpTarget(
+  topic: VoxrayHelpTopics.dspWallet,
+  isHelpModeActive: isHelpModeActive,
+  child: IconButton(
+    icon: Icon(Icons.memory, color: Colors.greenAccent[400]),
+    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WalletScreen())),
+  ),
+)
+*/
