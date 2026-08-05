@@ -1180,6 +1180,8 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // get control over 60fps updates while doing file uploading:
   bool isUploading = false;
 
+  bool isHelpModeActive = false;
+
   // GLOBAL BUSY STATE GETTER
   bool get isApiBusy => isLoading || isPreviewing || isExporting || isSynthRendering || isXrayProcessing || isUploading;
 
@@ -4591,6 +4593,13 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     
     return [
       PopupMenuItem(
+        value: 'toggle_help_mode',
+        child: ListTile(
+          leading: Icon(Icons.help_outline, color: isHelpModeActive ? Colors.amberAccent : Colors.white54),
+          title: Text(isHelpModeActive ? 'Disable Inspection Mode' : 'Enable Inspection Mode (Help Overlay)'),
+        ),
+      ),
+      PopupMenuItem(
           value: 'new_project',
           enabled: !isApiBusy,
           child: const ListTile(
@@ -4762,6 +4771,13 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
   void _handleMenuSelection(String value) {
     switch (value) {
+      case 'toggle_help_mode':
+        setState(() => isHelpModeActive = !isHelpModeActive);
+        _showSaveConfirmation(
+          isHelpModeActive ? 'Inspection Mode Active. Tap any highlighted element to learn its function.' : 'Inspection Mode Disabled.',
+          isPreview: true,
+        );
+        break;
       case 'new_project':     _newProject(); break;
       case 'upload':          loadFileAndAnalyze(context); break;
       case 'import_stem':     importIndividualStem(context); break;
