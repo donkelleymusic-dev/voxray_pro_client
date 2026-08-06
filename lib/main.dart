@@ -1776,7 +1776,7 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   // ── MIDI range helpers ────────────────────────────────────────────────────
   int get minMidi {
     switch (activeEditableStem) {
-      case 'bass': case 'contrabass': case 'tuba': return 24;
+      case 'bass': case 'contrabass': case 'tuba': return 21; // 🟢 Dropped to A0 (MIDI 21)
       case 'violin': case 'flute': return 55;
       case 'piano': case 'original': return 21;
       default: return 36;
