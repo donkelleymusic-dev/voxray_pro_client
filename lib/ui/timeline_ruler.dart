@@ -44,6 +44,8 @@ class TimelineRulerWidget extends StatelessWidget {
               painter: RulerGridPainter(
                 zoomX: dawState.zoomX,
                 duration: dawState.songDuration,
+                barLines: dawState.barLines, // 🟢 Pass state down to main
+                tempoMap: dawState.tempoMap, // 🟢 Pass state down to main
               ),
             ),
 
@@ -72,7 +74,16 @@ class TimelineRulerWidget extends StatelessWidget {
 class RulerGridPainter extends CustomPainter {
   final double zoomX;
   final double duration;
-  RulerGridPainter({required this.zoomX, required this.duration});
+  
+  final List<double> barLines;
+  final List<Map<String, dynamic>> tempoMap;
+  
+  RulerGridPainter({
+    required this.zoomX, 
+    required this.duration,
+    this.barLines = const [],
+    this.tempoMap = const [],
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -112,9 +123,52 @@ class RulerGridPainter extends CustomPainter {
 
       t += tickInterval;
     }
+    // =========================================================================
+    // 🟢 OVERLAY MUSICAL BAR & TEMPO MARKERS ON RULER
+    // =========================================================================
+    if (barLines.isNotEmpty) {
+      final markerPaint = Paint()
+        ..color = Colors.cyanAccent
+        ..strokeWidth = 1.5;
+
+      for (int i = 0; i < barLines.length; i++) {
+        double barTime = barLines[i];
+        double x = barTime * zoomX;
+
+        // Ensure we only draw text inside the actual track width boundaries
+        if (x >= 0 && x <= size.width) {
+          // Draw vertical notch on ruler
+          canvas.drawLine(Offset(x, size.height - 12), Offset(x, size.height), markerPaint);
+
+          // Find matching tempo map
+          var matchingMap = tempoMap.firstWhere(
+            (m) => ((m['time'] as num?)?.toDouble() ?? -1.0) == barTime,
+            orElse: () => <String, dynamic>{},
+          );
+
+          int timeSig = (matchingMap['time_sig'] as num?)?.toInt() ?? 4;
+          double bpm = (matchingMap['bpm'] as num?)?.toDouble() ?? 120.0;
+
+          // Draw Bar Number & Meter Label
+          String label = 'B${i + 1} [$timeSig/8] ${bpm.toStringAsFixed(1)}';
+          TextPainter tp = TextPainter(
+            text: TextSpan(
+              text: label, 
+              style: const TextStyle(color: Colors.cyanAccent, fontSize: 9, fontWeight: FontWeight.bold)
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout();
+          tp.paint(canvas, Offset(x + 3, size.height - 22));
+        }
+      }
+    }
   }
 
   @override
   bool shouldRepaint(covariant RulerGridPainter oldDelegate) =>
-      oldDelegate.zoomX != zoomX || oldDelegate.duration != duration;
+    oldDelegate.zoomX != zoomX || 
+    oldDelegate.duration != duration || 
+    oldDelegate.barLines != barLines || // 🟢 Trigger redraw on new math
+    oldDelegate.tempoMap != tempoMap;
+  ;
 }
