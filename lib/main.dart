@@ -2650,7 +2650,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   // =========================================================================
 
   Future<void> runRhythmAnalysis() async {
-    if (currentTaskId == null) {
+    if (currentTaskId == null && originalAudioBytes == null) {
       _showSaveConfirmation('Load or process a track first.');
       return;
     }
@@ -2663,26 +2663,63 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
 
     try {
       String anchor = (activeEditableStem == 'bass') ? 'bass' : 'drums';
+      Uint8List? anchorBytes;
+      String actualAnchorUsed = anchor;
+
+      // ── 1. SMART ANCHOR AUDIO RESOLUTION ──
+      // First, try exact anchor key ('drums' or 'bass')
+      if (cachedStemBytes.containsKey(anchor)) {
+        anchorBytes = cachedStemBytes[anchor];
+      } else if (cachedStemPaths.containsKey(anchor)) {
+        anchorBytes = await File(cachedStemPaths[anchor]!).readAsBytes();
+      }
+
+      // If 'drums' was requested but missing (e.g., split into sub-stems or loaded via project)
+      if (anchorBytes == null && anchor == 'drums') {
+        // Try the currently selected track in the DAW
+        if (cachedStemBytes.containsKey(activeEditableStem)) {
+          anchorBytes = cachedStemBytes[activeEditableStem];
+          actualAnchorUsed = activeEditableStem;
+        } else if (cachedStemPaths.containsKey(activeEditableStem)) {
+          anchorBytes = await File(cachedStemPaths[activeEditableStem]!).readAsBytes();
+          actualAnchorUsed = activeEditableStem;
+        } 
+        // Try drum sub-stems (kick, snare, etc.)
+        else {
+          for (String sub in ['kick', 'snare', 'hihat', 'toms', 'cymbals']) {
+            if (cachedStemBytes.containsKey(sub)) {
+              anchorBytes = cachedStemBytes[sub];
+              actualAnchorUsed = sub;
+              break;
+            } else if (cachedStemPaths.containsKey(sub)) {
+              anchorBytes = await File(cachedStemPaths[sub]!).readAsBytes();
+              actualAnchorUsed = sub;
+              break;
+            }
+          }
+        }
+      }
+
+      // Final Fallback: Use the original full mix if no isolated stem buffer was found
+      if (anchorBytes == null && originalAudioBytes != null) {
+        anchorBytes = originalAudioBytes;
+        actualAnchorUsed = 'original';
+      }
+
+      if (anchorBytes == null) {
+        _showSaveConfirmation('Error: No audio buffer found to analyze.');
+        return;
+      }
 
       var uri = Uri.parse('$apiBase/analyze-rhythm');
       var request = http.MultipartRequest('POST', uri)
-        ..fields['anchor_stem'] = anchor
+        ..fields['anchor_stem'] = actualAnchorUsed
         ..fields['user_overrides_json'] = jsonEncode(userRhythmOverrides);
 
-      // 1. Fetch & Attach the Anchor Stem (Drums or Bass)
-      Uint8List? anchorBytes = cachedStemBytes[anchor];
-      if (anchorBytes == null && cachedStemPaths.containsKey(anchor)) {
-        anchorBytes = await File(cachedStemPaths[anchor]!).readAsBytes();
-      }
-      
-      if (anchorBytes == null) {
-        _showSaveConfirmation('Error: Audio missing for $anchor. Generate it first.');
-        return;
-      }
-      request.files.add(http.MultipartFile.fromBytes('anchor_file', anchorBytes, filename: '${anchor}.wav'));
+      request.files.add(http.MultipartFile.fromBytes('anchor_file', anchorBytes, filename: '$actualAnchorUsed.wav'));
 
-      // 2. Fetch & Attach the Bass Stem (If it exists, to support the math)
-      if (anchor != 'bass') {
+      // ── 2. ATTACH BASS STEM IF AVAILABLE ──
+      if (actualAnchorUsed != 'bass') {
          Uint8List? bassBytes = cachedStemBytes['bass'];
          if (bassBytes == null && cachedStemPaths.containsKey('bass')) {
            bassBytes = await File(cachedStemPaths['bass']!).readAsBytes();
@@ -2702,7 +2739,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             barLines = List<double>.from((data['bar_lines'] as List).map((x) => (x as num).toDouble()));
             tempoMap = List<Map<String, dynamic>>.from((data['tempo_map'] as List).cast<Map<String, dynamic>>());
           });
-          _showSaveConfirmation('Tempo Map Ready! Found ${barLines.length} bars (${data['recurrences_found'] ?? 0} pattern recurrences).');
+          _showSaveConfirmation('Tempo Map Ready! Using [$actualAnchorUsed]. Found ${barLines.length} bars (${data['recurrences_found'] ?? 0} recurrences).');
         } else {
           _showSaveConfirmation('Rhythm Analysis Failed: ${data['message']}');
         }
