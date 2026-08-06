@@ -532,6 +532,11 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
         }
         return; // Stop processing normal login flow
       }
+
+      // 🟢 Ignore background token refreshes if the DAW is already running!
+      if (event == AuthChangeEvent.tokenRefreshed && _isLoggedIn == true) {
+        return; 
+      }
       
       if (session == null) {
         if (mounted) {
