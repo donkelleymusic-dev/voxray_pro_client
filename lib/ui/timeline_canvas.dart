@@ -422,13 +422,21 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
               Container(
                 width: 30, height: totalHeight,
                 decoration: const BoxDecoration(border: Border(right: BorderSide(color: Colors.black, width: 2))),
-                child: CustomPaint(
-                  painter: PianoKeysPainter(
-                    minMidi: minMidi, 
-                    maxMidi: maxMidi, 
-                    zoomY: widget.dawState.zoomY,
-                    isDrumsMode: isDrums,
-                  )
+                // 🟢 THE FIX: Wrap the CustomPaint in a ValueListenableBuilder tied to the 60fps playhead ticker
+                child: ValueListenableBuilder<double>(
+                  valueListenable: exactPlayheadTime,
+                  builder: (context, timeValue, child) {
+                    return CustomPaint(
+                      painter: PianoKeysPainter(
+                        minMidi: minMidi, 
+                        maxMidi: maxMidi, 
+                        zoomY: widget.dawState.zoomY,
+                        isDrumsMode: isDrums,
+                        playheadTime: timeValue, // Pass the live hardware time!
+                        notes: processedNotes,   // Pass the active notes!
+                      )
+                    );
+                  },
                 ),
               ),
               Expanded(
@@ -786,31 +794,23 @@ class PianoKeysPainter extends CustomPainter {
   final int maxMidi; 
   final double zoomY;
   final bool isDrumsMode;
+  final double playheadTime;
+  final List<Map<String, dynamic>> notes;
 
   // 1. Define the Map here for clean lookups and easy editing
   static const Map<int, String> drumMap = {
-    36: 'KICK',
-    38: 'SNARE',
-    41: 'TOM',
-    42: 'CH HAT',
-    43: 'TOM',
-    45: 'TOM',
-    46: 'OH HAT',
-    47: 'TOM',
-    49: 'CRASH',
-    50: 'TOM',
-    51: 'RIDE',
-    53: 'RIDE',
-    55: 'CRASH',
-    57: 'CRASH',
-    59: 'RIDE',
+    36: 'KICK', 38: 'SNARE', 41: 'TOM', 42: 'CH HAT', 43: 'TOM',
+    45: 'TOM', 46: 'OH HAT', 47: 'TOM', 49: 'CRASH', 50: 'TOM',
+    51: 'RIDE', 53: 'RIDE', 55: 'CRASH', 57: 'CRASH', 59: 'RIDE',
   };
   
   PianoKeysPainter({
     required this.minMidi, 
     required this.maxMidi, 
     required this.zoomY, 
-    this.isDrumsMode = false
+    this.isDrumsMode = false,
+    required this.playheadTime,
+    required this.notes,
   });
 
   bool isBlackKey(int midi) { 
@@ -830,16 +830,67 @@ class PianoKeysPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 🟢 Pre-calculate active notes intersecting the playhead
+    Map<int, Color> activeKeyColors = {};
+    
+    if (!isDrumsMode) {
+      for (var note in notes) {
+        if (note['isDeleted'] == true || (note['actual_midi'] ?? 60.0).round() == 0) continue;
+        
+        double start = note['start_time'];
+        double end = start + ((note['end_time'] - start) * (note['time_ratio'] ?? 1.0));
+        
+        // Check if playhead is currently passing over this note
+        if (playheadTime >= start && playheadTime <= end) {
+          int displayMidi = note['display_midi'];
+          
+          double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
+          int semitoneShift = note['semitone_shift'] ?? 0;
+          double currentShiftCents = (note['cents_shift'] ?? 0).toDouble();
+          
+          double baseFraction = note['xray_cents'] != null ? (note['xray_cents'] / 100.0) : (actualMidi - actualMidi.round());
+          double exactCurrentMidi = actualMidi.round() + baseFraction + semitoneShift + (currentShiftCents / 100.0);
+          int deviationFromDisplay = ((exactCurrentMidi - displayMidi) * 100).round();
+          
+          Color noteColor = deviationFromDisplay.abs() <= 10 
+              ? Colors.lightBlueAccent 
+              : deviationFromDisplay.abs() <= 25 
+                  ? Colors.amberAccent 
+                  : Colors.redAccent;
+                  
+          // If multiple polyphonic notes share a key, keep the worst offender (Red > Amber > Blue)
+          if (!activeKeyColors.containsKey(displayMidi)) {
+            activeKeyColors[displayMidi] = noteColor;
+          } else {
+            if (noteColor == Colors.redAccent) {
+              activeKeyColors[displayMidi] = Colors.redAccent;
+            } else if (noteColor == Colors.amberAccent && activeKeyColors[displayMidi] == Colors.lightBlueAccent) {
+              activeKeyColors[displayMidi] = Colors.amberAccent;
+            }
+          }
+        }
+      }
+    }
+
     for (int i = maxMidi; i >= minMidi; i--) {
       double topY = (maxMidi - i) * zoomY;
       
-      // Drum mode uses alternating lane colors instead of black/white keys
-      Paint keyPaint = Paint()..color = isDrumsMode 
-          ? (i % 2 == 0 ? Colors.grey[850]! : Colors.grey[900]!) 
-          : (isBlackKey(i) ? Colors.black87 : Colors.white);
-          
+      Color keyColor;
+      if (isDrumsMode) {
+        keyColor = (i % 2 == 0 ? Colors.grey[850]! : Colors.grey[900]!);
+      } else {
+        // 🟢 Light up the key if it matches an active note!
+        if (activeKeyColors.containsKey(i)) {
+          keyColor = activeKeyColors[i]!; 
+        } else {
+          keyColor = isBlackKey(i) ? Colors.black87 : Colors.white;
+        }
+      }
+      
+      Paint keyPaint = Paint()..color = keyColor;
       canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), keyPaint);
       
+      // Draw outlines between white keys
       if (!isBlackKey(i) && !isDrumsMode) {
         canvas.drawLine(
           Offset(0, topY + zoomY), 
@@ -850,15 +901,18 @@ class PianoKeysPainter extends CustomPainter {
       
       String label = getNoteName(i);
       
-      // 2. Only attempt to draw text if the label isn't blank
       if (label.isNotEmpty) {
         double dynamicFontSize = (zoomY * 0.75).clamp(5.0, 10.0);
         if (zoomY >= 5.0) {
+          // Keep text readable: Black on active/white keys, White on unlit black keys
+          bool isLit = activeKeyColors.containsKey(i);
+          Color textColor = isDrumsMode ? Colors.amberAccent : ((isBlackKey(i) && !isLit) ? Colors.white : Colors.black);
+          
           TextPainter tp = TextPainter(
             text: TextSpan(
               text: label, 
               style: TextStyle(
-                color: isDrumsMode ? Colors.amberAccent : (isBlackKey(i) ? Colors.white : Colors.black), 
+                color: textColor, 
                 fontSize: dynamicFontSize, 
                 fontWeight: FontWeight.bold
               )
@@ -873,7 +927,13 @@ class PianoKeysPainter extends CustomPainter {
   }
   
   @override 
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant PianoKeysPainter oldDelegate) {
+     return oldDelegate.playheadTime != playheadTime ||
+            oldDelegate.notes != notes ||
+            oldDelegate.zoomY != zoomY ||
+            oldDelegate.minMidi != minMidi ||
+            oldDelegate.maxMidi != maxMidi;
+  }
 }
 
 class XrayDualTakePainter extends CustomPainter {
