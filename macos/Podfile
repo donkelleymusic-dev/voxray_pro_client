@@ -1,1 +1,3 @@
 platform :osx, '10.15'
+workspace 'Runner.xcworkspace'
+project 'Runner.xcodeproj'
