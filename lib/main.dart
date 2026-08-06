@@ -2662,14 +2662,35 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     });
 
     try {
-      // Automatically select the anchor: use bass if currently editing bass, else default to drums
       String anchor = (activeEditableStem == 'bass') ? 'bass' : 'drums';
 
       var uri = Uri.parse('$apiBase/analyze-rhythm');
       var request = http.MultipartRequest('POST', uri)
-        ..fields['task_id'] = currentTaskId!
         ..fields['anchor_stem'] = anchor
         ..fields['user_overrides_json'] = jsonEncode(userRhythmOverrides);
+
+      // 1. Fetch & Attach the Anchor Stem (Drums or Bass)
+      Uint8List? anchorBytes = cachedStemBytes[anchor];
+      if (anchorBytes == null && cachedStemPaths.containsKey(anchor)) {
+        anchorBytes = await File(cachedStemPaths[anchor]!).readAsBytes();
+      }
+      
+      if (anchorBytes == null) {
+        _showSaveConfirmation('Error: Audio missing for $anchor. Generate it first.');
+        return;
+      }
+      request.files.add(http.MultipartFile.fromBytes('anchor_file', anchorBytes, filename: '${anchor}.wav'));
+
+      // 2. Fetch & Attach the Bass Stem (If it exists, to support the math)
+      if (anchor != 'bass') {
+         Uint8List? bassBytes = cachedStemBytes['bass'];
+         if (bassBytes == null && cachedStemPaths.containsKey('bass')) {
+           bassBytes = await File(cachedStemPaths['bass']!).readAsBytes();
+         }
+         if (bassBytes != null) {
+           request.files.add(http.MultipartFile.fromBytes('bass_file', bassBytes, filename: 'bass.wav'));
+         }
+      }
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
