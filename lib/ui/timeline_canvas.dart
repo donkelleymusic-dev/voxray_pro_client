@@ -355,7 +355,7 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
   int get minMidi {
     switch (widget.dawState.activeEditableStem) {
       case 'drums': return 35; // GM Drum Map starts around here
-      case 'bass': case 'contrabass': case 'tuba': return 24;
+      case 'bass': case 'contrabass': case 'tuba': return 21; // 🟢 Dropped to A0 (MIDI 21)
       case 'violin': case 'flute': return 55;
       case 'piano': case 'original': return 21;
       default: return 36;
