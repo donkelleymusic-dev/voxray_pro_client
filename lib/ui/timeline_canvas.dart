@@ -686,8 +686,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                                 isDrumsMode: isDrums,
                                 draggingNoteIndex: draggingNoteIndex, 
                                 initialSemitoneShift: initialSemitoneShift,
-                                // ── NEW: Pass the overlay state down! ──
                                 isDualModeActive: widget.dawState.isDualContourOverlayActive,
+                                barLines: widget.dawState.barLines, // 🟢 Passed from main
+                                tempoMap: widget.dawState.tempoMap, // 🟢 Passed from main
                               ),
                             ),
                           ),
@@ -1244,7 +1245,11 @@ class AdvancedPianoRollPainter extends CustomPainter {
   // 🟢 PRIORITY 3 ADDITIONS
   final List<Map<String, double>> mutedRegions; 
   final double? selectionStartX;                
-  final double? selectionCurrentX;              
+  final double? selectionCurrentX;
+
+  // 🟢 Rhythm & Grid Data
+  final List<double> barLines;
+  final List<Map<String, dynamic>> tempoMap;
 
   AdvancedPianoRollPainter({
     required this.notes, 
@@ -1259,10 +1264,11 @@ class AdvancedPianoRollPainter extends CustomPainter {
     this.draggingNoteIndex, 
     this.initialSemitoneShift = 0,
     this.isDualModeActive = false,
-    // 🟢 INITIALIZING THE NEW PROPS
     this.mutedRegions = const [],
     this.selectionStartX,
     this.selectionCurrentX,
+    this.barLines = const [], 
+    this.tempoMap = const [],
   });
 
   String getNoteName(int midi) { const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']; return '${noteNames[midi % 12]}${(midi ~/ 12) - 1}'; }
@@ -1274,6 +1280,27 @@ class AdvancedPianoRollPainter extends CustomPainter {
       double topY = (maxMidi - i) * zoomY;
       if (isBlackKey(i) && !isDrumsMode) canvas.drawRect(Rect.fromLTWH(0, topY, size.width, zoomY), Paint()..color = Colors.white.withOpacity(0.02));
       canvas.drawLine(Offset(0, topY), Offset(size.width, topY), Paint()..color = Colors.white.withOpacity(0.05));
+    }
+
+    // =========================================================================
+    // LAYER 0.5: FORENSIC BAR LINES (NEW ADAPTIVE GRID)
+    // =========================================================================
+    if (barLines.isNotEmpty) {
+      final barLinePaint = Paint()
+        ..color = Colors.cyanAccent.withOpacity(0.25)
+        ..strokeWidth = 1.0;
+      final downbeatGlow = Paint()
+        ..color = Colors.cyanAccent.withOpacity(0.08)
+        ..strokeWidth = 4.0;
+
+      for (double barTime in barLines) {
+        double x = barTime * zoomX;
+        // Cull lines outside viewport for performance
+        if (x >= currentScrollX - 50 && x <= currentScrollX + size.width + 50) {
+          canvas.drawLine(Offset(x, 0), Offset(x, size.height), downbeatGlow);
+          canvas.drawLine(Offset(x, 0), Offset(x, size.height), barLinePaint);
+        }
+      }
     }
 
     // =========================================================================
