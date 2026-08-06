@@ -343,6 +343,12 @@ mixin DawAudioController on VoxrayDAWStateBase {
     } catch (e) {
       logToSupabase('Audio Layer Processing Failure [Track: $stemName]: $e', severity: 'ERROR');
       setState(() => activePlaybackSources.remove(stemName));
+      
+      // 🟢 Tell the user the audio is actually gone!
+      showSaveConfirmation(
+        'Warning: Audio for $stemName could not be located on disk or downloaded. '
+        'You may need to re-generate this stem.'
+      );
     } finally {
       setState(() {
         stemsCurrentlyFetching.remove(stemName);
