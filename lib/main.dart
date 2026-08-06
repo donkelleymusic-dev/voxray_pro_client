@@ -1179,6 +1179,12 @@ abstract class VoxrayDAWStateBase extends State<VoxrayDAW> with WidgetsBindingOb
   Map<String, String> baselinePitchStates = {};
   String activeEditableStem = '';
 
+  // ── RHYTHM & TEMPO MAP STATE ──────────────────────────────────────────────
+  List<double> barLines = [];
+  List<Map<String, dynamic>> tempoMap = [];
+  List<Map<String, dynamic>> userRhythmOverrides = [];
+  bool isAnalyzingRhythm = false;
+
   // Declare the AI state variables here if they aren't already:
   double aiDetectionScore = 0.0;
   bool isAiDetected = false;
@@ -2640,6 +2646,64 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
   }
 
   // =========================================================================
+  // FORENSIC RHYTHM & TEMPO MAP
+  // =========================================================================
+
+  Future<void> runRhythmAnalysis() async {
+    if (currentTaskId == null) {
+      _showSaveConfirmation('Load or process a track first.');
+      return;
+    }
+
+    setState(() {
+      isAnalyzingRhythm = true;
+      isLoading = true;
+      processingMessage = "Analyzing PLP tempo, bar lines, and pattern recurrences...";
+    });
+
+    try {
+      // Automatically select the anchor: use bass if currently editing bass, else default to drums
+      String anchor = (activeEditableStem == 'bass') ? 'bass' : 'drums';
+
+      var uri = Uri.parse('$apiBase/analyze-rhythm');
+      var request = http.MultipartRequest('POST', uri)
+        ..fields['task_id'] = currentTaskId!
+        ..fields['anchor_stem'] = anchor
+        ..fields['user_overrides_json'] = jsonEncode(userRhythmOverrides);
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'success') {
+          setState(() {
+            barLines = List<double>.from((data['bar_lines'] as List).map((x) => (x as num).toDouble()));
+            tempoMap = List<Map<String, dynamic>>.from((data['tempo_map'] as List).cast<Map<String, dynamic>>());
+          });
+          _showSaveConfirmation('Tempo Map Ready! Found ${barLines.length} bars (${data['recurrences_found'] ?? 0} pattern recurrences).');
+        } else {
+          _showSaveConfirmation('Rhythm Analysis Failed: ${data['message']}');
+        }
+      } else {
+        _showSaveConfirmation('Server error: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint("Rhythm Analysis Error: $e");
+      _showSaveConfirmation('Rhythm Analysis Error: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isAnalyzingRhythm = false;
+          isLoading = false;
+          processingMessage = '';
+        });
+      }
+    }
+  }
+  
+
+  // =========================================================================
   // TOGGLE PLAYBACK SOURCE
   // =========================================================================
 
@@ -3060,6 +3124,11 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       isXrayProcessing       = false;
       isAnalyzingAiVocal     = false;
       aiResult               = null;
+
+      // Clear Rhythm State
+      barLines.clear();
+      tempoMap.clear();
+      userRhythmOverrides.clear();
       
       currentTaskId          = null;
       currentJobId           = null;
@@ -4705,6 +4774,12 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
               leading: Icon(Icons.palette, color: Colors.lightBlueAccent),
               title: Text('Pitch Color Key'))),
       PopupMenuItem(
+          value: 'analyze_rhythm',
+          enabled: !isApiBusy,
+          child: const ListTile(
+              leading: Icon(Icons.grid_4x4, color: Colors.cyanAccent),
+              title: Text('Analyze Tempo/Grid (Experimental)'))),
+      PopupMenuItem(
           value: 'show_dossier',
           enabled: !isApiBusy,
           child: const ListTile(
@@ -4809,6 +4884,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'synth_settings':  _showSynthSettingsDialog(); break;
       case 'show_scorecard':    _showScorecard(); break;
       case 'show_color_key':  _showPitchColorKeyDialog(); break;
+      case 'analyze_rhythm':  runRhythmAnalysis(); break;
       case 'show_dossier':    _showDossier(); break;
       case 'downloads':       _showAdvancedDownloadsDialog(); break;
       case 'live_mode':       setState(() => isLiveModeActive = !isLiveModeActive); break;
