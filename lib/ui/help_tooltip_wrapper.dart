@@ -35,7 +35,13 @@ class VoxrayHelpTarget extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20.0),
+        // 🟢 THE FIX: Add the OS bottom padding (nav bar height) to the base 20px padding
+        padding: EdgeInsets.only(
+          left: 20.0,
+          right: 20.0,
+          top: 20.0,
+          bottom: 20.0 + MediaQuery.of(ctx).padding.bottom, 
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
