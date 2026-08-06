@@ -53,6 +53,23 @@ class _LiveScrollingCanvasState extends State<LiveScrollingCanvas> {
   Widget build(BuildContext context) {
     double totalHeight = (maxMidi - minMidi + 1) * zoomY;
 
+    // 🟢 EXTRACT LIVE PITCH: Get the exact pitch they are singing *right now*
+    double? activePitch = widget.pitchHistory.isNotEmpty ? widget.pitchHistory.last : null;
+
+    // 🟢 FORMAT FOR PAINTER: Wrap the live pitch in a temporary "DAW Note" format
+    List<Map<String, dynamic>> liveNotes = [];
+    if (activePitch != null) {
+      liveNotes.add({
+        'isDeleted': false,
+        'start_time': 0.0,
+        'end_time': 1.0,
+        'actual_midi': activePitch,
+        'display_midi': activePitch.round(),
+        'semitone_shift': 0,
+        'cents_shift': 0,
+      });
+    }
+
     return SingleChildScrollView(
       controller: _verticalScrollController,
       scrollDirection: Axis.vertical,
@@ -72,6 +89,9 @@ class _LiveScrollingCanvasState extends State<LiveScrollingCanvas> {
                 minMidi: minMidi,
                 maxMidi: maxMidi,
                 zoomY: zoomY,
+                // 🟢 FEED THE LIVE PITCH DATA TO THE KEYS!
+                playheadTime: 0.5, // Pin the virtual playhead over our temporary note
+                notes: liveNotes,
               ),
             ),
           ),
