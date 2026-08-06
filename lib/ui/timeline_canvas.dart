@@ -1369,7 +1369,10 @@ class AdvancedPianoRollPainter extends CustomPainter {
 
       if (isDrumHit) {
         Color drumColor = Colors.deepOrangeAccent.withOpacity((0.3 + (amplitude * 0.7)).clamp(0.0, 1.0));
-        double blobRadius = zoomY * 0.45; 
+        
+        // 🟢 THE FIX: Scale the physical size of the drum hit by its MIDI velocity!
+        // 0.15 is the minimum size for ghost notes, scaling up to 0.55 for absolute smash hits.
+        double blobRadius = zoomY * (0.15 + (amplitude * 0.40)); 
         
         canvas.drawCircle(
           Offset(startX + blobRadius, visualY + (zoomY / 2)),
