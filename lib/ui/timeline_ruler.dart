@@ -166,9 +166,8 @@ class RulerGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant RulerGridPainter oldDelegate) =>
-    oldDelegate.zoomX != zoomX || 
-    oldDelegate.duration != duration || 
-    oldDelegate.barLines != barLines || // 🟢 Trigger redraw on new math
-    oldDelegate.tempoMap != tempoMap;
-  ;
+      oldDelegate.zoomX != zoomX || 
+      oldDelegate.duration != duration ||
+      oldDelegate.barLines != barLines || // 🟢 Trigger redraw on new math
+      oldDelegate.tempoMap != tempoMap;
 }
