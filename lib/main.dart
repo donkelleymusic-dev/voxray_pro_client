@@ -3391,6 +3391,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                   onChanged: (v) { 
                                     setStripState(() { state.volume = v; }); // 🟢 Local UI redraw
                                     setState(() { hasBeenSaved = false; });
+                                    triggerAutoSave();
                                     if (key == 'master') SoLoud.instance.setGlobalVolume(v); 
                                     else refreshAllVolumes();
                                   }
@@ -3433,6 +3434,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                                   onChanged: (v) { 
                                     setStripState(() { state.pan = v; }); // 🟢 Local UI redraw
                                     setState(() { hasBeenSaved = false; });
+                                    triggerAutoSave();
                                     if (key == 'original') { if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
                                     } else if (key == 'synth') { if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
                                     } else if (stemHandles.containsKey(key)) { if (SoLoud.instance.getIsValidVoiceHandle(stemHandles[key]!)) SoLoud.instance.setPan(stemHandles[key]!, v); }
@@ -5037,6 +5039,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                             min: 0.0, max: 1.5,
                             onChanged: (v) { 
                               setState(() { state.volume = v; hasBeenSaved = false; });
+                              triggerAutoSave();
                               if (key == 'master') SoLoud.instance.setGlobalVolume(v); 
                               else refreshAllVolumes();
                             }
@@ -5084,6 +5087,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
                     value: state.pan, min: -1.0, max: 1.0,
                     onChanged: (v) { 
                       setState(() { state.pan = v; hasBeenSaved = false; });
+                      triggerAutoSave();
                       if (key == 'master') {
                         if (masterHandle != null) SoLoud.instance.setPan(masterHandle!, v);
                         if (synthHandle != null) SoLoud.instance.setPan(synthHandle!, v);
