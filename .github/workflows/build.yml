@@ -160,6 +160,7 @@ jobs:
           files: voXRay-Windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build_macos:
     name: Build macOS Desktop
     runs-on: macos-latest
@@ -175,18 +176,12 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # NEW: Destroy the corrupted Pod files and force Flutter to rebuild the macOS platform
-      - name: Regenerate macOS Configurations
+      - name: Clean Flutter and Wipe Pod Cache
         run: |
           flutter clean
-          rm -rf macos/Podfile macos/Podfile.lock macos/Pods
-          flutter create --platforms=macos .
+          rm -rf macos/Podfile.lock macos/Pods
           flutter pub get
 
-      - name: Clean Flutter and macOS Pods
-        run: |
-          flutter clean
-          rm -rf macos/Pods macos/Podfile.lock
       - name: Build macOS App
         env:
           # Force the compiler to target 10.15 Catalina
