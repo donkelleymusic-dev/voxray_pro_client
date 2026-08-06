@@ -291,7 +291,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
             throw Exception('Cannot fetch stem: no valid server Task ID or offline cache path available.');
           }
           if (!kIsWeb) {
-            final dir = await getTemporaryDirectory();
+            final dir = await getApplicationDocumentsDirectory(); // 🟢 Save to permanent storage!
             final String networkFilePath = '${dir.path}/${taskId}_$stemName.ogg';
             
             logToSupabase("Local cache missing for track [$stemName]. Streaming from remote node deployment...");
