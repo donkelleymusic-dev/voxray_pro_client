@@ -2439,7 +2439,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         'timestamp': DateTime.now().toIso8601String(),
         'task_id': currentTaskId, 'job_id': currentJobId,
         'project_name': projectName, 'original_file': originalFileName,
-        'original_mix_local_path': originalMixLocalPath, // 🟢 Save local mix path
+        'original_mix_local_path': originalMixLocalPath,
         'song_duration': songDuration,
         'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
         'target_stems_selection': targetStemsSelection.toList(),
@@ -2451,7 +2451,11 @@ mixin DawApiService on VoxrayDAWStateBase {
         'zoom_x': zoomX, 'zoom_y': zoomY,
         'markers': markers,
       };
-      await file.writeAsString(jsonEncode(data));
+
+      // 🟢 THE FIX: Push the massive JSON serialization to a background Isolate!
+      final String jsonString = await compute(jsonEncode, data);
+      await file.writeAsString(jsonString);
+      
       logToSupabase('Auto-saved to disk silently.');
     } catch (e) {
       logToSupabase('Auto-save failed silently: $e');
