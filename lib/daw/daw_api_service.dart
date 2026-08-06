@@ -1205,7 +1205,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..fields['stem_target']      = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
           ..fields['acoustic_profile']  = 'standard' 
-          ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+          ..files.add(await http.MultipartFile.fromPath('file', originalMixLocalPath, filename: 'master.wav'));
           
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -1339,7 +1339,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..fields['stem_target']      = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
           ..fields['acoustic_profile']  = 'standard' 
-          ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+          ..files.add(await http.MultipartFile.fromPath('file', originalMixLocalPath, filename: 'master.wav'));
           
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -1436,7 +1436,7 @@ mixin DawApiService on VoxrayDAWStateBase {
           ..fields['stem_target']      = lookupStem
           ..fields['instruments_json'] = jsonEncode([lookupStem])
           ..fields['acoustic_profile']  = 'standard' 
-          ..files.add(http.MultipartFile.fromBytes('file', originalAudioBytes!, filename: 'master.wav'));
+          ..files.add(await http.MultipartFile.fromPath('file', originalMixLocalPath, filename: 'master.wav'));
           
         var sessionRes = await sessionReq.send();
         if (sessionRes.statusCode == 200) {
@@ -2439,7 +2439,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         'timestamp': DateTime.now().toIso8601String(),
         'task_id': currentTaskId, 'job_id': currentJobId,
         'project_name': projectName, 'original_file': originalFileName,
-        'original_mix_local_path': originalMixLocalPath,
+        'original_mix_local_path': originalMixLocalPath, // 🟢 Save local mix path
         'song_duration': songDuration,
         'mixer_state': mixerState.map((k, v) => MapEntry(k, v.toJson())),
         'target_stems_selection': targetStemsSelection.toList(),
@@ -2452,7 +2452,8 @@ mixin DawApiService on VoxrayDAWStateBase {
         'markers': markers,
       };
 
-      // 🟢 THE FIX: Push the massive JSON serialization to a background Isolate!
+      // 🟢 Push the massive JSON serialization to a background Isolate!
+      // This stops the main thread from freezing and starving the audio engine.
       final String jsonString = await compute(jsonEncode, data);
       await file.writeAsString(jsonString);
       
@@ -2494,19 +2495,9 @@ mixin DawApiService on VoxrayDAWStateBase {
         repairedPaths[key] = '${tempDir.path}/$fileName';
       });
 
-      // 🟢 DO THE ASYNC DISK READ OUTSIDE OF SETSTATE
+      // 🟢 THE FIX: Check if the file exists, but DO NOT load the bytes into RAM!
       String mixPathToLoad = data['original_mix_local_path'] ?? '';
-      Uint8List? loadedMixBytes;
-      if (mixPathToLoad.isNotEmpty) {
-        try {
-          final mixFile = File(mixPathToLoad);
-          if (await mixFile.exists()) {
-            loadedMixBytes = await mixFile.readAsBytes();
-          }
-        } catch (e) {
-          logToSupabase('Failed to load local mix cache: $e');
-        }
-      }
+      bool localMixExists = mixPathToLoad.isNotEmpty && await File(mixPathToLoad).exists();
 
       // 🟢 NOW DO THE SYNCHRONOUS SETSTATE
       setState(() {
@@ -2519,7 +2510,9 @@ mixin DawApiService on VoxrayDAWStateBase {
         projectName        = data['project_name'] ?? 'Recovered Session';
         originalFileName   = data['original_file'] ?? 'Recovered Audio';
         originalMixLocalPath = mixPathToLoad; 
-        originalAudioBytes = loadedMixBytes; // 🟢 Apply the loaded bytes here!
+        
+        // 🟢 THE FIX: Keep RAM completely free!
+        originalAudioBytes = null; 
         
         songDuration       = data['song_duration'];
         zoomX              = data['zoom_x'] ?? 50.0;
@@ -2573,6 +2566,21 @@ mixin DawApiService on VoxrayDAWStateBase {
         cachedStemPaths.clear();
         cachedStemPaths.addAll(repairedPaths);
       }); // <--- This closes the synchronous setState!
+
+      // 🟢 THE FIX: Actually load the original mix into SoLoud directly from disk!
+      if (localMixExists && isOriginalMixAvailable) {
+        activePlaybackSources.add('original');
+        try {
+          masterSource = await SoLoud.instance.loadFile(mixPathToLoad, mode: LoadMode.disk);
+          masterHandle = SoLoud.instance.play(masterSource!, paused: true);
+          
+          final origState = getChannelState('original');
+          SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
+          SoLoud.instance.setPan(masterHandle!, origState.pan);
+        } catch (e) {
+          logToSupabase('Offline original mix load failed: $e');
+        }
+      }
 
       // 2. LOAD AUDIO AND SYNC DSP MIXER
       for (String stem in generatedStems) {
