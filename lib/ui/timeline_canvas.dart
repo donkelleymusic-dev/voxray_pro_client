@@ -422,7 +422,6 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
               Container(
                 width: 30, height: totalHeight,
                 decoration: const BoxDecoration(border: Border(right: BorderSide(color: Colors.black, width: 2))),
-                // 🟢 THE FIX: Wrap the CustomPaint in a ValueListenableBuilder tied to the 60fps playhead ticker
                 child: ValueListenableBuilder<double>(
                   valueListenable: exactPlayheadTime,
                   builder: (context, timeValue, child) {
@@ -432,8 +431,9 @@ class _TimelineCanvasWidgetState extends State<TimelineCanvasWidget> with Single
                         maxMidi: maxMidi, 
                         zoomY: widget.dawState.zoomY,
                         isDrumsMode: isDrums,
-                        playheadTime: timeValue, // Pass the live hardware time!
-                        notes: processedNotes,   // Pass the active notes!
+                        playheadTime: timeValue, 
+                        notes: processedNotes,   
+                        draggingNoteIndex: draggingNoteIndex, // 🟢 ADDED: Pass the active drag index!
                       )
                     );
                   },
@@ -796,6 +796,7 @@ class PianoKeysPainter extends CustomPainter {
   final bool isDrumsMode;
   final double playheadTime;
   final List<Map<String, dynamic>> notes;
+  final int? draggingNoteIndex; // 🟢 ADDED: Tracks the note being manipulated
 
   // 1. Define the Map here for clean lookups and easy editing
   static const Map<int, String> drumMap = {
@@ -811,6 +812,7 @@ class PianoKeysPainter extends CustomPainter {
     this.isDrumsMode = false,
     required this.playheadTime,
     required this.notes,
+    this.draggingNoteIndex, // 🟢 ADDED
   });
 
   bool isBlackKey(int midi) { 
@@ -830,18 +832,22 @@ class PianoKeysPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 🟢 Pre-calculate active notes intersecting the playhead
     Map<int, Color> activeKeyColors = {};
     
     if (!isDrumsMode) {
-      for (var note in notes) {
+      // 🟢 Changed to an indexed loop so we can match the draggingNoteIndex
+      for (int i = 0; i < notes.length; i++) {
+        var note = notes[i];
         if (note['isDeleted'] == true || (note['actual_midi'] ?? 60.0).round() == 0) continue;
         
         double start = note['start_time'];
         double end = start + ((note['end_time'] - start) * (note['time_ratio'] ?? 1.0));
         
-        // Check if playhead is currently passing over this note
-        if (playheadTime >= start && playheadTime <= end) {
+        bool isUnderPlayhead = (playheadTime >= start && playheadTime <= end);
+        bool isBeingDragged = (i == draggingNoteIndex); // 🟢 Check if user is grabbing this note
+        
+        // 🟢 Force evaluation if the playhead touches it OR the user is dragging it
+        if (isUnderPlayhead || isBeingDragged) {
           int displayMidi = note['display_midi'];
           
           double actualMidi = (note['actual_midi'] ?? 60.0).toDouble();
@@ -879,7 +885,6 @@ class PianoKeysPainter extends CustomPainter {
       if (isDrumsMode) {
         keyColor = (i % 2 == 0 ? Colors.grey[850]! : Colors.grey[900]!);
       } else {
-        // 🟢 Light up the key if it matches an active note!
         if (activeKeyColors.containsKey(i)) {
           keyColor = activeKeyColors[i]!; 
         } else {
@@ -929,6 +934,7 @@ class PianoKeysPainter extends CustomPainter {
   @override 
   bool shouldRepaint(covariant PianoKeysPainter oldDelegate) {
      return oldDelegate.playheadTime != playheadTime ||
+            oldDelegate.draggingNoteIndex != draggingNoteIndex || // 🟢 ADDED
             oldDelegate.notes != notes ||
             oldDelegate.zoomY != zoomY ||
             oldDelegate.minMidi != minMidi ||
