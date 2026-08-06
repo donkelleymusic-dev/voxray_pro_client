@@ -160,3 +160,40 @@ jobs:
           files: voXRay-Windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build_macos:
+    name: Build macOS Desktop
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS App
+        env:
+          # Force the compiler to target 10.15 Catalina
+          MACOSX_DEPLOYMENT_TARGET: 10.15 
+        run: flutter build macos --release --build-name=1.5.${{ github.run_number }} --build-number=${{ github.run_number }}
+
+      - name: Zip macOS Build
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -qq -r ../../../../../voXRay-macOS.zip *.app
+
+      - name: Upload macOS to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: always() 
+        with:
+          tag_name: build-${{ github.run_number }}
+          prerelease: true
+          files: voXRay-macOS.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
