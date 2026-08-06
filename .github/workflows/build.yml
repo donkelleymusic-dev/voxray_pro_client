@@ -174,8 +174,16 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
-        run: flutter pub get
+      - name: Clean and Fetch Dependencies
+        run: |
+          flutter clean
+          flutter pub get
+
+      - name: Rebuild CocoaPods for Catalina
+        run: |
+          cd macos
+          rm -rf Podfile.lock Pods
+          pod install --repo-update
 
       - name: Build macOS App
         env:
