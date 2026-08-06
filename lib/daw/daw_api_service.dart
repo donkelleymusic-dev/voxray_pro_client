@@ -118,6 +118,32 @@ mixin DawApiService on VoxrayDAWStateBase {
   }
 
   // =========================================================================
+  // RHYTHM & TEMPO AND TIME SIGNATURE ANALYSIS
+  // =========================================================================
+
+  static Future<Map<String, dynamic>> analyzeRhythm({
+    required String taskId,
+    String anchorStem = 'drums',
+    List<Map<String, dynamic>> userOverrides = const [],
+  }) async {
+    final uri = Uri.parse('$apiBase/analyze-rhythm');
+    final response = await http.post(
+      uri,
+      body: {
+        'task_id': taskId,
+        'anchor_stem': anchorStem,
+        'user_overrides_json': jsonEncode(userOverrides),
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to extract rhythm map: ${response.body}');
+    }
+  }
+
+  // =========================================================================
   // UPLOAD & ANALYSIS
   // =========================================================================
 
