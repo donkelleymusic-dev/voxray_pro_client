@@ -23,7 +23,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.22.0'
           cache: true
 
       - name: Install dependencies
@@ -92,7 +92,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.22.0'
           cache: true
 
       - name: Install dependencies & Generate Configs
@@ -137,7 +137,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.22.0'
           cache: true
 
       - name: Install dependencies
@@ -171,7 +171,8 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          #channel: 'stable'
+          flutter-version: '3.22.0'
           cache: true
 
       # NEW: Destroy the corrupted Pod files and force Flutter to rebuild the macOS platform
