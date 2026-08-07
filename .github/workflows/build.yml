@@ -174,26 +174,10 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          #channel: 'stable'
           flutter-version: '3.22.0'
           cache: true
 
-
-      # ---------------------------------------------------------
-      # THE TRICK: Inject old dependencies ONLY for the Mac runner
-      # ---------------------------------------------------------
-      - name: Inject Legacy macOS Overrides
-        run: |
-          echo "" >> pubspec.yaml
-          echo "dependency_overrides:" >> pubspec.yaml
-          echo "  collection: 1.18.0" >> pubspec.yaml
-          echo "  meta: 1.12.0" >> pubspec.yaml
-          echo "  win32: 5.5.4" >> pubspec.yaml
-          echo "  sentry_flutter: 8.13.0" >> pubspec.yaml
-
-          
-      # NEW: Destroy the corrupted Pod files and force Flutter to rebuild the macOS platform
-      - name: Regenerate macOS Configurations
+      - name: Generate macOS Platform Files & Overrides
         run: |
           flutter clean
           rm -rf macos/Podfile macos/Podfile.lock macos/Pods
@@ -201,17 +185,20 @@ jobs:
           
           # Force the newly generated Podfile up to Catalina (10.15)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
-          
+
+          # Inject legacy overrides into pubspec.yaml for the 3.22 environment
+          echo "" >> pubspec.yaml
+          echo "dependency_overrides:" >> pubspec.yaml
+          echo "  collection: 1.18.0" >> pubspec.yaml
+          echo "  meta: 1.12.0" >> pubspec.yaml
+          echo "  win32: 5.5.4" >> pubspec.yaml
+          echo "  sentry_flutter: 8.13.0" >> pubspec.yaml
+
           flutter pub get
 
-      - name: Clean Flutter and macOS Pods
-        run: |
-          flutter clean
-          rm -rf macos/Pods macos/Podfile.lock
       - name: Build macOS App
         env:
-          # Force the compiler to target 10.15 Catalina
-          MACOSX_DEPLOYMENT_TARGET: 10.15 
+          MACOSX_DEPLOYMENT_TARGET: 10.15
         run: flutter build macos --release --build-name=1.5.${{ github.run_number }} --build-number=${{ github.run_number }}
 
       - name: Zip macOS Build
@@ -221,7 +208,7 @@ jobs:
 
       - name: Upload macOS to GitHub Releases
         uses: softprops/action-gh-release@v2
-        if: always() 
+        if: always()
         with:
           tag_name: build-${{ github.run_number }}
           prerelease: true
