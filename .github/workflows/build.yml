@@ -203,6 +203,9 @@ jobs:
           flutter pub get
           flutter build macos --config-only
 
+          # Grant write permissions to Sentry Pod files so we can patch the const vector issue
+          chmod -R +w macos/Pods/Sentry
+
           # Patch Sentry C++ compilation issue with modern Xcode libc++ (std::vector<const T>)
           python3 -c "
           import glob
