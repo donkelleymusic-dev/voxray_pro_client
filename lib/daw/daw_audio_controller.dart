@@ -77,7 +77,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
     logToSupabase("DEBUG: MasterHandle valid? ${masterHandle != null ? SoLoud.instance.getIsValidVoiceHandle(masterHandle!) : 'NULL'}");
     setState(() => isPlaying = true);
 
-    SoundHandle? revive(SoundHandle? handle, AudioSource? source, String key) {
+    Future<SoundHandle?> revive(SoundHandle? handle, AudioSource? source, String key) async {
       if (source == null) return handle;
 
       double offset = stemTimeOffsets[key] ?? 0.0;
@@ -116,7 +116,8 @@ mixin DawAudioController on VoxrayDAWStateBase {
     synthHandle  = await revive(synthHandle,  synthSource,  'synth');
     
     for (String key in stemSources.keys) {
-      stemHandles[key] = await revive(stemHandles[key], stemSources[key], key)!;
+      // <-- Wrap the await in parentheses before the null assertion (!)
+      stemHandles[key] = (await revive(stemHandles[key], stemSources[key], key))!;
     }
 
     // 2. KILL THE ZOMBIE REVERB! 🧟‍♂️🔫
