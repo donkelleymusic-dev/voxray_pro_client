@@ -92,7 +92,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         }
         return handle;
       } else {
-        final newHandle = SoLoud.instance.play(source, paused: true);
+        final newHandle = await SoLoud.instance.play(source, paused: true);
         final state = getChannelState(key);
         SoLoud.instance.setVolume(newHandle, state.isMuted ? 0.0 : state.volume);
         SoLoud.instance.setPan(newHandle, state.pan);
@@ -377,7 +377,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
 
       if (synthHandle != null) SoLoud.instance.stop(synthHandle!);
       synthSource = await SoLoud.instance.loadMem('synth_layer', wavBytes);
-      synthHandle = SoLoud.instance.play(synthSource!, paused: true);
+      synthHandle = await SoLoud.instance.play(synthSource!, paused: true);
       SoLoud.instance.setPause(synthHandle!, true);
 
       final state = getChannelState('synth');
