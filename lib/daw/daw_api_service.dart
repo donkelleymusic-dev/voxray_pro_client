@@ -518,7 +518,7 @@ mixin DawApiService on VoxrayDAWStateBase {
       String ext = originalFileName.contains('.') ? originalFileName.split('.').last : 'wav';
       masterSource = await SoLoud.instance.loadMem('master.$ext', originalAudioBytes!);
       
-      masterHandle = SoLoud.instance.play(masterSource!, paused: true);
+      masterHandle = await SoLoud.instance.play(masterSource!, paused: true);
       SoLoud.instance.setPause(masterHandle!, true);
       final origState = getChannelState('original');
       SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
@@ -1295,7 +1295,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         }
 
         stemSources[activeStem] = await SoLoud.instance.loadMem('stem_${activeStem}_edited', previewBytes);
-        stemHandles[activeStem] = SoLoud.instance.play(stemSources[activeStem]!, paused: true);
+        stemHandles[activeStem] = await SoLoud.instance.play(stemSources[activeStem]!, paused: true);
         SoLoud.instance.setVolume(stemHandles[activeStem]!, getChannelState(activeStem).volume);
         SoLoud.instance.setPan(stemHandles[activeStem]!, getChannelState(activeStem).pan);
         seekAllPlayers(currentPosition);
@@ -1398,7 +1398,7 @@ mixin DawApiService on VoxrayDAWStateBase {
             SoLoud.instance.stop(stemHandles[stem]!);
           }
           stemSources[stem] = await SoLoud.instance.loadMem('stem_${stem}_edited', previewBytes);
-          stemHandles[stem] = SoLoud.instance.play(stemSources[stem]!, paused: true);
+          stemHandles[stem] = await SoLoud.instance.play(stemSources[stem]!, paused: true);
           SoLoud.instance.setVolume(stemHandles[stem]!, getChannelState(stem).volume);
           SoLoud.instance.setPan(stemHandles[stem]!, getChannelState(stem).pan);
           seekAllPlayers(currentPosition);
@@ -2362,7 +2362,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         String ext = originalFileName.contains('.') ? originalFileName.split('.').last : 'wav';
         masterSource = await SoLoud.instance.loadMem('master.$ext', originalAudioBytes!);
         
-        masterHandle = SoLoud.instance.play(masterSource!, paused: true);
+        masterHandle = await SoLoud.instance.play(masterSource!, paused: true);
         final origState = getChannelState('original');
         SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
         SoLoud.instance.setPan(masterHandle!, origState.pan);
@@ -2573,7 +2573,7 @@ mixin DawApiService on VoxrayDAWStateBase {
         activePlaybackSources.add('original');
         try {
           masterSource = await SoLoud.instance.loadFile(mixPathToLoad, mode: LoadMode.disk);
-          masterHandle = SoLoud.instance.play(masterSource!, paused: true);
+          masterHandle = await SoLoud.instance.play(masterSource!, paused: true);
           
           final origState = getChannelState('original');
           SoLoud.instance.setVolume(masterHandle!, origState.isMuted ? 0.0 : origState.volume);
