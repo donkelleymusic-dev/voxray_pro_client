@@ -237,27 +237,32 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
           fi
 
-          # 11. Sentry C++ patch
-          chmod -R +w macos/Pods/Sentry
-          python3 -c "
-          import glob
-          for path in glob.glob('macos/Pods/Sentry/**/*.h', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.cpp', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.hpp', recursive=True):
-              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                  content = f.read()
-              modified = False
-              if 'ThreadHandleMetadataPair' in content:
-                  new_content = content.replace('const ThreadHandleMetadataPair', 'ThreadHandleMetadataPair')
-                  if new_content != content:
-                      content = new_content
-                      modified = True
-                  new_content = content.replace('ThreadHandleMetadataPair &pair', 'const ThreadHandleMetadataPair &pair')
-                  if new_content != content:
-                      content = new_content
-                      modified = True
-              if modified:
-                  with open(path, 'w', encoding='utf-8') as f:
-                      f.write(content)
-          "
+          # 11. Sentry C++ patch (ONLY if CocoaPods downloaded it)
+          if [ -d "macos/Pods/Sentry" ]; then
+            echo "Patching Sentry in CocoaPods..."
+            chmod -R +w macos/Pods/Sentry
+            python3 -c "
+            import glob
+            for path in glob.glob('macos/Pods/Sentry/**/*.h', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.cpp', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.hpp', recursive=True):
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                modified = False
+                if 'ThreadHandleMetadataPair' in content:
+                    new_content = content.replace('const ThreadHandleMetadataPair', 'ThreadHandleMetadataPair')
+                    if new_content != content:
+                        content = new_content
+                        modified = True
+                    new_content = content.replace('ThreadHandleMetadataPair &pair', 'const ThreadHandleMetadataPair &pair')
+                    if new_content != content:
+                        content = new_content
+                        modified = True
+                if modified:
+                    with open(path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+            "
+          else
+            echo "Sentry not found in Pods. Assuming Swift Package Manager handled it."
+          fi
 
       - name: Build macOS App
         env:
