@@ -46,7 +46,7 @@ dependencies:
   # for vxp project file zipping
   archive: ^3.6.1
 
-  just_audio: ^0.10.5
+  just_audio: ^0.9.36
   record: ^5.0.0
   pitch_detector_dart: ^0.0.7
   file_saver: ^0.3.1
