@@ -186,13 +186,24 @@ jobs:
           # Force the newly generated Podfile up to Catalina (10.15)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
 
-          # Scrub any accidental SwiftPM references for the 3.22 CocoaPods environment
+          # Completely strip out SwiftPM sections and references for the 3.22 CocoaPods environment
           python3 -c "
           import re
           pbxproj_path = 'macos/Runner.xcodeproj/project.pbxproj'
           with open(pbxproj_path, 'r') as f:
               content = f.read()
-          content = re.sub(r'.*FlutterGeneratedPluginSwiftPackage.*\n', '', content)
+
+          # Remove entire XCSwiftPackageProductDependency section
+          content = re.sub(r'/\* Begin XCSwiftPackageProductDependency section \*/.*?/\* End XCSwiftPackageProductDependency section \*/', '', content, flags=re.DOTALL)
+
+          # Remove entire XCRemoteSwiftPackageReference section
+          content = re.sub(r'/\* Begin XCRemoteSwiftPackageReference section \*/.*?/\* End XCRemoteSwiftPackageReference section \*/', '', content, flags=re.DOTALL)
+
+          # Remove target-level package reference lines
+          lines = content.splitlines()
+          filtered_lines = [line for line in lines if 'packageProductDependencies' not in line and 'packageReferences' not in line]
+          content = '\n'.join(filtered_lines)
+
           with open(pbxproj_path, 'w') as f:
               f.write(content)
           "
