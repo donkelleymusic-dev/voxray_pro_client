@@ -172,9 +172,9 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:   
-          flutter-version: '3.22.3' 
+          #flutter-version: '3.22.3' 
           channel: 'stable'
-          cache: true
+          #cache: true
 
       - name: Clean Flutter and Wipe Pod Cache
         run: |
