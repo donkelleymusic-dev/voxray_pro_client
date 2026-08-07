@@ -179,6 +179,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
+          flutter config --no-enable-swift-package-manager
           flutter clean
           rm -rf macos/Podfile macos/Podfile.lock macos/Pods
           flutter create --platforms=macos .
