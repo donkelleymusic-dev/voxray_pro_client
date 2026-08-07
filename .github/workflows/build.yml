@@ -180,7 +180,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # Create overrides FIRST so the environment is patched before Flutter touches anything
+          # 1. Create overrides FIRST so the environment is patched before Flutter touches anything
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -193,29 +193,34 @@ jobs:
             meta: 1.15.0
           EOF
 
-          # Completely wipe the tracked macos folder
+          # 2. Completely wipe the tracked macos folder
           rm -rf macos
           
-          # Create the macOS project but PREVENT it from auto-running pub get yet
+          # 3. Create the macOS project safely
           flutter create --platforms=macos --no-pub .
           
-          # Force the newly generated Podfile up to Catalina (10.15)
-          sed -i '' 's/10.14/10.15/g' macos/Podfile
+          # 4. Resolve dependencies with overrides intact
+          flutter pub get
+          
+          # 5. Generate Xcode configs and the Podfile (ignoring errors if 10.14 trips pod install initially)
+          flutter build macos --config-only || true
 
-          # Ensure microphone usage description is present in Info.plist for recording
+          # 6. NOW the Podfile exists. Force it to Catalina (10.15)
+          sed -i '' 's/10.14/10.15/g' macos/Podfile
+          
+          # 7. Re-run pod install to apply the 10.15 target cleanly
+          cd macos && pod install && cd ..
+
+          # 8. Ensure microphone usage description is present in Info.plist for recording
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
           fi
 
-          # NOW we safely resolve dependencies with our overrides in place
-          flutter pub get
-          flutter build macos --config-only
-
-          # Grant write permissions to Sentry Pod files so we can patch the compilation issues
+          # 9. Grant write permissions to Sentry Pod files so we can patch the compilation issues
           chmod -R +w macos/Pods/Sentry
 
-          # Patch Sentry C++ compilation issues for modern Xcode / libc++
+          # 10. Patch Sentry C++ compilation issues for modern Xcode / libc++
           python3 -c "
           import glob
           for path in glob.glob('macos/Pods/Sentry/**/*.h', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.cpp', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.hpp', recursive=True):
