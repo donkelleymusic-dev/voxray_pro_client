@@ -178,12 +178,29 @@ jobs:
           flutter-version: '3.22.0'
           cache: true
 
+
+      # ---------------------------------------------------------
+      # THE TRICK: Inject old dependencies ONLY for the Mac runner
+      # ---------------------------------------------------------
+      - name: Inject Legacy macOS Overrides
+        run: |
+          echo "" >> pubspec.yaml
+          echo "dependency_overrides:" >> pubspec.yaml
+          echo "  collection: 1.18.0" >> pubspec.yaml
+          echo "  meta: 1.12.0" >> pubspec.yaml
+          echo "  record_linux: 1.2.0" >> pubspec.yaml
+
+          
       # NEW: Destroy the corrupted Pod files and force Flutter to rebuild the macOS platform
       - name: Regenerate macOS Configurations
         run: |
           flutter clean
           rm -rf macos/Podfile macos/Podfile.lock macos/Pods
           flutter create --platforms=macos .
+          
+          # Force the newly generated Podfile up to Catalina (10.15)
+          sed -i '' 's/10.14/10.15/g' macos/Podfile
+          
           flutter pub get
 
       - name: Clean Flutter and macOS Pods
