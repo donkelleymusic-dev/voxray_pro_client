@@ -73,7 +73,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
     }
   }
 
-  void playAllPlayers() {
+  void playAllPlayers() async {
     logToSupabase("DEBUG: MasterHandle valid? ${masterHandle != null ? SoLoud.instance.getIsValidVoiceHandle(masterHandle!) : 'NULL'}");
     setState(() => isPlaying = true);
 
@@ -112,11 +112,11 @@ mixin DawAudioController on VoxrayDAWStateBase {
     }
 
     // 1. Revive all dead handles (which creates the Zombie Reverbs)
-    masterHandle = revive(masterHandle, masterSource, 'original');
-    synthHandle  = revive(synthHandle,  synthSource,  'synth');
+    masterHandle = await revive(masterHandle, masterSource, 'original');
+    synthHandle  = await revive(synthHandle,  synthSource,  'synth');
     
     for (String key in stemSources.keys) {
-      stemHandles[key] = revive(stemHandles[key], stemSources[key], key)!;
+      stemHandles[key] = await revive(stemHandles[key], stemSources[key], key)!;
     }
 
     // 2. KILL THE ZOMBIE REVERB! 🧟‍♂️🔫
@@ -216,7 +216,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         }
   
         stemSources[stemName] = newSource;
-        stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
+        stemHandles[stemName] = await SoLoud.instance.play(stemSources[stemName]!, paused: true);
         SoLoud.instance.setPause(stemHandles[stemName]!, true);
   
         final state = getChannelState(stemName);
@@ -266,7 +266,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         }
   
         stemSources[stemName] = newSource;
-        stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
+        stemHandles[stemName] = await SoLoud.instance.play(stemSources[stemName]!, paused: true);
         SoLoud.instance.setPause(stemHandles[stemName]!, true);
   
         final state = getChannelState(stemName);
@@ -330,7 +330,7 @@ mixin DawAudioController on VoxrayDAWStateBase {
         }
   
         stemSources[stemName] = newSource;
-        stemHandles[stemName] = SoLoud.instance.play(stemSources[stemName]!, paused: true);
+        stemHandles[stemName] = await SoLoud.instance.play(stemSources[stemName]!, paused: true);
         SoLoud.instance.setPause(stemHandles[stemName]!, true);
   
         final state = getChannelState(stemName);
