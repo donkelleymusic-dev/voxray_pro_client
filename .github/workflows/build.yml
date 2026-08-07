@@ -9,7 +9,7 @@ permissions:
 jobs:
   build_android:
     runs-on: ubuntu-latest
-
+=
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -166,7 +166,7 @@ jobs:
           
   build_macos:
     name: Build macOS Desktop
-    runs-on: macos-13 # 1. DOWNGRADED from macos-latest to force an Intel (x86_64) hardware runner
+    runs-on: macos-latest # 1. BACK TO LATEST so the job actually starts!
 
     steps:
       - name: Checkout code
@@ -180,6 +180,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
+          # 2. Overrides
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -198,10 +199,10 @@ jobs:
           
           flutter build macos --config-only || true
 
-          # Force Catalina (10.15)
+          # 3. Force Catalina (10.15) Target
           sed -i '' 's/10.14/10.15/g' macos/Podfile
           
-          # 2. INJECT Podfile hook to strictly disable ARM64 compilation and force Intel (x86_64)
+          # 4. Force CocoaPods to strictly build for Intel (x86_64)
           cat << 'EOF' >> macos/Podfile
           
           post_install do |installer|
@@ -213,16 +214,21 @@ jobs:
             end
           end
           EOF
+
+          # 5. Force the Flutter Runner project to strictly build for Intel (x86_64)
+          echo "ARCHS = x86_64" >> macos/Runner/Configs/Release.xcconfig
+          echo "ONLY_ACTIVE_ARCH = YES" >> macos/Runner/Configs/Release.xcconfig
           
           cd macos && pod install && cd ..
 
+          # 6. Microphone permissions
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
           fi
 
+          # 7. Sentry C++ patch
           chmod -R +w macos/Pods/Sentry
-
           python3 -c "
           import glob
           for path in glob.glob('macos/Pods/Sentry/**/*.h', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.cpp', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.hpp', recursive=True):
@@ -241,7 +247,6 @@ jobs:
               if modified:
                   with open(path, 'w', encoding='utf-8') as f:
                       f.write(content)
-                  print(f'Patched {path}')
           "
 
       - name: Build macOS App
