@@ -163,6 +163,7 @@ jobs:
           files: voXRay-Windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
   build_macos:
     name: Build macOS Desktop
     runs-on: macos-latest
@@ -179,20 +180,19 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # Completely wipe the tracked macos folder so Flutter 3.22 builds a fresh, SwiftPM-free project
           rm -rf macos
           flutter create --platforms=macos .
           
-          # Force the newly generated Podfile up to Catalina (10.15)
+          # Force the Podfile to macOS 10.15 (Catalina)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
 
-          # Ensure microphone usage description is present in Info.plist for recording
+          # Ensure microphone usage description is present in Info.plist
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
           fi
 
-          # Create a dedicated overrides file for the legacy 3.22 environment
+          # Stabilize package tree for the 3.22 environment
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -204,10 +204,8 @@ jobs:
           flutter pub get
           flutter build macos --config-only
 
-          # Grant write permissions to Sentry Pod files so we can patch the compilation issues
+          # Grant write permissions and patch Sentry C++ vector/lambda compilation issues
           chmod -R +w macos/Pods/Sentry
-
-          # Patch Sentry C++ compilation issues for modern Xcode / libc++
           python3 -c "
           import glob
           for path in glob.glob('macos/Pods/Sentry/**/*.h', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.cpp', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.hpp', recursive=True):
@@ -247,4 +245,4 @@ jobs:
           prerelease: true
           files: voXRay-macOS.zip
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.TOKEN }}
