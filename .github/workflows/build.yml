@@ -182,7 +182,7 @@ jobs:
           flutter clean
           rm -rf macos/Podfile macos/Podfile.lock macos/Pods
           flutter create --platforms=macos .
-
+          
           # Force the newly generated Podfile up to Catalina (10.15)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
 
@@ -195,6 +195,7 @@ jobs:
           EOF
 
           flutter pub get
+          flutter build macos --config-only
 
       - name: Build macOS App
         env:
