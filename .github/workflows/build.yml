@@ -179,34 +179,32 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # Completely wipe the tracked macos folder so Flutter 3.22 builds a fresh, SwiftPM-free project
           rm -rf macos
           flutter create --platforms=macos .
           
-          # Force the newly generated Podfile up to Catalina (10.15)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
 
-          # Ensure microphone usage description is present in Info.plist for recording
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
           fi
 
-          # Create a dedicated overrides file for the legacy 3.22 environment
+          # Create a unified override file ensuring consistent API compatibility across legacy runners
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
+            sentry: 8.13.0
             sentry_flutter: 8.13.0
             record: 5.2.1
+            file_picker: 8.1.2
+            file_saver: 0.2.16
           EOF
 
           flutter pub get
           flutter build macos --config-only
 
-          # Grant write permissions to Sentry Pod files so we can patch the compilation issues
           chmod -R +w macos/Pods/Sentry
 
-          # Patch Sentry C++ compilation issues for modern Xcode / libc++
           python3 -c "
           import glob
           for path in glob.glob('macos/Pods/Sentry/**/*.h', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.cpp', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.hpp', recursive=True):
@@ -214,12 +212,10 @@ jobs:
                   content = f.read()
               modified = False
               if 'ThreadHandleMetadataPair' in content:
-                  # Fix vector of const type
                   new_content = content.replace('const ThreadHandleMetadataPair', 'ThreadHandleMetadataPair')
                   if new_content != content:
                       content = new_content
                       modified = True
-                  # Fix lambda reference matching with cbegin()
                   new_content = content.replace('ThreadHandleMetadataPair &pair', 'const ThreadHandleMetadataPair &pair')
                   if new_content != content:
                       content = new_content
@@ -227,7 +223,6 @@ jobs:
               if modified:
                   with open(path, 'w', encoding='utf-8') as f:
                       f.write(content)
-                  print(f'Patched {path}')
           "
 
       - name: Build macOS App
