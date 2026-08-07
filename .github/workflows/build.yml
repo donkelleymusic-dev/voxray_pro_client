@@ -188,7 +188,6 @@ jobs:
           echo "dependency_overrides:" >> pubspec.yaml
           echo "  collection: 1.18.0" >> pubspec.yaml
           echo "  meta: 1.12.0" >> pubspec.yaml
-          echo "  record_linux: 1.2.0" >> pubspec.yaml
 
           
       # NEW: Destroy the corrupted Pod files and force Flutter to rebuild the macOS platform
