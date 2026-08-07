@@ -180,7 +180,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 2. Overrides
+          # 1. Create overrides FIRST so the environment is patched before Flutter touches anything
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -191,43 +191,53 @@ jobs:
             meta: 1.15.0
           EOF
 
+          # 2. Completely wipe the tracked macos folder
           rm -rf macos
           
+          # 3. Create the macOS project safely
           flutter create --platforms=macos --no-pub .
           
+          # 4. Resolve dependencies with overrides intact
           flutter pub get
           
+          # 5. Generate Xcode configs and the Podfile (ignoring errors if 10.14 trips pod install initially)
           flutter build macos --config-only || true
 
-          # 3. Force Catalina (10.15) Target
+          # 6. Force Catalina (10.15) Target
           sed -i '' 's/10.14/10.15/g' macos/Podfile
           
-          # 4. Force CocoaPods to strictly build for Intel (x86_64)
-          cat << 'EOF' >> macos/Podfile
+          # 7. Inject Architecture Constraints INTO the existing post_install block
+          python3 -c "
+          with open('macos/Podfile', 'r') as f:
+              content = f.read()
           
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              target.build_configurations.each do |config|
-                config.build_settings['ARCHS'] = 'x86_64'
-                config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
-              end
+          injection = '''
+            target.build_configurations.each do |config|
+              config.build_settings['ARCHS'] = 'x86_64'
+              config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
             end
-          end
-          EOF
+          '''
+          # Inject right after Flutter's loop starts
+          content = content.replace('installer.pods_project.targets.each do |target|', 'installer.pods_project.targets.each do |target|' + injection)
+          
+          with open('macos/Podfile', 'w') as f:
+              f.write(content)
+          "
 
-          # 5. Force the Flutter Runner project to strictly build for Intel (x86_64)
+          # 8. Force the Flutter Runner project to strictly build for Intel (x86_64)
           echo "ARCHS = x86_64" >> macos/Runner/Configs/Release.xcconfig
           echo "ONLY_ACTIVE_ARCH = YES" >> macos/Runner/Configs/Release.xcconfig
           
+          # 9. Re-run pod install to apply the 10.15 target cleanly
           cd macos && pod install && cd ..
 
-          # 6. Microphone permissions
+          # 10. Microphone permissions
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
           fi
 
-          # 7. Sentry C++ patch
+          # 11. Sentry C++ patch
           chmod -R +w macos/Pods/Sentry
           python3 -c "
           import glob
