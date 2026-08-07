@@ -192,7 +192,7 @@ jobs:
           echo "  win32: 5.5.4" >> pubspec.yaml
           echo "  sentry_flutter: 8.13.0" >> pubspec.yaml
           echo "  record: 5.2.1" >> pubspec.yaml
-          echo "  collection: 1.19.1" >> pubspec.yaml
+          echo "  meta: 1.15.0" >> pubspec.yaml
 
           flutter pub get
 
