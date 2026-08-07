@@ -2658,75 +2658,45 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
     setState(() {
       isAnalyzingRhythm = true;
       isLoading = true;
-      processingMessage = "Analyzing PLP tempo, bar lines, and pattern recurrences...";
+      processingMessage = "Analyzing multi-stem rhythm grid...";
     });
 
     try {
-      String anchor = (activeEditableStem == 'bass') ? 'bass' : 'drums';
-      Uint8List? anchorBytes;
-      String actualAnchorUsed = anchor;
+      var uri = Uri.parse('$apiBase/analyze-rhythm');
+      var request = http.MultipartRequest('POST', uri)
+        ..fields['user_overrides_json'] = jsonEncode(userRhythmOverrides);
 
-      // ── 1. SMART ANCHOR AUDIO RESOLUTION ──
-      // First, try exact anchor key ('drums' or 'bass')
-      if (cachedStemBytes.containsKey(anchor)) {
-        anchorBytes = cachedStemBytes[anchor];
-      } else if (cachedStemPaths.containsKey(anchor)) {
-        anchorBytes = await File(cachedStemPaths[anchor]!).readAsBytes();
+      // Helper function to safely fetch bytes
+      Future<Uint8List?> getAudioBytes(String stemName) async {
+        if (cachedStemBytes.containsKey(stemName)) return cachedStemBytes[stemName];
+        if (cachedStemPaths.containsKey(stemName)) return await File(cachedStemPaths[stemName]!).readAsBytes();
+        return null;
       }
 
-      // If 'drums' was requested but missing (e.g., split into sub-stems or loaded via project)
-      if (anchorBytes == null && anchor == 'drums') {
-        // Try the currently selected track in the DAW
-        if (cachedStemBytes.containsKey(activeEditableStem)) {
-          anchorBytes = cachedStemBytes[activeEditableStem];
-          actualAnchorUsed = activeEditableStem;
-        } else if (cachedStemPaths.containsKey(activeEditableStem)) {
-          anchorBytes = await File(cachedStemPaths[activeEditableStem]!).readAsBytes();
-          actualAnchorUsed = activeEditableStem;
-        } 
-        // Try drum sub-stems (kick, snare, etc.)
-        else {
-          for (String sub in ['kick', 'snare', 'hihat', 'toms', 'cymbals']) {
-            if (cachedStemBytes.containsKey(sub)) {
-              anchorBytes = cachedStemBytes[sub];
-              actualAnchorUsed = sub;
-              break;
-            } else if (cachedStemPaths.containsKey(sub)) {
-              anchorBytes = await File(cachedStemPaths[sub]!).readAsBytes();
-              actualAnchorUsed = sub;
-              break;
-            }
-          }
-        }
+      // 1. Fetch Primary Drums
+      Uint8List? drumBytes = await getAudioBytes('drums');
+      if (drumBytes == null && originalAudioBytes != null) {
+        drumBytes = originalAudioBytes; // Fallback to full mix
       }
-
-      // Final Fallback: Use the original full mix if no isolated stem buffer was found
-      if (anchorBytes == null && originalAudioBytes != null) {
-        anchorBytes = originalAudioBytes;
-        actualAnchorUsed = 'original';
-      }
-
-      if (anchorBytes == null) {
-        _showSaveConfirmation('Error: No audio buffer found to analyze.');
+      if (drumBytes != null) {
+        request.files.add(http.MultipartFile.fromBytes('drums_file', drumBytes, filename: 'drums.wav'));
+      } else {
+        _showSaveConfirmation('Error: No audio found to analyze.');
         return;
       }
 
-      var uri = Uri.parse('$apiBase/analyze-rhythm');
-      var request = http.MultipartRequest('POST', uri)
-        ..fields['anchor_stem'] = actualAnchorUsed
-        ..fields['user_overrides_json'] = jsonEncode(userRhythmOverrides);
+      // 2. Fetch Primary Bass
+      Uint8List? bassBytes = await getAudioBytes('bass');
+      if (bassBytes != null) {
+        request.files.add(http.MultipartFile.fromBytes('bass_file', bassBytes, filename: 'bass.wav'));
+      }
 
-      request.files.add(http.MultipartFile.fromBytes('anchor_file', anchorBytes, filename: '$actualAnchorUsed.wav'));
-
-      // ── 2. ATTACH BASS STEM IF AVAILABLE ──
-      if (actualAnchorUsed != 'bass') {
-         Uint8List? bassBytes = cachedStemBytes['bass'];
-         if (bassBytes == null && cachedStemPaths.containsKey('bass')) {
-           bassBytes = await File(cachedStemPaths['bass']!).readAsBytes();
-         }
-         if (bassBytes != null) {
-           request.files.add(http.MultipartFile.fromBytes('bass_file', bassBytes, filename: 'bass.wav'));
-         }
+      // 3. Fetch Helper Track (if active track is NOT drums or bass)
+      if (activeEditableStem != 'drums' && activeEditableStem != 'bass') {
+        Uint8List? helperBytes = await getAudioBytes(activeEditableStem);
+        if (helperBytes != null) {
+          request.files.add(http.MultipartFile.fromBytes('helper_file', helperBytes, filename: 'helper.wav'));
+        }
       }
 
       var streamedResponse = await request.send();
@@ -2739,7 +2709,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
             barLines = List<double>.from((data['bar_lines'] as List).map((x) => (x as num).toDouble()));
             tempoMap = List<Map<String, dynamic>>.from((data['tempo_map'] as List).cast<Map<String, dynamic>>());
           });
-          _showSaveConfirmation('Tempo Map Ready! Using [$actualAnchorUsed]. Found ${barLines.length} bars (${data['recurrences_found'] ?? 0} recurrences).');
+          _showSaveConfirmation('Tempo Map Ready! Found ${barLines.length} bars.');
         } else {
           _showSaveConfirmation('Rhythm Analysis Failed: ${data['message']}');
         }
