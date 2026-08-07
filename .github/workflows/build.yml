@@ -186,13 +186,14 @@ jobs:
           # Force the newly generated Podfile up to Catalina (10.15)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
 
-          # Inject legacy overrides for the 3.22 environment
-          echo "" >> pubspec.yaml
-          echo "dependency_overrides:" >> pubspec.yaml
-          echo "  win32: 5.5.4" >> pubspec.yaml
-          echo "  sentry_flutter: 8.13.0" >> pubspec.yaml
-          echo "  record: 5.2.1" >> pubspec.yaml
-          echo "  meta: 1.15.0" >> pubspec.yaml
+          # Create a dedicated overrides file for the legacy 3.22 environment
+          cat << 'EOF' > pubspec_overrides.yaml
+          dependency_overrides:
+            win32: 5.5.4
+            sentry_flutter: 8.13.0
+            record: 5.2.1
+            meta: 1.15.0
+          EOF
 
           flutter pub get
 
