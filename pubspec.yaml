@@ -126,3 +126,4 @@ flutter:
 
 dependency_overrides:
   record_linux: ^1.2.0
+  collection: 1.18.0
