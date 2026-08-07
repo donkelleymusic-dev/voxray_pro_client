@@ -182,7 +182,7 @@ jobs:
           flutter clean
           rm -rf macos/Podfile macos/Podfile.lock macos/Pods
           flutter create --platforms=macos .
-          
+
           # Force the newly generated Podfile up to Catalina (10.15)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
 
@@ -192,7 +192,6 @@ jobs:
             win32: 5.5.4
             sentry_flutter: 8.13.0
             record: 5.2.1
-            meta: 1.15.0
           EOF
 
           flutter pub get
