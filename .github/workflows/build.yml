@@ -186,8 +186,6 @@ jobs:
             win32: 5.5.4
             sentry: 8.13.0
             sentry_flutter: 8.13.0
-            record: 5.2.1
-            record_linux: 1.2.0
             file_picker: 8.1.2
             flutter_soloud: 3.1.0
             meta: 1.15.0
