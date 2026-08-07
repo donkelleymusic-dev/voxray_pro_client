@@ -203,6 +203,20 @@ jobs:
           flutter pub get
           flutter build macos --config-only
 
+          # Patch Sentry C++ compilation issue with modern Xcode libc++ (std::vector<const T>)
+          python3 -c "
+          import glob
+          for path in glob.glob('macos/Pods/Sentry/**/*.h', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.cpp', recursive=True) + glob.glob('macos/Pods/Sentry/**/*.hpp', recursive=True):
+              with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                  content = f.read()
+              if 'ThreadHandleMetadataPair' in content:
+                  new_content = content.replace('const ThreadHandleMetadataPair', 'ThreadHandleMetadataPair')
+                  if new_content != content:
+                      with open(path, 'w', encoding='utf-8') as f:
+                          f.write(new_content)
+                      print(f'Patched {path}')
+          "
+
       - name: Build macOS App
         env:
           MACOSX_DEPLOYMENT_TARGET: 10.15
