@@ -179,13 +179,23 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          flutter config --no-enable-swift-package-manager
           flutter clean
           rm -rf macos/Podfile macos/Podfile.lock macos/Pods
           flutter create --platforms=macos .
           
           # Force the newly generated Podfile up to Catalina (10.15)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
+
+          # Scrub any accidental SwiftPM references for the 3.22 CocoaPods environment
+          python3 -c "
+          import re
+          pbxproj_path = 'macos/Runner.xcodeproj/project.pbxproj'
+          with open(pbxproj_path, 'r') as f:
+              content = f.read()
+          content = re.sub(r'.*FlutterGeneratedPluginSwiftPackage.*\n', '', content)
+          with open(pbxproj_path, 'w') as f:
+              f.write(content)
+          "
 
           # Create a dedicated overrides file for the legacy 3.22 environment
           cat << 'EOF' > pubspec_overrides.yaml
