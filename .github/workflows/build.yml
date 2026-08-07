@@ -180,9 +180,24 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # Completely wipe the tracked macos folder so Flutter 3.22 builds a fresh, SwiftPM-free project
+          # Create overrides FIRST so the environment is patched before Flutter touches anything
+          cat << 'EOF' > pubspec_overrides.yaml
+          dependency_overrides:
+            win32: 5.5.4
+            sentry: 8.13.0
+            sentry_flutter: 8.13.0
+            record: 5.2.1
+            record_linux: 1.2.0
+            file_picker: 8.1.2
+            flutter_soloud: 3.1.0
+            meta: 1.15.0
+          EOF
+
+          # Completely wipe the tracked macos folder
           rm -rf macos
-          flutter create --platforms=macos .
+          
+          # Create the macOS project but PREVENT it from auto-running pub get yet
+          flutter create --platforms=macos --no-pub .
           
           # Force the newly generated Podfile up to Catalina (10.15)
           sed -i '' 's/10.14/10.15/g' macos/Podfile
@@ -193,18 +208,7 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
           fi
 
-          # Comprehensive overrides to match your codebase APIs while staying on Flutter 3.22.0
-          cat << 'EOF' > pubspec_overrides.yaml
-          dependency_overrides:
-            win32: 5.5.4
-            sentry: 8.13.0
-            sentry_flutter: 8.13.0
-            record: 5.2.1
-            record_linux: 1.2.0
-            file_picker: 8.1.2
-            flutter_soloud: 3.1.0
-          EOF
-
+          # NOW we safely resolve dependencies with our overrides in place
           flutter pub get
           flutter build macos --config-only
 
