@@ -167,7 +167,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
-  build_macos:
+  bbuild_macos:
     name: Build macOS Desktop
     runs-on: macos-latest
 
@@ -178,74 +178,35 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6' # The ultimate Catalina savior
+          flutter-version: '3.22.0' # Native Dart 3.4 support for all your modern packages!
           channel: 'stable'
           cache: true
 
-      - name: Transpile Codebase for Dart 3.3
-        run: |
-          # Safely lower Dart SDK constraint without breaking YAML syntax
-          sed -i '' 's/\^3.4.0/\^3.3.0/g' pubspec.yaml
-          sed -i '' 's/>=3.4.0/>=3.3.0/g' pubspec.yaml
-          
-          # Backport FilePicker syntax (v11 to v8)
-          find lib -type f -name "*.dart" -exec sed -i '' 's/FilePicker\.pickFiles/FilePicker.platform.pickFiles/g' {} +
-          find lib -type f -name "*.dart" -exec sed -i '' 's/FilePicker\.saveFile/FilePicker.platform.saveFile/g' {} +
-          find lib -type f -name "*.dart" -exec sed -i '' 's/FilePicker\.getDirectoryPath/FilePicker.platform.getDirectoryPath/g' {} +
-          
-          # Backport FileSaver syntax (v0.4 to v0.3)
-          find lib -type f -name "*.dart" -exec sed -i '' 's/fileExtension:/ext:/g' {} +
-
-      - name: Migrate Android Embedding V2 (Bypass CLI validation)
-        run: |
-          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST_PATH" ]; then
-            python3 -c "
-            with open('$MANIFEST_PATH', 'r') as f:
-                content = f.read()
-            if 'flutterEmbedding' not in content:
-                content = content.replace('</application>', '    <meta-data\n        android:name=\"flutterEmbedding\"\n        android:value=\"2\" />\n</application>')
-                with open('$MANIFEST_PATH', 'w') as f:
-                    f.write(content)
-            "
-          fi
-          
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Create overrides
+          # 1. Clean, minimal overrides (Only what is strictly necessary for desktop compilation)
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
-            http: 1.2.2
-            file_picker: 8.0.3
-            file_saver: 0.3.1
             win32: 5.5.4
             sentry: 8.13.0
             sentry_flutter: 8.13.0
             flutter_soloud: 3.1.0
-            meta: 1.15.0
-            collection: 1.18.0
-            web: 0.5.1
-            logging: 1.2.0
-            path_provider: 2.1.4
-            supabase_flutter: 2.14.2
-            record: 5.2.0
-            shared_preferences: 2.2.2
           EOF
 
-          # 2. Completely wipe tracked mobile/desktop platform folders so they don't trigger validation errors
+          # 2. Wipe tracked platform folders to avoid template conflicts
           rm -rf macos android
           
-          # 3. Recreate ONLY macOS safely
+          # 3. Recreate macOS project natively
           flutter create --platforms=macos --no-pub .
           flutter pub get
           
-          # 4. FORCE COCOAPODS FOR SENTRY
+          # 4. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
           flutter build macos --config-only || true
           sed -i '' 's/10.14/10.15/g' macos/Podfile
           
-          # 5. Inject Architecture Constraints INTO the existing post_install block
+          # 5. Inject Architecture Constraints into the Podfile
           python3 -c "
           with open('macos/Podfile', 'r') as f:
               content = f.read()
@@ -267,10 +228,11 @@ jobs:
           
           cd macos && pod install && cd ..
 
-          # 6. Microphone permissions
+          # 6. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU from crashing!)
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
+            /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
           # 7. Sentry C++ patch
@@ -306,7 +268,7 @@ jobs:
           cd build/macos/Build/Products/Release
           zip -qq -r ../../../../../voXRay-macOS.zip *.app
 
-      - name: Clean Up Workspace (Fixes the iOS Leak)
+      - name: Clean Up Workspace
         if: always()
         run: |
           rm -f pubspec_overrides.yaml
