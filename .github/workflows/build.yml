@@ -196,6 +196,20 @@ jobs:
           # Backport FileSaver syntax (v0.4 to v0.3)
           find lib -type f -name "*.dart" -exec sed -i '' 's/fileExtension:/ext:/g' {} +
 
+      - name: Migrate Android Embedding V2 (Bypass CLI validation)
+        run: |
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ]; then
+            python3 -c "
+            with open('$MANIFEST_PATH', 'r') as f:
+                content = f.read()
+            if 'flutterEmbedding' not in content:
+                content = content.replace('</application>', '    <meta-data\n        android:name=\"flutterEmbedding\"\n        android:value=\"2\" />\n</application>')
+                with open('$MANIFEST_PATH', 'w') as f:
+                    f.write(content)
+            "
+          fi
+          
       - name: Generate macOS Platform Files & Overrides
         run: |
           cat << 'EOF' > pubspec_overrides.yaml
