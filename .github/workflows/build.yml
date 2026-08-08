@@ -184,7 +184,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Modern native overrides with file_saver 0.4.0 and meta 1.15.0
+          # 1. Overrides with collection pinned to 1.18.0
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -193,6 +193,7 @@ jobs:
             flutter_soloud: 3.1.0
             meta: 1.15.0
             file_saver: 0.4.0
+            collection: 1.18.0
           EOF
 
           # 2. Wipe tracked platform folders to avoid template conflicts
@@ -230,7 +231,7 @@ jobs:
           
           cd macos && pod install && cd ..
 
-          # 6. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
+          # 6. Microphone permissions & DISABLE IMPELLER
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
