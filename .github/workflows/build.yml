@@ -211,6 +211,7 @@ jobs:
             collection: 1.18.0
             web: 0.5.1
             logging: 1.2.0
+            path_provider: 2.1.4
           EOF
 
           rm -rf macos
