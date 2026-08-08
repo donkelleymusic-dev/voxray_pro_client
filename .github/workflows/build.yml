@@ -203,6 +203,18 @@ jobs:
           # 3. Recreate macOS project natively
           flutter create --platforms=macos --no-pub .
           flutter pub get
+
+          # 🟢 Enable network access in macOS entitlements (Fixes Supabase SocketException)
+          python3 -c "
+          import glob
+          for path in glob.glob('macos/**/*.entitlements', recursive=True):
+              with open(path, 'r') as f:
+                  ent = f.read()
+              if 'com.apple.security.network.client' not in ent:
+                  ent = ent.replace('</dict>', '    <key>com.apple.security.network.client</key>\n    <true/>\n</dict>')
+                  with open(path, 'w') as f:
+                      f.write(ent)
+          "
           
           # 4. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
