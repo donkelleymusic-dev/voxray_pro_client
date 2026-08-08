@@ -178,13 +178,13 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5' # Dart 3.5 support for file_saver 0.4.0
+          flutter-version: '3.27.4' # Native Dart 3.6 support for file_saver 0.4.0
           channel: 'stable'
           cache: true
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Native overrides with collection pinned back to 1.18.0
+          # 1. Clean native overrides for Flutter 3.27 / Dart 3.6
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -194,7 +194,6 @@ jobs:
             meta: 1.15.0
             file_saver: 0.4.0
             http_parser: 4.0.2
-            collection: 1.18.0
           EOF
 
           # 2. Wipe tracked platform folders to avoid template conflicts
