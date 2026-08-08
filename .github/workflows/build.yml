@@ -184,7 +184,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Overrides using file_saver 0.3.1
+          # 1. Clean native overrides for file_saver 0.3.1
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -207,11 +207,29 @@ jobs:
           # 4. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
-          flutter build macos --config-only || true
+          # 5. FORCE macOS Deployment Target to 10.15 everywhere BEFORE pod install
+          python3 -c "
+          import glob
           
-          # 5. Bump deployment target from 10.14 to 10.15 everywhere in Podfile & configs
-          sed -i '' 's/10.14/10.15/g' macos/Podfile
-          sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10.14/MACOSX_DEPLOYMENT_TARGET = 10.15/g' macos/Runner.xcodeproj/project.pbxproj || true
+          # Fix Podfile platform line
+          with open('macos/Podfile', 'r') as f:
+              content = f.read()
+          content = content.replace(\"platform :macos, '10.14'\", \"platform :macos, '10.15'\")
+          content = content.replace(\"platform :macos, '10.13'\", \"platform :macos, '10.15'\")
+          with open('macos/Podfile', 'w') as f:
+              f.write(content)
+
+          # Fix pbxproj deployment targets
+          for path in glob.glob('macos/**/*.pbxproj', recursive=True):
+              with open(path, 'r') as f:
+                  pbx = f.read()
+              pbx = pbx.replace('MACOSX_DEPLOYMENT_TARGET = 10.14;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;')
+              pbx = pbx.replace('MACOSX_DEPLOYMENT_TARGET = 10.13;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;')
+              with open(path, 'w') as f:
+                  f.write(pbx)
+          "
+
+          flutter build macos --config-only || true
           
           # 6. Inject Architecture Constraints & Deployment Target into Podfile post_install
           python3 -c "
