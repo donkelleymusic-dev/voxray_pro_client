@@ -208,6 +208,7 @@ jobs:
             sentry_flutter: 8.13.0
             flutter_soloud: 3.1.0
             meta: 1.15.0
+            collection: 1.18.0
           EOF
 
           rm -rf macos
