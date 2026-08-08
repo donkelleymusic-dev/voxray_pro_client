@@ -4931,7 +4931,7 @@ class VoxrayDAWState extends VoxrayDAWStateBase with TickerProviderStateMixin, D
       case 'toggle_help_mode':
         setState(() => isHelpModeActive = !isHelpModeActive);
         _showSaveConfirmation(
-          isHelpModeActive ? 'Inspection Mode Active. Tap any highlighted element to learn its function.' : 'Inspection Mode Disabled.',
+          isHelpModeActive ? 'Inspection Mode Active. LONG PRESS any highlighted element to learn its function.' : 'Inspection Mode Disabled.',
           isPreview: true,
         );
         break;
