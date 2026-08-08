@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'eula_service.dart';
+import '../eula_service.dart';
 
 class EulaGateScreen extends StatefulWidget {
   final EulaModel eula;
