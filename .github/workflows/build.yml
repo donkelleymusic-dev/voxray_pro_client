@@ -233,10 +233,14 @@ jobs:
           # 10. Re-run pod install to apply the 10.15 target cleanly
           cd macos && pod install && cd ..
 
-          # 11. Microphone permissions
+          # 11. Info.plist Modifications (Microphone & Disable Impeller for Legacy GPUs)
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
+            # Add Microphone permissions
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
+            
+            # Disable Impeller to force the Skia fallback renderer for older Intel hardware
+            /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
           # 12. Sentry C++ patch (Now guaranteed to exist since SPM is disabled!)
