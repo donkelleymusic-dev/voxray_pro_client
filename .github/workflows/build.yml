@@ -181,8 +181,8 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Patch pubspec to allow Dart 3.3.4 (Flutter 3.19.6)
-          sed -i '' 's/\^3.4.0/>=3.3.0 <4.0.0/g' pubspec.yaml
+          # 1. Patch pubspec to allow Dart 3.3.4 (Flutter 3.19.6) safely without breaking YAML syntax
+          sed -i '' 's/\^3.4.0/\^3.3.0/g' pubspec.yaml
           sed -i '' 's/>=3.4.0 <4.0.0/>=3.3.0 <4.0.0/g' pubspec.yaml
 
           # 2. Patch FilePicker syntax backwards for the CI runner 
