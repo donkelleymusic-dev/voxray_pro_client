@@ -184,7 +184,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Clean native overrides for file_saver 0.3.1
+          # 1. Overrides using file_saver 0.3.1 for Dart 3.7 compatibility
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -207,31 +207,10 @@ jobs:
           # 4. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
-          # 5. FORCE macOS Deployment Target to 10.15 everywhere BEFORE pod install
-          python3 -c "
-          import glob
-          
-          # Fix Podfile platform line
-          with open('macos/Podfile', 'r') as f:
-              content = f.read()
-          content = content.replace(\"platform :macos, '10.14'\", \"platform :macos, '10.15'\")
-          content = content.replace(\"platform :macos, '10.13'\", \"platform :macos, '10.15'\")
-          with open('macos/Podfile', 'w') as f:
-              f.write(content)
-
-          # Fix pbxproj deployment targets
-          for path in glob.glob('macos/**/*.pbxproj', recursive=True):
-              with open(path, 'r') as f:
-                  pbx = f.read()
-              pbx = pbx.replace('MACOSX_DEPLOYMENT_TARGET = 10.14;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;')
-              pbx = pbx.replace('MACOSX_DEPLOYMENT_TARGET = 10.13;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;')
-              with open(path, 'w') as f:
-                  f.write(pbx)
-          "
-
           flutter build macos --config-only || true
+          sed -i '' 's/10.14/10.15/g' macos/Podfile
           
-          # 6. Inject Architecture Constraints & Deployment Target into Podfile post_install
+          # 5. Inject Architecture Constraints into the Podfile
           python3 -c "
           with open('macos/Podfile', 'r') as f:
               content = f.read()
@@ -240,7 +219,6 @@ jobs:
             target.build_configurations.each do |config|
               config.build_settings['ARCHS'] = 'x86_64'
               config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
-              config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
             end
           '''
           content = content.replace('installer.pods_project.targets.each do |target|', 'installer.pods_project.targets.each do |target|' + injection)
@@ -251,18 +229,17 @@ jobs:
 
           echo "ARCHS = x86_64" >> macos/Runner/Configs/Release.xcconfig
           echo "ONLY_ACTIVE_ARCH = YES" >> macos/Runner/Configs/Release.xcconfig
-          echo "MACOSX_DEPLOYMENT_TARGET = 10.15" >> macos/Runner/Configs/Release.xcconfig
           
           cd macos && pod install && cd ..
 
-          # 7. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
+          # 6. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
-          # 8. Sentry C++ patch
+          # 7. Sentry C++ patch
           echo "Patching Sentry in CocoaPods..."
           chmod -R +w macos/Pods/Sentry
           python3 -c "
