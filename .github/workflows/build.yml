@@ -207,16 +207,32 @@ jobs:
           # 4. Generate config first so macos/Podfile is fully created
           flutter build macos --config-only || true
           
-          # 5. NOW patch Podfile, pbxproj, and entitlements to 10.15 + add network/file entitlements
+          # 5. NOW robustly patch Podfile to use platform :osx, '10.15' (removes duplicates)
           python3 -c "
           import glob, os, re
 
           if os.path.exists('macos/Podfile'):
               with open('macos/Podfile', 'r') as f:
                   content = f.read()
-              content = re.sub(r'#?\s*platform\s*:\s*macos\s*,\s*[\"\\'].*?[\"\\']', \"platform :macos, '10.15'\", content)
-              if 'platform :macos' not in content:
-                  content = \"platform :macos, '10.15'\n\" + content
+              
+              # Replace any existing platform declaration with clean platform :osx, '10.15'
+              content = re.sub(r'#?\s*platform\s*:\s*(macos|osx)\s*,\s*[\"\\'].*?[\"\\']', \"platform :osx, '10.15'\", content)
+              
+              # Ensure only one platform line exists
+              lines = content.split('\n')
+              new_lines = []
+              platform_found = False
+              for line in lines:
+                  if 'platform :' in line:
+                      if not platform_found:
+                          new_lines.append(\"platform :osx, '10.15'\")
+                          platform_found = True
+                  else:
+                      new_lines.append(line)
+              if not platform_found:
+                  new_lines.insert(0, \"platform :osx, '10.15'\")
+              
+              content = '\n'.join(new_lines)
               with open('macos/Podfile', 'w') as f:
                   f.write(content)
 
