@@ -184,7 +184,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Clean native overrides for Flutter 3.27 / Dart 3.6
+          # 1. Native overrides with collection forced to 1.19.1 to satisfy file_saver
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -194,6 +194,7 @@ jobs:
             meta: 1.15.0
             file_saver: 0.4.0
             http_parser: 4.0.2
+            collection: 1.19.1
           EOF
 
           # 2. Wipe tracked platform folders to avoid template conflicts
