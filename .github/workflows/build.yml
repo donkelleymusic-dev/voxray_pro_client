@@ -184,7 +184,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Overrides using file_saver 0.3.1
+          # 1. Overrides using file_saver 0.3.1 for Dart 3.7 compatibility
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -203,29 +203,33 @@ jobs:
           # 3. Recreate macOS project natively
           flutter create --platforms=macos --no-pub .
           flutter pub get
-
-          # 🟢 Enable network access in macOS entitlements (Fixes Supabase SocketException)
+          
+          # 🟢 ADDED: Enable network and file access entitlements (Fixes Supabase & File Handlers)
           python3 -c "
           import glob
           for path in glob.glob('macos/**/*.entitlements', recursive=True):
               with open(path, 'r') as f:
                   ent = f.read()
+              
+              # Add network client if missing
               if 'com.apple.security.network.client' not in ent:
                   ent = ent.replace('</dict>', '    <key>com.apple.security.network.client</key>\n    <true/>\n</dict>')
-                  with open(path, 'w') as f:
-                      f.write(ent)
+              
+              # Add file user-selected read-write if missing (Fixes file_picker / file_saver)
+              if 'com.apple.security.files.user-selected.read-write' not in ent:
+                  ent = ent.replace('</dict>', '    <key>com.apple.security.files.user-selected.read-write</key>\n    <true/>\n</dict>')
+                  
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(ent)
           "
           
           # 4. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
           flutter build macos --config-only || true
-          
-          # 5. Bump deployment target from 10.14 to 10.15 everywhere in Podfile & configs
           sed -i '' 's/10.14/10.15/g' macos/Podfile
-          sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10.14/MACOSX_DEPLOYMENT_TARGET = 10.15/g' macos/Runner.xcodeproj/project.pbxproj || true
           
-          # 6. Inject Architecture Constraints & Deployment Target into Podfile post_install
+          # 5. Inject Architecture Constraints into the Podfile
           python3 -c "
           with open('macos/Podfile', 'r') as f:
               content = f.read()
@@ -234,7 +238,6 @@ jobs:
             target.build_configurations.each do |config|
               config.build_settings['ARCHS'] = 'x86_64'
               config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
-              config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
             end
           '''
           content = content.replace('installer.pods_project.targets.each do |target|', 'installer.pods_project.targets.each do |target|' + injection)
@@ -245,18 +248,17 @@ jobs:
 
           echo "ARCHS = x86_64" >> macos/Runner/Configs/Release.xcconfig
           echo "ONLY_ACTIVE_ARCH = YES" >> macos/Runner/Configs/Release.xcconfig
-          echo "MACOSX_DEPLOYMENT_TARGET = 10.15" >> macos/Runner/Configs/Release.xcconfig
           
           cd macos && pod install && cd ..
 
-          # 7. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
+          # 6. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
-          # 8. Sentry C++ patch
+          # 7. Sentry C++ patch
           echo "Patching Sentry in CocoaPods..."
           chmod -R +w macos/Pods/Sentry
           python3 -c "
