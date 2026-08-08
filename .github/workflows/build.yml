@@ -212,6 +212,8 @@ jobs:
             web: 0.5.1
             logging: 1.2.0
             path_provider: 2.1.4
+            supabase_flutter: 2.14.2
+            supabase: 2.12.4
           EOF
 
           rm -rf macos
