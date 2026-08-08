@@ -184,7 +184,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Overrides using file_saver 0.3.1 for Dart 3.7 compatibility
+          # 1. Overrides using file_saver 0.3.1
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -208,9 +208,12 @@ jobs:
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
           flutter build macos --config-only || true
-          sed -i '' 's/10.14/10.15/g' macos/Podfile
           
-          # 5. Inject Architecture Constraints into the Podfile
+          # 5. Bump deployment target from 10.14 to 10.15 everywhere in Podfile & configs
+          sed -i '' 's/10.14/10.15/g' macos/Podfile
+          sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10.14/MACOSX_DEPLOYMENT_TARGET = 10.15/g' macos/Runner.xcodeproj/project.pbxproj || true
+          
+          # 6. Inject Architecture Constraints & Deployment Target into Podfile post_install
           python3 -c "
           with open('macos/Podfile', 'r') as f:
               content = f.read()
@@ -219,6 +222,7 @@ jobs:
             target.build_configurations.each do |config|
               config.build_settings['ARCHS'] = 'x86_64'
               config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
+              config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
             end
           '''
           content = content.replace('installer.pods_project.targets.each do |target|', 'installer.pods_project.targets.each do |target|' + injection)
@@ -229,17 +233,18 @@ jobs:
 
           echo "ARCHS = x86_64" >> macos/Runner/Configs/Release.xcconfig
           echo "ONLY_ACTIVE_ARCH = YES" >> macos/Runner/Configs/Release.xcconfig
+          echo "MACOSX_DEPLOYMENT_TARGET = 10.15" >> macos/Runner/Configs/Release.xcconfig
           
           cd macos && pod install && cd ..
 
-          # 6. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
+          # 7. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
-          # 7. Sentry C++ patch
+          # 8. Sentry C++ patch
           echo "Patching Sentry in CocoaPods..."
           chmod -R +w macos/Pods/Sentry
           python3 -c "
