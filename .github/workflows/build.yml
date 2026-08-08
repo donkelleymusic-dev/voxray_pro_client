@@ -212,6 +212,20 @@ jobs:
           
       - name: Generate macOS Platform Files & Overrides
         run: |
+          # 1. Fix Android V2 Embedding FIRST so pub get doesn't trip on app_links
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ]; then
+            python3 -c "
+            with open('$MANIFEST_PATH', 'r') as f:
+                content = f.read()
+            if 'flutterEmbedding' not in content:
+                content = content.replace('</application>', '    <meta-data\n        android:name=\"flutterEmbedding\"\n        android:value=\"2\" />\n</application>')
+                with open('$MANIFEST_PATH', 'w') as f:
+                    f.write(content)
+            "
+          fi
+
+          # 2. Create overrides
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             http: 1.2.2
@@ -231,17 +245,18 @@ jobs:
             shared_preferences: 2.2.2
           EOF
 
+          # 3. Regenerate macOS and resolve
           rm -rf macos
           flutter create --platforms=macos --no-pub .
           flutter pub get
           
-          # FORCE COCOAPODS FOR SENTRY
+          # 4. FORCE COCOAPODS FOR SENTRY
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
           flutter build macos --config-only || true
           sed -i '' 's/10.14/10.15/g' macos/Podfile
           
-          # Inject Architecture Constraints INTO the existing post_install block
+          # 5. Inject Architecture Constraints INTO the existing post_install block
           python3 -c "
           with open('macos/Podfile', 'r') as f:
               content = f.read()
@@ -263,12 +278,13 @@ jobs:
           
           cd macos && pod install && cd ..
 
-          # Microphone permissions
+          # 6. Microphone permissions
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
           fi
 
+          # 7. Sentry C++ patch
           echo "Patching Sentry in CocoaPods..."
           chmod -R +w macos/Pods/Sentry
           python3 -c "
