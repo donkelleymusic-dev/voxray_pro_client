@@ -166,7 +166,7 @@ jobs:
           
   build_macos:
     name: Build macOS Desktop
-    runs-on: macos-latest # 1. BACK TO LATEST so the job actually starts!
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
@@ -175,12 +175,13 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.19.6' # DOWNGRADED to save the Intel HD 4000!
           channel: 'stable'
           cache: true
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Create overrides FIRST so the environment is patched before Flutter touches anything
+          # 1. Create overrides
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -199,7 +200,7 @@ jobs:
           # 4. Resolve dependencies with overrides intact
           flutter pub get
           
-          # 5. FORCE COCOAPODS FOR SENTRY: Delete Package.swift from the plugin cache so Flutter falls back to CocoaPods
+          # 5. FORCE COCOAPODS FOR SENTRY
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
           # 6. Generate Xcode configs and the Podfile
@@ -219,7 +220,6 @@ jobs:
               config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
             end
           '''
-          # Inject right after Flutter's loop starts
           content = content.replace('installer.pods_project.targets.each do |target|', 'installer.pods_project.targets.each do |target|' + injection)
           
           with open('macos/Podfile', 'w') as f:
@@ -233,17 +233,14 @@ jobs:
           # 10. Re-run pod install to apply the 10.15 target cleanly
           cd macos && pod install && cd ..
 
-          # 11. Info.plist Modifications (Microphone & Disable Impeller for Legacy GPUs)
+          # 11. Microphone permissions & Impeller fallback
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
-            # Add Microphone permissions
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
-            
-            # Disable Impeller to force the Skia fallback renderer for older Intel hardware
             /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
-          # 12. Sentry C++ patch (Now guaranteed to exist since SPM is disabled!)
+          # 12. Sentry C++ patch
           echo "Patching Sentry in CocoaPods..."
           chmod -R +w macos/Pods/Sentry
           python3 -c "
@@ -275,6 +272,9 @@ jobs:
         run: |
           cd build/macos/Build/Products/Release
           zip -qq -r ../../../../../voXRay-macOS.zip *.app
+
+      - name: Clean Up Overrides (Fixes the iOS Leak)
+        run: rm -f pubspec_overrides.yaml
 
       - name: Upload macOS to GitHub Releases
         uses: softprops/action-gh-release@v2
