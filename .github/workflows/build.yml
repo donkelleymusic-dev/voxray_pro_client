@@ -104,6 +104,9 @@ jobs:
           flutter precache --ios
           flutter build ios --config-only --no-codesign
 
+      - name: Force CocoaPods for Sentry (Disable SPM)
+        run: find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
+
       - name: Generate Launcher Icons
         run: dart run flutter_launcher_icons
 
