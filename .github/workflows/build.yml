@@ -184,7 +184,7 @@ jobs:
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Clean native overrides for Flutter 3.29 / Dart 3.7
+          # 1. Overrides using file_saver 0.3.1 for Dart 3.7 compatibility
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -192,7 +192,7 @@ jobs:
             sentry_flutter: 8.13.0
             flutter_soloud: 3.1.0
             meta: 1.15.0
-            file_saver: 0.4.0
+            file_saver: 0.3.1
             http_parser: 4.0.2
             collection: 1.19.1
           EOF
