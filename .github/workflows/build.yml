@@ -212,20 +212,7 @@ jobs:
           
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Fix Android V2 Embedding FIRST so pub get doesn't trip on app_links
-          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST_PATH" ]; then
-            python3 -c "
-            with open('$MANIFEST_PATH', 'r') as f:
-                content = f.read()
-            if 'flutterEmbedding' not in content:
-                content = content.replace('</application>', '    <meta-data\n        android:name=\"flutterEmbedding\"\n        android:value=\"2\" />\n</application>')
-                with open('$MANIFEST_PATH', 'w') as f:
-                    f.write(content)
-            "
-          fi
-
-          # 2. Create overrides
+          # 1. Create overrides
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             http: 1.2.2
@@ -245,8 +232,10 @@ jobs:
             shared_preferences: 2.2.2
           EOF
 
-          # 3. Regenerate macOS and resolve
-          rm -rf macos
+          # 2. Completely wipe tracked mobile/desktop platform folders so they don't trigger validation errors
+          rm -rf macos android
+          
+          # 3. Recreate ONLY macOS safely
           flutter create --platforms=macos --no-pub .
           flutter pub get
           
