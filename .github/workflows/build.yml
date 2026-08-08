@@ -204,21 +204,35 @@ jobs:
           flutter create --platforms=macos --no-pub .
           flutter pub get
           
-          # 🟢 ADDED: Enable network and file access entitlements (Fixes Supabase & File Handlers)
+          # 🟢 FORCE 10.15 DEPLOYMENT TARGET & ENTITLEMENTS IMMEDIATELY AFTER CREATION
           python3 -c "
           import glob
+          
+          # Fix Podfile platform line
+          with open('macos/Podfile', 'r') as f:
+              content = f.read()
+          content = content.replace(\"platform :macos, '10.14'\", \"platform :macos, '10.15'\")
+          content = content.replace(\"platform :macos, '10.13'\", \"platform :macos, '10.15'\")
+          with open('macos/Podfile', 'w') as f:
+              f.write(content)
+
+          # Fix all pbxproj files so Xcode knows it's 10.15 (Fixes file_picker error)
+          for path in glob.glob('macos/**/*.pbxproj', recursive=True):
+              with open(path, 'r') as f:
+                  pbx = f.read()
+              pbx = pbx.replace('MACOSX_DEPLOYMENT_TARGET = 10.14;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;')
+              pbx = pbx.replace('MACOSX_DEPLOYMENT_TARGET = 10.13;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;')
+              with open(path, 'w') as f:
+                  f.write(pbx)
+
+          # Inject network client and file access entitlements
           for path in glob.glob('macos/**/*.entitlements', recursive=True):
               with open(path, 'r') as f:
                   ent = f.read()
-              
-              # Add network client if missing
               if 'com.apple.security.network.client' not in ent:
                   ent = ent.replace('</dict>', '    <key>com.apple.security.network.client</key>\n    <true/>\n</dict>')
-              
-              # Add file user-selected read-write if missing (Fixes file_picker / file_saver)
               if 'com.apple.security.files.user-selected.read-write' not in ent:
                   ent = ent.replace('</dict>', '    <key>com.apple.security.files.user-selected.read-write</key>\n    <true/>\n</dict>')
-                  
               with open(path, 'w', encoding='utf-8') as f:
                   f.write(ent)
           "
@@ -226,8 +240,7 @@ jobs:
           # 4. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
-          flutter build macos --config-only || true
-          sed -i '' 's/10.14/10.15/g' macos/Podfile
+          flutter build macos --config-only || http_status=$?
           
           # 5. Inject Architecture Constraints into the Podfile
           python3 -c "
@@ -238,6 +251,7 @@ jobs:
             target.build_configurations.each do |config|
               config.build_settings['ARCHS'] = 'x86_64'
               config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
+              config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
             end
           '''
           content = content.replace('installer.pods_project.targets.each do |target|', 'installer.pods_project.targets.each do |target|' + injection)
@@ -248,6 +262,7 @@ jobs:
 
           echo "ARCHS = x86_64" >> macos/Runner/Configs/Release.xcconfig
           echo "ONLY_ACTIVE_ARCH = YES" >> macos/Runner/Configs/Release.xcconfig
+          echo "MACOSX_DEPLOYMENT_TARGET = 10.15" >> macos/Runner/Configs/Release.xcconfig
           
           cd macos && pod install && cd ..
 
