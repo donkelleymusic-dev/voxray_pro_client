@@ -200,20 +200,22 @@ jobs:
           # 2. Wipe tracked platform folders to avoid template conflicts
           rm -rf macos android
           
-          # 3. Recreate macOS project natively
+          # 3. Recreate macOS project natively & get packages so Podfile exists
           flutter create --platforms=macos --no-pub .
+          flutter pub get
           
-          # 4. IMMEDIATELY patch Podfile, pbxproj, and entitlements to 10.15 + add network/file entitlements
+          # 4. NOW patch Podfile, pbxproj, and entitlements to 10.15 + add network/file entitlements
           python3 -c "
-          import glob
+          import glob, os
 
-          # Fix Podfile platform line right away so Flutter validator sees 10.15
-          with open('macos/Podfile', 'r') as f:
-              content = f.read()
-          content = content.replace(\"platform :macos, '10.14'\", \"platform :macos, '10.15'\")
-          content = content.replace(\"platform :macos, '10.13'\", \"platform :macos, '10.15'\")
-          with open('macos/Podfile', 'w') as f:
-              f.write(content)
+          # Check and fix Podfile platform line
+          if os.path.exists('macos/Podfile'):
+              with open('macos/Podfile', 'r') as f:
+                  content = f.read()
+              content = content.replace(\"platform :macos, '10.14'\", \"platform :macos, '10.15'\")
+              content = content.replace(\"platform :macos, '10.13'\", \"platform :macos, '10.15'\")
+              with open('macos/Podfile', 'w') as f:
+                  f.write(content)
 
           # Fix all pbxproj deployment targets
           for path in glob.glob('macos/**/*.pbxproj', recursive=True):
@@ -235,8 +237,6 @@ jobs:
               with open(path, 'w', encoding='utf-8') as f:
                   f.write(ent)
           "
-
-          flutter pub get
           
           # 5. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
