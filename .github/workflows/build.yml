@@ -175,22 +175,13 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.22.0' # BACK TO 3.22.0 to satisfy your modern dependencies!
           channel: 'stable'
           cache: true
 
       - name: Generate macOS Platform Files & Overrides
         run: |
-          # 1. Patch pubspec to allow Dart 3.3.4 (Flutter 3.19.6) safely without breaking YAML syntax
-          sed -i '' 's/\^3.4.0/\^3.3.0/g' pubspec.yaml
-          sed -i '' 's/>=3.4.0 <4.0.0/>=3.3.0 <4.0.0/g' pubspec.yaml
-
-          # 2. Patch FilePicker syntax backwards for the CI runner 
-          # (Translates modern 11.x code to the 10.x syntax required by Dart 3.3)
-          find lib -type f -name "*.dart" -exec sed -i '' 's/FilePicker\.pickFiles/FilePicker.platform.pickFiles/g' {} +
-          find lib -type f -name "*.dart" -exec sed -i '' 's/FilePicker\.saveFile/FilePicker.platform.saveFile/g' {} +
-
-          # 3. Create overrides
+          # 1. Create overrides (No more Dart 3.3 hacks!)
           cat << 'EOF' > pubspec_overrides.yaml
           dependency_overrides:
             win32: 5.5.4
@@ -200,25 +191,25 @@ jobs:
             meta: 1.15.0
           EOF
 
-          # 4. Completely wipe the tracked macos folder
+          # 2. Completely wipe the tracked macos folder
           rm -rf macos
           
-          # 5. Create the macOS project safely
+          # 3. Create the macOS project safely
           flutter create --platforms=macos --no-pub .
           
-          # 6. Resolve dependencies with overrides intact
+          # 4. Resolve dependencies with overrides intact
           flutter pub get
           
-          # 7. FORCE COCOAPODS FOR SENTRY
+          # 5. FORCE COCOAPODS FOR SENTRY
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
-          # 8. Generate Xcode configs and the Podfile
+          # 6. Generate Xcode configs and the Podfile
           flutter build macos --config-only || true
 
-          # 9. Force Catalina (10.15) Target
+          # 7. Force Catalina (10.15) Target
           sed -i '' 's/10.14/10.15/g' macos/Podfile
           
-          # 10. Inject Architecture Constraints INTO the existing post_install block
+          # 8. Inject Architecture Constraints INTO the existing post_install block
           python3 -c "
           with open('macos/Podfile', 'r') as f:
               content = f.read()
@@ -235,21 +226,21 @@ jobs:
               f.write(content)
           "
 
-          # 11. Force the Flutter Runner project to strictly build for Intel (x86_64)
+          # 9. Force the Flutter Runner project to strictly build for Intel (x86_64)
           echo "ARCHS = x86_64" >> macos/Runner/Configs/Release.xcconfig
           echo "ONLY_ACTIVE_ARCH = YES" >> macos/Runner/Configs/Release.xcconfig
           
-          # 12. Re-run pod install to apply the 10.15 target cleanly
+          # 10. Re-run pod install to apply the 10.15 target cleanly
           cd macos && pod install && cd ..
 
-          # 13. Microphone permissions & Impeller fallback
+          # 11. Microphone permissions & Impeller fallback (Crucial for the 2012 Mac on Flutter 3.22!)
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
-          # 14. Sentry C++ patch
+          # 12. Sentry C++ patch
           echo "Patching Sentry in CocoaPods..."
           chmod -R +w macos/Pods/Sentry
           python3 -c "
