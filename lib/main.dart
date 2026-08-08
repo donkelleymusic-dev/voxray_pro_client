@@ -74,6 +74,9 @@ import 'ui/macro_minimap.dart';
 import 'ui/help_tooltip_wrapper.dart';
 import 'ui/voxray_help_topics.dart';
 
+import 'eula_service.dart'; 
+import 'screens/eula_gate_screen.dart';
+
 //import 'screens/god_mode_dashboard.dart'
 
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -507,9 +510,13 @@ class AppGatekeeper extends StatefulWidget {
 
 class _AppGatekeeperState extends State<AppGatekeeper> {
   bool? _isLoggedIn;
-  bool _isPro = false; // 👈 Default to false, but let's handle the checking state cleanly
-  bool _isCheckingProfile = true; // 👈 Add a dedicated checking flag
+  bool _isPro = false; 
+  bool _isCheckingProfile = true; 
   bool _isRecoveringPassword = false;
+
+  // 🟢 EULA Tracking State
+  bool? _hasAcceptedEula;
+  EulaModel? _latestEula;
   
   @override
   void initState() {
@@ -543,6 +550,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
           setState(() {
             _isLoggedIn = false;
             _isPro = false;
+            _hasAcceptedEula = null;
             _isCheckingProfile = false; // Safe to stop checking when logged out
           });
         }
@@ -556,15 +564,35 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
         }
         
         try {
+          // 1. Fetch Core Profile Status (Critical)
           final response = await BackendService.supabase
               .from('profiles')
               .select('is_pro')
               .eq('id', session.user.id)
               .single();
+              
+          bool currentProStatus = response['is_pro'] as bool? ?? false;
+
+          // 2. Fetch EULA Status (Secondary & Isolated)
+          bool hasAccepted = true; // Default to true to prevent accidental lockouts
+          EulaModel? latestEula;
+          
+          try {
+            final eulaService = EulaService();
+            latestEula = await eulaService.fetchLatestEula();
+            if (latestEula != null) {
+              hasAccepted = await eulaService.hasUserAcceptedVersion(session.user.id, latestEula.versionNumber);
+            }
+          } catch (eulaError) {
+            debugPrint("EULA Fetch Warning: $eulaError");
+            // If the table isn't set up yet or errors out, we don't break the app.
+          }
 
           if (mounted) {
             setState(() {
-              _isPro = response['is_pro'] as bool? ?? false;
+              _isPro = currentProStatus;
+              _latestEula = latestEula;
+              _hasAcceptedEula = hasAccepted;
               _isCheckingProfile = false; // Now it's safe to reveal the UI
             });
           }
@@ -584,7 +612,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
   Widget build(BuildContext context) {
     // 0. PASSWORD RECOVERY MODE
     if (_isRecoveringPassword) {
-      final TextEditingController _newPasswordController = TextEditingController();
+      final TextEditingController newPasswordController = TextEditingController();
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
         body: Center(
@@ -598,7 +626,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
                 const Text("Set New Password", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                 const SizedBox(height: 24),
                 TextField(
-                  controller: _newPasswordController,
+                  controller: newPasswordController,
                   obscureText: true,
                   style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(
@@ -615,7 +643,7 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
                     try {
                       // Tell Supabase to securely update the password for the active session
                       await BackendService.supabase.auth.updateUser(
-                        UserAttributes(password: _newPasswordController.text),
+                        UserAttributes(password: newPasswordController.text),
                       );
                       
                       // Turn off recovery mode and let the Gatekeeper route them into the DAW!
@@ -645,6 +673,19 @@ class _AppGatekeeperState extends State<AppGatekeeper> {
     // 2. Not Logged In
     if (!_isLoggedIn!) {
       return const AuthScreen();
+    }
+
+    // 🟢 2.5 The EULA Gate (Fires before paywall checks if needed)
+    if (_hasAcceptedEula == false && _latestEula != null) {
+      return EulaGateScreen(
+        eula: _latestEula!,
+        userId: BackendService.supabase.auth.currentUser!.id,
+        onAccepted: () {
+          setState(() {
+            _hasAcceptedEula = true; // Instantly unblocks the UI
+          });
+        },
+      );
     }
 
     // 3. Logged In, but paywall active (is_pro is false)
