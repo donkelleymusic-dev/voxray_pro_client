@@ -204,7 +204,13 @@ jobs:
           flutter create --platforms=macos --no-pub .
           flutter pub get
           
-          # 🟢 FORCE 10.15 DEPLOYMENT TARGET & ENTITLEMENTS IMMEDIATELY AFTER CREATION
+          # 4. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
+          find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
+          
+          # 5. Generate config first so the Podfile exists
+          flutter build macos --config-only || true
+          
+          # 6. NOW FORCE 10.15 DEPLOYMENT TARGET & ENTITLEMENTS (Must run AFTER config-only generation)
           python3 -c "
           import glob
           
@@ -237,12 +243,7 @@ jobs:
                   f.write(ent)
           "
           
-          # 4. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
-          find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
-          
-          flutter build macos --config-only || http_status=$?
-          
-          # 5. Inject Architecture Constraints into the Podfile
+          # 7. Inject Architecture Constraints into the Podfile
           python3 -c "
           with open('macos/Podfile', 'r') as f:
               content = f.read()
@@ -266,14 +267,14 @@ jobs:
           
           cd macos && pod install && cd ..
 
-          # 6. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
+          # 8. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
-          # 7. Sentry C++ patch
+          # 9. Sentry C++ patch
           echo "Patching Sentry in CocoaPods..."
           chmod -R +w macos/Pods/Sentry
           python3 -c "
