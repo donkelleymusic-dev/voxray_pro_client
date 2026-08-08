@@ -200,20 +200,24 @@ jobs:
           # 2. Wipe tracked platform folders to avoid template conflicts
           rm -rf macos android
           
-          # 3. Recreate macOS project natively & get packages so Podfile exists
+          # 3. Recreate macOS project natively & get packages
           flutter create --platforms=macos --no-pub .
           flutter pub get
           
-          # 4. NOW patch Podfile, pbxproj, and entitlements to 10.15 + add network/file entitlements
+          # 4. Generate config first so macos/Podfile is fully created
+          flutter build macos --config-only || true
+          
+          # 5. NOW patch Podfile, pbxproj, and entitlements to 10.15 + add network/file entitlements
           python3 -c "
-          import glob, os
+          import glob, os, re
 
-          # Check and fix Podfile platform line
+          # Fix Podfile platform line robustly
           if os.path.exists('macos/Podfile'):
               with open('macos/Podfile', 'r') as f:
                   content = f.read()
-              content = content.replace(\"platform :macos, '10.14'\", \"platform :macos, '10.15'\")
-              content = content.replace(\"platform :macos, '10.13'\", \"platform :macos, '10.15'\")
+              content = re.sub(r'#?\s*platform\s*:\s*macos\s*,\s*[\'"][^\'"]*[\'"]', \"platform :macos, '10.15'\", content)
+              if 'platform :macos' not in content:
+                  content = \"platform :macos, '10.15'\n\" + content
               with open('macos/Podfile', 'w') as f:
                   f.write(content)
 
@@ -221,8 +225,7 @@ jobs:
           for path in glob.glob('macos/**/*.pbxproj', recursive=True):
               with open(path, 'r') as f:
                   pbx = f.read()
-              pbx = pbx.replace('MACOSX_DEPLOYMENT_TARGET = 10.14;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;')
-              pbx = pbx.replace('MACOSX_DEPLOYMENT_TARGET = 10.13;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;')
+              pbx = re.sub(r'MACOSX_DEPLOYMENT_TARGET\s*=\s*[^;]+;', 'MACOSX_DEPLOYMENT_TARGET = 10.15;', pbx)
               with open(path, 'w') as f:
                   f.write(pbx)
 
@@ -238,12 +241,10 @@ jobs:
                   f.write(ent)
           "
           
-          # 5. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
+          # 6. FORCE COCOAPODS FOR SENTRY (Bypasses SPM compiler errors)
           find ~/.pub-cache/hosted/pub.dev/sentry_flutter* -name "Package.swift" -type f -delete || true
           
-          flutter build macos --config-only || true
-          
-          # 6. Inject Architecture Constraints into the Podfile
+          # 7. Inject Architecture Constraints into the Podfile
           python3 -c "
           with open('macos/Podfile', 'r') as f:
               content = f.read()
@@ -267,14 +268,14 @@ jobs:
           
           cd macos && pod install && cd ..
 
-          # 7. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
+          # 8. Microphone permissions & DISABLE IMPELLER (Saves the 2012 Intel HD 4000 GPU)
           PLIST_PATH="macos/Runner/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Microphone access is required for audio recording and analysis.'" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" "$PLIST_PATH" || true
           fi
 
-          # 8. Sentry C++ patch
+          # 9. Sentry C++ patch
           echo "Patching Sentry in CocoaPods..."
           chmod -R +w macos/Pods/Sentry
           python3 -c "
