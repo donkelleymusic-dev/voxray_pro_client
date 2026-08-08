@@ -213,6 +213,7 @@ jobs:
             logging: 1.2.0
             path_provider: 2.1.4
             supabase_flutter: 2.14.2
+            record: 5.2.0
           EOF
 
           rm -rf macos
